@@ -112,8 +112,12 @@ const ART = {
         id            unique string
         prompt        the shouty instruction ("TAP!")
         hint          control pictogram: tap|drag|swipe|rub|shake|mash|hold|wait
+                      |blow|move|still|cover|trace|count|flick
         duration      seconds at speed 1.0 (engine divides by current speed)
+        minDuration   floor on the round length, for games speed can't shrink
         winOnTimeout  true = survive-the-clock game (default false)
+        photo         true = a win shows the camera still in Engine.lastPhoto
+        photoCap      caption printed under that photo (default 'NICE MOVES!')
    3. Add the class to POOL (normal games) or BOSSES (boss stages).
    That's it — prompts, timer, difficulty, HUD and scoring are handled for you.
 
@@ -242,6 +246,13 @@ const Input = {
   // you moving" value; camReady/camDenied/camPending mirror the mic pattern.
   _cam: null, _camVideo: null, _camCanvas: null, _camCtx: null, _prevFrame: null,
   motion: 0, motionL: 0, motionR: 0, camReady: false, camDenied: false, camPending: false, camW: 48, camH: 36,
+  // where the movement is, in player space (mirrored to match a selfie view):
+  // motionX 0 = your left edge, 1 = your right; motionY 0 = top, 1 = bottom.
+  // Only updated while something is actually moving, so it holds its last real
+  // position instead of drifting on sensor noise.
+  motionX: 0.5, motionY: 0.5,
+  // average frame brightness 0..1 — falls to near zero with a hand over the lens
+  bright: 1,
 
   attach(el) {
     const toVirtual = e => {
@@ -320,27 +331,42 @@ const Input = {
     }).catch(() => { this.camDenied = true; this.camPending = false; });
   },
 
-  // sample the camera each step: downscale, diff against last frame -> motion 0..1
+  // Sample the camera each step: downscale, diff against the last frame. One
+  // pass produces everything the camera games read — how much you moved
+  // (motion), which half you moved in (motionL/R), where the movement was
+  // (motionX/Y) and how bright the frame is (bright).
   _sampleMotion() {
     if (!this.camReady || !this._camVideo || this._camVideo.readyState < 2) return;
     const cx = this._camCtx, w = this.camW, h = this.camH;
     cx.drawImage(this._camVideo, 0, 0, w, h);
     const cur = cx.getImageData(0, 0, w, h).data;
     if (this._prevFrame) {
-      let diff = 0, left = 0, right = 0;
+      let diff = 0, left = 0, right = 0, sx = 0, sy = 0, lum = 0;
       // sum luminance change; also split by screen half. The camera is mirrored
       // when shown, so the RAW left half is the player's right — we flip below.
       for (let i = 0; i < cur.length; i += 16) {
         const d = Math.abs(cur[i] - this._prevFrame[i]) + Math.abs(cur[i + 1] - this._prevFrame[i + 1]) + Math.abs(cur[i + 2] - this._prevFrame[i + 2]);
         diff += d;
-        const px = (i / 4) % w;
+        const p = i / 4, px = p % w, py = (p / w) | 0;
         if (px < w / 2) right += d; else left += d;   // flipped for the mirror view
+        sx += d * px; sy += d * py;                   // diff-weighted centre of motion
+        lum += cur[i] + cur[i + 1] + cur[i + 2];
       }
-      const norm = diff / (cur.length / 16) / 60;
+      const n = cur.length / 16;
+      const norm = diff / n / 60;
       this.motion = Math.min(1, this.motion * 0.6 + norm * 0.8);
-      const half = (cur.length / 16) / 2;
+      const half = n / 2;
       this.motionL = Math.min(1, this.motionL * 0.5 + (left / half / 60) * 0.9);
       this.motionR = Math.min(1, this.motionR * 0.5 + (right / half / 60) * 0.9);
+      // below this floor the "movement" is just sensor grain and the centre
+      // would jump around the frame, so the last real position is kept.
+      if (diff > n * 8) {
+        const mx = 1 - (sx / diff) / w;               // flipped, like the halves
+        const my = (sy / diff) / h;
+        this.motionX += (mx - this.motionX) * 0.35;
+        this.motionY += (my - this.motionY) * 0.35;
+      }
+      this.bright += (lum / n / 3 / 255 - this.bright) * 0.35;
     }
     this._prevFrame = cur.slice(0);
   },
@@ -422,6 +448,11 @@ const Input = {
       // tap fallback for left/right games: tap left half = motionL, right = motionR
       this.motionL = Math.max(0, this.motionL * 0.82 + (this.justDown && this.x < W / 2 ? 0.6 : 0));
       this.motionR = Math.max(0, this.motionR * 0.82 + (this.justDown && this.x >= W / 2 ? 0.6 : 0));
+      // the finger stands in for the hand: it aims the point, and holding it
+      // down is what "covering the lens" means with no lens to cover.
+      this.motionX = Math.max(0, Math.min(1, this.x / W));
+      this.motionY = Math.max(0, Math.min(1, (this.y - TOP) / (BOT - TOP)));
+      this.bright += ((this.down ? 0.02 : 1) - this.bright) * 0.25;
     }
   },
   travel() { return this._travel; },
@@ -537,6 +568,10 @@ const g = {
       case 'trace': this.line(x - 9, y + 5, x - 3, y - 6, c, 2); this.line(x - 3, y - 6, x + 3, y + 5, c, 2); this.line(x + 3, y + 5, x + 9, y - 6, c, 2); break;
       case 'count': this.circle(x - 8, y, 3, c); this.circle(x, y, 3, c); this.circle(x + 8, y, 3, PAL.mid); break;
       case 'flick': this.circle(x - 8, y + 6, 4, c); this.line(x - 8, y + 6, x + 6, y - 6, PAL.mid, 2); this.line(x + 6, y - 6, x + 2, y - 5, PAL.mid, 2); this.line(x + 6, y - 6, x + 5, y - 1, PAL.mid, 2); break;
+      // 'move' with a line through it — hold still for the camera
+      case 'still': this.box(x - 10, y - 7, 20, 14, c); this.circle(x, y, 3, c); this.line(x - 13, y + 11, x + 13, y - 11, PAL.bad, 2); break;
+      // a palm coming down over the lens
+      case 'cover': this.circle(x, y + 4, 5, PAL.mid); this.cRect(x, y - 3, 20, 8, c); for (let i = 0; i < 3; i++) this.line(x - 6 + i * 6, y - 8, x - 6 + i * 6, y - 12, c, 2); break;
     }
   }
 };
@@ -1754,7 +1789,7 @@ class KnockStack extends Microgame {
 
 // 30. MOVE — wave your body at the camera to fill the meter; snaps a photo on win
 class MoveCam extends Microgame {
-  static meta = { id: 'move', prompt: 'MOVE!', hint: 'move', duration: 5.0, minDuration: 4.0 };
+  static meta = { id: 'move', prompt: 'MOVE!', hint: 'move', duration: 5.0, minDuration: 4.0, photo: true };
   init() {
     this.fill = 0;
     this.need = this.byD(1.0, 1.4, 1.8);
@@ -1797,7 +1832,7 @@ class MoveCam extends Microgame {
 
 // 31. DRY — shake fast at the camera to dry off the wet shiba (Snapped! homage)
 class DryShiba extends Microgame {
-  static meta = { id: 'dry', prompt: 'SHAKE!', hint: 'move', duration: 5.0, minDuration: 4.0 };
+  static meta = { id: 'dry', prompt: 'SHAKE!', hint: 'move', duration: 5.0, minDuration: 4.0, photo: true, photoCap: 'ALL FLUFFY!' };
   init() {
     this.dry = 0; this.need = this.byD(1.0, 1.4, 1.8);
     this.drops = [];
@@ -1836,7 +1871,7 @@ class DryShiba extends Microgame {
 
 // 32. LEAN — move to the side the arrow points (motion on that half of frame)
 class LeanDodge extends Microgame {
-  static meta = { id: 'lean', prompt: 'LEAN!', hint: 'move', duration: 5.0, minDuration: 4.0 };
+  static meta = { id: 'lean', prompt: 'LEAN!', hint: 'move', duration: 5.0, minDuration: 4.0, photo: true };
   init() {
     this.need = this.byD(2, 2, 3); this.hit = 0;
     Input.enableCam();
@@ -1899,12 +1934,257 @@ class LeanDodge extends Microgame {
   }
 }
 
+/* ── MORE CAMERA GAMES ────────────────────────────────────────────────────────
+   These four read different things out of the same webcam sample that MOVE,
+   DRY and LEAN use (see Input._sampleMotion):
+     FREEZE  the *absence* of motion
+     SWAT    where the motion is        (motionX / motionY)
+     HIDE    frame brightness           (a hand over the lens)
+     DANCE   motion in time with a beat
+   Every one of them falls back to touch when the camera is denied or missing,
+   so they stay in the pool on a desktop with no webcam.
+─────────────────────────────────────────────────────────────────────────────── */
+
+// 33. FREEZE — hold perfectly still until the clock runs out
+class FreezeStatue extends Microgame {
+  static meta = { id: 'freeze', prompt: 'FREEZE!', hint: 'still', duration: 4.6, minDuration: 3.8, winOnTimeout: true, photo: true, photoCap: 'PERFECT STATUE!' };
+  init() {
+    Input.enableCam();
+    this.paused = Input.camPending; this.wait = 0;
+    this.grace = 0.7;                          // a beat to settle before it counts
+    this.thr = this.byD(0.40, 0.30, 0.22);     // how much twitch is forgiven
+    this.hp = 1;                               // wobble meter — empty and you're caught
+    this.wob = 0;
+    this.cracks = [];
+  }
+  update(dt, input) {
+    if (this.paused) { this.wait += dt; if (!Input.camPending || this.wait > 1.5) this.paused = false; return; }
+    if (this.grace > 0) { this.grace -= dt; return; }
+    const over = input.motion - this.thr;
+    if (over > 0) {
+      this.hp -= over * dt * 2.2;
+      this.wob = Math.min(1, this.wob + over * dt * 5);
+      // the statue cracks a little further with every chunk of meter lost
+      const want = Math.min(6, 6 - Math.ceil(this.hp * 6));
+      while (this.cracks.length < want) this.cracks.push({ a: Math.random() * 6.2832, r: 17 + Math.random() * 5, l: 7 + Math.random() * 12 });
+      if (this.hp <= 0) { FX.shake(4); this.lose(); return; }
+    } else {
+      this.wob = Math.max(0, this.wob - dt * 2);
+      this.hp = Math.min(1, this.hp + dt * 0.12);   // slow, forgiving refill
+    }
+  }
+  // winOnTimeout: the engine calls this when the clock runs out, so the photo
+  // is snapped here rather than in update()
+  succeed() {
+    if (!this.finished) { const shot = Input.snapPhoto(); if (shot) Engine.lastPhoto = shot; }
+    super.succeed();
+  }
+  draw(g) {
+    g.clear();
+    if (this.paused) { g.text('ALLOW CAMERA…', CX, CY - 6, 11, PAL.ink); g.text('(then hold still)', CX, CY + 12, 7, PAL.mid); return; }
+    const j = (Math.random() - 0.5) * this.wob * 7;
+    // plinth, then the shiba as a statue: frame 0, no idle animation at all
+    g.rect(CX - 28, CY + 22, 56, 5, PAL.mid);
+    g.rect(CX - 22, CY + 27, 44, 4, PAL.mid);
+    g.sprite('face', CX + j, CY - 6, { w: 46, h: 46, frame: 0 });
+    for (const c of this.cracks) {
+      g.line(CX + Math.cos(c.a) * c.r, CY - 6 + Math.sin(c.a) * c.r,
+             CX + Math.cos(c.a) * (c.r + c.l), CY - 6 + Math.sin(c.a) * (c.r + c.l), PAL.bad, 1);
+    }
+    if (this.grace > 0) g.text('GET READY…', CX, TOP + 26, 9, PAL.mid);
+    else g.text(Input.camReady ? 'DO NOT MOVE' : "DON'T TAP", CX, TOP + 26, 9, this.hp < 0.4 ? PAL.bad : PAL.accent);
+    g.bar(30, BOT - 18, W - 60, 8, this.hp, this.hp < 0.4 ? PAL.bad : PAL.accent);
+  }
+}
+
+// 34. SWAT — put your hand where the fly is; the camera tracks where you moved
+class SwatFly extends Microgame {
+  static meta = { id: 'swat', prompt: 'SWAT!', hint: 'move', duration: 5.0, minDuration: 4.2, photo: true, photoCap: 'GOOD SWAT!' };
+  init() {
+    Input.enableCam();
+    this.paused = Input.camPending; this.wait = 0;
+    this.need = this.byD(1, 2, 2);
+    this.hit = 0;
+    this.hx = CX; this.hy = CY;                // the tracked hand
+    this.trail = [];
+    this.pop = 0;
+    this.newFly();
+  }
+  newFly() {
+    // kept off the edges: the motion centre rarely reaches a corner of the frame
+    this.fly = { x: 36 + Math.random() * (W - 72), y: TOP + 44 + Math.random() * (BOT - TOP - 96), t: 0 };
+  }
+  update(dt, input) {
+    if (this.paused) { this.wait += dt; if (!Input.camPending || this.wait > 1.5) this.paused = false; return; }
+    // motionX/Y is 0..1 across the camera frame — map it onto the play field
+    const tx = 12 + input.motionX * (W - 24);
+    const ty = TOP + 22 + input.motionY * (BOT - TOP - 44);
+    this.hx += (tx - this.hx) * Math.min(1, dt * 9);
+    this.hy += (ty - this.hy) * Math.min(1, dt * 9);
+    this.trail.push({ x: this.hx, y: this.hy, t: 0 });
+    for (const p of this.trail) p.t += dt;
+    this.trail = this.trail.filter(p => p.t < 0.22);
+
+    // the fly drifts so it isn't a static dot to park a hand on
+    this.fly.t += dt;
+    this.fly.x += Math.cos(this.fly.t * 3.1) * 16 * dt;
+    this.fly.y += Math.sin(this.fly.t * 4.4) * 16 * dt;
+
+    if (this.pop > 0) this.pop -= dt;
+    const near = Math.hypot(this.hx - this.fly.x, this.hy - this.fly.y) < 22;
+    const swinging = Input.camReady ? input.motion > 0.22 : input.justDown;
+    if (near && swinging) {
+      this.hit++; this.pop = 0.22;
+      Sfx.tick(); buzz(15); FX.hit(this.fly.x, this.fly.y, PAL.accent);
+      if (this.hit >= this.need) {
+        const shot = Input.snapPhoto(); if (shot) Engine.lastPhoto = shot;
+        this.succeed(); return;
+      }
+      this.newFly();
+    }
+  }
+  draw(g) {
+    g.clear();
+    if (this.paused) { g.text('ALLOW CAMERA…', CX, CY - 6, 11, PAL.ink); g.text('(then reach for the fly)', CX, CY + 12, 7, PAL.mid); return; }
+    // fly: buzzing body plus two flapping wings
+    const f = this.fly, wg = Math.sin(f.t * 40) * 3;
+    const bx = f.x + Math.sin(f.t * 33) * 1.5, by = f.y + Math.cos(f.t * 29) * 1.5;
+    g.line(bx - 6, by - 4 + wg, bx, by - 1, PAL.mid, 2);
+    g.line(bx + 6, by - 4 - wg, bx, by - 1, PAL.mid, 2);
+    g.circle(bx, by, 4, PAL.ink);
+    g.circle(bx, by - 3, 2, PAL.ink);
+    // hand: a ring where the camera thinks you are, with a short motion trail
+    for (const p of this.trail) { ctx.globalAlpha = 1 - p.t / 0.22; g.circle(p.x, p.y, 3, PAL.mid); ctx.globalAlpha = 1; }
+    const r = 13 + (this.pop > 0 ? this.pop * 40 : 0);
+    g.circle(this.hx, this.hy, r, PAL.accent);
+    g.circle(this.hx, this.hy, r - 3, PAL.bg);
+    g.line(this.hx - 5, this.hy, this.hx + 5, this.hy, PAL.accent, 1);
+    g.line(this.hx, this.hy - 5, this.hx, this.hy + 5, PAL.accent, 1);
+    g.text(Input.camReady ? 'REACH FOR IT!' : 'TAP IT!', CX, TOP + 26, 9, PAL.mid);
+    for (let i = 0; i < this.need; i++) g.rect(W - 8 - i * 8, TOP + 4, 5, 5, i < this.hit ? PAL.accent : PAL.mid);
+  }
+}
+
+// 35. HIDE — cover the lens with your hand until the searchlight gives up
+class HideLens extends Microgame {
+  static meta = { id: 'hide', prompt: 'HIDE!', hint: 'cover', duration: 4.6, minDuration: 3.8 };
+  init() {
+    Input.enableCam();
+    this.paused = Input.camPending; this.wait = 0;
+    this.settle = 0.4;                         // learn the room's light first
+    this.base = 0.06;
+    this.need = this.byD(0.7, 1.0, 1.3);       // seconds of darkness needed
+    this.held = 0; this.cover = 0; this.dark = false;
+  }
+  update(dt, input) {
+    if (this.paused) { this.wait += dt; if (!Input.camPending || this.wait > 1.5) this.paused = false; return; }
+    // Baseline = the brightest the lens saw before the round got going, so
+    // "covered" means dark *relative to this room*, not below a fixed number.
+    if (this.settle > 0) { this.settle -= dt; this.base = Math.max(this.base, input.bright); return; }
+    if (input.bright > this.base) this.base = input.bright;   // brightest seen wins
+    this.cover = Math.max(0, Math.min(1, 1 - input.bright / this.base));
+    this.dark = input.bright < this.base * 0.55;
+    if (this.dark) {
+      this.held += dt;
+      if (this.held >= this.need && !this.finished) { this.succeed(); }
+    } else this.held = Math.max(0, this.held - dt * 0.6);
+  }
+  draw(g) {
+    g.clear();
+    if (this.paused) { g.text('ALLOW CAMERA…', CX, CY - 6, 11, PAL.ink); g.text('(then cover the lens)', CX, CY + 12, 7, PAL.mid); return; }
+    // searchlight sweeping over the hiding shiba
+    const sw = Math.sin(this.t * 2.2) * 46;
+    ctx.save();
+    ctx.globalAlpha = 0.22 * (1 - this.cover);
+    ctx.fillStyle = PAL.accent;
+    ctx.beginPath();
+    ctx.moveTo(CX + sw, TOP + 6);
+    ctx.lineTo(CX + sw - 26, BOT - 22);
+    ctx.lineTo(CX + sw + 26, BOT - 22);
+    ctx.closePath(); ctx.fill();
+    ctx.restore();
+    g.circle(CX + sw, TOP + 6, 4, PAL.accent);
+    // the shiba, crouched behind a crate
+    g.sprite('hero', CX, BOT - 52, { w: 27, h: 36, frame: Math.floor(this.t * 6) % 5 });
+    g.rect(CX - 30, BOT - 40, 60, 18, PAL.mid);
+    g.box(CX - 30, BOT - 40, 60, 18, PAL.ink);
+    // the darkness the lens is actually seeing, painted over everything
+    if (this.cover > 0.02) { ctx.globalAlpha = Math.min(0.92, this.cover); g.clear(); ctx.globalAlpha = 1; }
+    g.text(this.settle > 0 ? 'GET READY…' : (Input.camReady ? 'COVER THE CAMERA!' : 'HOLD THE SCREEN!'), CX, TOP + 26, 9, this.dark ? PAL.accent : PAL.ink);
+    g.bar(30, BOT - 18, W - 60, 8, this.held / this.need);
+  }
+}
+
+// 36. DANCE — move on the beat: hit the ring each time it lands
+class DanceBeat extends Microgame {
+  static meta = { id: 'dance', prompt: 'DANCE!', hint: 'move', duration: 5.0, minDuration: 4.4, photo: true, photoCap: 'DANCE MACHINE!' };
+  init() {
+    Input.enableCam();
+    this.paused = Input.camPending; this.wait = 0;
+    this.need = this.byD(2, 3, 3);
+    // beats spread over whatever the round length ended up being, so engine
+    // speed changes the tempo instead of cutting the last beat off
+    const first = 1.0, last = Math.max(first + 0.7, this.timeLimit - 0.7);
+    this.beats = [];
+    for (let i = 0; i < this.need; i++) {
+      this.beats.push({ t: this.need > 1 ? first + (last - first) * i / (this.need - 1) : first, hit: false, miss: false });
+    }
+    this.win = 0.32;                           // ± window around a beat
+    this.thr = this.byD(0.26, 0.32, 0.38);     // how big a move counts
+    this.hits = 0; this.pop = 0;
+  }
+  update(dt, input) {
+    if (this.paused) { this.wait += dt; if (!Input.camPending || this.wait > 1.5) this.paused = false; return; }
+    if (this.pop > 0) this.pop -= dt;
+    for (const b of this.beats) {
+      if (b.hit || b.miss) continue;
+      const off = this.t - b.t;                // this.t doesn't tick while paused
+      if (Math.abs(off) <= this.win && input.motion > this.thr) {
+        b.hit = true; this.hits++; this.pop = 0.22;
+        Sfx.tick(); buzz(15); FX.hit(CX, CY - 6, PAL.accent);
+        if (this.hits >= this.need) {
+          const shot = Input.snapPhoto(); if (shot) Engine.lastPhoto = shot;
+          this.succeed(); return;
+        }
+      } else if (off > this.win) { b.miss = true; Sfx.blip(180, 0.06); }
+    }
+    // every beat resolved and one was dropped — no point running out the clock
+    if (!this.finished && this.beats.every(b => b.hit || b.miss)) this.lose();
+  }
+  draw(g) {
+    g.clear();
+    if (this.paused) { g.text('ALLOW CAMERA…', CX, CY - 6, 11, PAL.ink); g.text('(then move on the beat)', CX, CY + 12, 7, PAL.mid); return; }
+    // the incoming beat, as a ring closing in on the shiba
+    const nxt = this.beats.find(b => !b.hit && !b.miss);
+    if (nxt) {
+      const away = Math.abs(nxt.t - this.t);
+      const r = 24 + Math.min(64, away * 78);
+      const c = away <= this.win ? PAL.accent : PAL.mid;
+      g.circle(CX, CY - 6, r + 2, c);
+      g.circle(CX, CY - 6, r - 1, PAL.bg);
+    }
+    // shiba bobbing along with however hard you're moving
+    const bob = Math.sin(this.t * 9) * 4 * Math.min(1, Input.motion * 2.5);
+    const pop = this.pop > 0 ? this.pop * 24 : 0;
+    g.sprite('face', CX, CY - 6 + bob, { w: 44 + pop, h: 44 + pop, frame: Math.floor(this.t * 8) % 3 });
+    // the bar line: every beat as a pip, filled once you land it
+    for (const b of this.beats) {
+      const bx = 24 + (b.t / Math.max(0.01, this.timeLimit)) * (W - 48);
+      g.rect(bx - 2, BOT - 20, 5, 5, b.hit ? PAL.accent : b.miss ? PAL.bad : PAL.mid);
+    }
+    g.rect(24, BOT - 13, W - 48, 1, PAL.mid);
+    g.rect(24 + (Math.min(this.t, this.timeLimit) / Math.max(0.01, this.timeLimit)) * (W - 48) - 1, BOT - 16, 2, 7, PAL.ink);
+    g.text(Input.camReady ? 'MOVE ON THE BEAT!' : 'TAP ON THE BEAT!', CX, TOP + 26, 9, PAL.mid);
+  }
+}
+
 // ── REGISTRY ─────────────────────────────────────────────────────────────────
 const POOL = [
   TapBug, CatchCoin, RubClean, PullTissue, SodaShake, SwipeArrow, MashButton, HoldRelease, DontTap,
   StopBar, FollowDot, TapOrder, OddOneOut, FeedDog, WhackMole, PumpBalloon, CutRope,
   BlowSail, TracePath, GrabCount, FlickShot,
-  Flappy, Crossy, Doodle, PianoTiles, DinoRun, KnockStack, MoveCam, DryShiba, LeanDodge
+  Flappy, Crossy, Doodle, PianoTiles, DinoRun, KnockStack, MoveCam, DryShiba, LeanDodge,
+  FreezeStatue, SwatFly, HideLens, DanceBeat
 ];
 const BOSSES = [Dodge, Squeeze];
 
@@ -2066,7 +2346,8 @@ const Engine = {
     if (s === 'RESULT') {
       if (this.timer > 0) return;
       // if the just-won game captured a photo, show it before moving on
-      if (this.result === 'WIN' && this.game && ['move','dry','lean'].includes(this.game.meta.id) && Engine.lastPhoto) {
+      if (this.result === 'WIN' && this.game && this.game.meta.photo && Engine.lastPhoto) {
+        this.photoCap = this.game.meta.photoCap || 'NICE MOVES!';
         this.state = 'PHOTO'; this.timer = 2.6; this.photoReveal = 0;
         return;
       }
@@ -2212,7 +2493,7 @@ const Engine = {
       } else {
         g.text('NO PHOTO', CX, CY, 10, PAL.mid);
       }
-      g.text('NICE MOVES!', CX, py + ph + 14, 9, PAL.bg);
+      g.text(this.photoCap || 'NICE MOVES!', CX, py + ph + 14, 9, PAL.bg);
       if (Math.floor(this.time * 2) % 2) g.text('TAP', CX, BOT - 6, 8, PAL.mid);
       this.drawHud();
     }
