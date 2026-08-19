@@ -21,8 +21,19 @@ so they stay playable anywhere. The deployed Vercel URL is HTTPS.
 | HIDE | frame brightness — a hand over the lens | hold the screen |
 | DANCE | movement in time with a beat | tap on the beat |
 
+SWAT prefers the **gyro** where the device has one — tilting the phone aims far
+more precisely than the camera's centre-of-motion can. Hold the swatter on the
+fly to squash it (or tap). Whatever the phone was doing when the round starts
+becomes centre, so any comfortable hold works.
+
 A win in most of them snaps a still off the camera and shows it as a polaroid
-before the next round.
+before the next round: cover-cropped to the frame (never stretched) and printed
+as a six-tone duotone along the palette, so it sits with the pixel art.
+
+**BLOW** is the only game that uses the **microphone** — it measures the
+low-frequency energy of a puff, and falls back to fast tapping if the mic is
+denied. SODA reads the accelerometer (shake), with pointer wiggling as its
+fallback. Nothing else needs a sensor.
 
 ## Develop
 
@@ -43,3 +54,10 @@ Camera signals all come out of one downscaled frame diff in
 `Input._sampleMotion`: `motion`, `motionL`/`motionR`, `motionX`/`motionY`
 (where the movement is) and `bright`. `Input.beginStep` fills the same fields
 from touch when there is no camera, so no game has to special-case it.
+`Input.tiltX`/`tiltY` come from `deviceorientation` (`enableTilt`, zeroed per
+round with `zeroTilt`), and `tiltReady` stays false where there is no sensor.
+
+Motion thresholds are all on one scale — LEAN's `0.18` is "definitely leaning",
+so treat that as the reference when tuning a new game. With `DEBUG = true` every
+camera game prints its live readings along the bottom of the screen, which is
+the only way to calibrate against a real lens.

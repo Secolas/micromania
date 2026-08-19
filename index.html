@@ -253,6 +253,10 @@ const Input = {
   motionX: 0.5, motionY: 0.5,
   // average frame brightness 0..1 — falls to near zero with a hand over the lens
   bright: 1,
+  // device tilt for aim games, -1..1 on each axis, relative to however the
+  // phone was being held when the game started (see zeroTilt)
+  tiltX: 0, tiltY: 0, tiltReady: false,
+  _tiltOn: false, _tiltG: 0, _tiltB: 0, _tiltZero: null, _wantZero: false,
 
   attach(el) {
     const toVirtual = e => {
@@ -371,13 +375,42 @@ const Input = {
     this._prevFrame = cur.slice(0);
   },
 
-  // grab a still from the camera as a data URL (for the photo payoff)
+  // Grab a still from the camera for the photo payoff.
+  // Two things made these look wrong. The frame was squashed into the 4:3
+  // polaroid whatever shape the camera gave — a phone's portrait selfie frame
+  // came out wide — so it is cover-cropped now. And a full-colour photo sat
+  // badly next to five-colour pixel art, so it prints as a six-tone duotone
+  // along the palette instead.
+  RAMP: [[16, 16, 16], [92, 66, 26], [168, 124, 38], [255, 210, 63], [250, 230, 150], [240, 240, 240]],
   snapPhoto(fw = 120, fh = 90) {
     if (!this.camReady || !this._camVideo) return null;
+    const v = this._camVideo;
+    const sw = v.videoWidth || fw, sh = v.videoHeight || fh;
+    // largest centred crop that already has the polaroid's shape
+    const k = Math.max(fw / sw, fh / sh);
+    const cw = fw / k, ch = fh / k;
     const c = document.createElement('canvas'); c.width = fw; c.height = fh;
-    const cx = c.getContext('2d');
-    cx.save(); cx.scale(-1, 1); cx.drawImage(this._camVideo, -fw, 0, fw, fh); cx.restore();  // mirror
-    return c;   // return the canvas so the game can filter it
+    const cx = c.getContext('2d', { willReadFrequently: true });
+    cx.save(); cx.scale(-1, 1);
+    cx.drawImage(v, (sw - cw) / 2, (sh - ch) / 2, cw, ch, -fw, 0, fw, fh);   // mirrored
+    cx.restore();
+
+    const im = cx.getImageData(0, 0, fw, fh), d = im.data;
+    // stretch the contrast first, so a dim room still prints something punchy
+    let lo = 255, hi = 0;
+    for (let i = 0; i < d.length; i += 4) {
+      const l = d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114;
+      if (l < lo) lo = l;
+      if (l > hi) hi = l;
+    }
+    const span = Math.max(1, hi - lo), top = this.RAMP.length - 1;
+    for (let i = 0; i < d.length; i += 4) {
+      const l = d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114;
+      const t = this.RAMP[Math.round(Math.max(0, Math.min(1, (l - lo) / span)) * top)];
+      d[i] = t[0]; d[i + 1] = t[1]; d[i + 2] = t[2];
+    }
+    cx.putImageData(im, 0, 0);
+    return c;   // a canvas, so a game could filter it further
   },
 
   enableMic() {
@@ -398,6 +431,31 @@ const Input = {
       this.micReady = true;
       this.micPending = false;
     }).catch(() => { this.micDenied = true; this.micPending = false; });
+  },
+
+  // Gyro/tilt, for aiming. gamma is the left-right tilt, beta the front-back
+  // one, both in degrees. Same best-effort shape as the mic and camera: if the
+  // device has no sensor or refuses permission, tiltReady stays false and the
+  // games that want it use their camera or touch path instead.
+  enableTilt() {
+    if (this._tiltOn) return;
+    this._tiltOn = true;
+    const add = () => window.addEventListener('deviceorientation', e => {
+      if (e.gamma == null || e.beta == null) return;
+      this._tiltG = e.gamma; this._tiltB = e.beta;
+      this.tiltReady = true;
+    });
+    const DO = window.DeviceOrientationEvent;
+    if (DO && typeof DO.requestPermission === 'function') {
+      DO.requestPermission().then(st => { if (st === 'granted') add(); }).catch(() => {});
+    } else if (DO) { add(); }
+  },
+  // Whatever the phone is doing now becomes centre. Called at the start of a
+  // tilt game so it plays the same lying in bed as sitting at a desk. Deferred
+  // if no reading has arrived yet — the first one to land becomes the zero.
+  zeroTilt() {
+    if (this.tiltReady) this._tiltZero = { g: this._tiltG, b: this._tiltB };
+    else { this._tiltZero = null; this._wantZero = true; }
   },
 
   enableMotion() {
@@ -441,6 +499,13 @@ const Input = {
     }
     this.blow = Math.min(1, this.blow * 0.75 + raw);
     this._blowRaw = 0;
+    // tilt: 20 degrees off centre reaches the edge, so a small comfortable
+    // lean covers the whole play field
+    if (this.tiltReady && this._wantZero) { this._tiltZero = { g: this._tiltG, b: this._tiltB }; this._wantZero = false; }
+    if (this.tiltReady && this._tiltZero) {
+      this.tiltX = Math.max(-1, Math.min(1, (this._tiltG - this._tiltZero.g) / 20));
+      this.tiltY = Math.max(-1, Math.min(1, (this._tiltB - this._tiltZero.b) / 20));
+    }
     // camera motion: sampled from the webcam, or fast tapping as a fallback
     this._sampleMotion();
     if (!this.camReady) {
@@ -2038,9 +2103,12 @@ class SwatFly extends Microgame {
   static meta = { id: 'swat', prompt: 'SWAT!', hint: 'move', duration: 5.0, minDuration: 4.2, photo: true, photoCap: 'GOOD SWAT!' };
   init() {
     Input.enableCam();
+    Input.enableTilt(); Input.zeroTilt();      // hold the phone however you like
     this.paused = Input.camPending; this.wait = 0;
     this.need = this.byD(1, 2, 2);
     this.hit = 0;
+    this.dwell = 0;
+    this.dwellNeed = this.byD(0.20, 0.24, 0.28);
     this.hx = CX; this.hy = CY;                // the tracked hand
     this.trail = [];
     this.pop = 0;
@@ -2057,11 +2125,18 @@ class SwatFly extends Microgame {
   }
   update(dt, input) {
     if (this.paused) { this.wait += dt; if (!Input.camPending || this.wait > 1.5) this.paused = false; return; }
-    // motionX/Y is 0..1 across the camera frame — map it onto the play field
-    const tx = 12 + input.motionX * (W - 24);
-    const ty = TOP + 22 + input.motionY * (BOT - TOP - 44);
-    this.hx += (tx - this.hx) * Math.min(1, dt * 9);
-    this.hy += (ty - this.hy) * Math.min(1, dt * 9);
+    // Gyro aims far more precisely than the camera's centre-of-motion, so it
+    // wins where it exists; otherwise motionX/Y (0..1 across the frame) does.
+    let tx, ty;
+    if (Input.tiltReady) {
+      tx = CX + input.tiltX * (W / 2 - 14);
+      ty = CY + input.tiltY * ((BOT - TOP) / 2 - 22);
+    } else {
+      tx = 12 + input.motionX * (W - 24);
+      ty = TOP + 22 + input.motionY * (BOT - TOP - 44);
+    }
+    this.hx += (tx - this.hx) * Math.min(1, dt * (Input.tiltReady ? 14 : 9));
+    this.hy += (ty - this.hy) * Math.min(1, dt * (Input.tiltReady ? 14 : 9));
     this.trail.push({ x: this.hx, y: this.hy, t: 0 });
     for (const p of this.trail) p.t += dt;
     this.trail = this.trail.filter(p => p.t < 0.22);
@@ -2074,8 +2149,18 @@ class SwatFly extends Microgame {
     if (this.pop > 0) this.pop -= dt;
     if (this.arm > 0) this.arm -= dt;
     const near = this.arm <= 0 && Math.hypot(this.hx - this.fly.x, this.hy - this.fly.y) < 22;
-    const swinging = Input.camReady ? input.motion > 0.12 : input.justDown;
+    // Aiming by tilt carries no swing to detect, so holding the swatter on the
+    // fly is the swat — with a tap as a shortcut for the impatient. The camera
+    // path keeps its own swing, where moving is the whole input.
+    let swinging;
+    if (Input.tiltReady) {
+      this.dwell = near ? this.dwell + dt : Math.max(0, this.dwell - dt * 2);
+      swinging = input.justDown || this.dwell >= this.dwellNeed;
+    } else {
+      swinging = Input.camReady ? input.motion > 0.12 : input.justDown;
+    }
     if (near && swinging) {
+      this.dwell = 0;
       this.hit++; this.pop = 0.22;
       Sfx.tick(); buzz(15); FX.hit(this.fly.x, this.fly.y, PAL.accent);
       if (this.hit >= this.need) {
@@ -2102,7 +2187,13 @@ class SwatFly extends Microgame {
     g.circle(this.hx, this.hy, r - 3, PAL.bg);
     g.line(this.hx - 5, this.hy, this.hx + 5, this.hy, PAL.accent, 1);
     g.line(this.hx, this.hy - 5, this.hx, this.hy + 5, PAL.accent, 1);
-    g.text(Input.camReady ? 'REACH FOR IT!' : 'TAP IT!', CX, TOP + 26, 9, PAL.mid);
+    // the swatter closing while you hold it on target
+    if (this.dwell > 0) {
+      const k = Math.min(1, this.dwell / this.dwellNeed);
+      g.circle(this.hx, this.hy, r + 7 - k * 7, PAL.bad);
+      g.circle(this.hx, this.hy, r + 5 - k * 7, PAL.bg);
+    }
+    g.text(Input.tiltReady ? 'TILT TO AIM!' : Input.camReady ? 'REACH FOR IT!' : 'TAP IT!', CX, TOP + 26, 9, PAL.mid);
     for (let i = 0; i < this.need; i++) g.rect(W - 8 - i * 8, TOP + 4, 5, 5, i < this.hit ? PAL.accent : PAL.mid);
   }
 }
@@ -2329,6 +2420,7 @@ const Engine = {
       Mascot.set(s === 'TITLE' ? 'watch' : 'sad');
       if (Input.justDown && this.timer <= 0) {
         Input.enableMotion();
+        Input.enableTilt();
         Input.enableMic();
         Sfx.unlock();
         this.reset();
@@ -2434,8 +2526,9 @@ const Engine = {
       // real phone — a real lens reads nothing like a webcam test pattern
       if (DEBUG && ['move', 'still', 'cover'].includes(this.game.meta.hint)) {
         const cam = Input.camReady ? 'cam' : Input.camDenied ? 'NOCAM' : '…';
-        g.text(cam + ' m' + Input.motion.toFixed(2) + ' l' + Input.motionL.toFixed(2) + ' r' + Input.motionR.toFixed(2) +
-               ' x' + Input.motionX.toFixed(2) + ' y' + Input.motionY.toFixed(2) + ' b' + Input.bright.toFixed(2),
+        const tl = Input.tiltReady ? ' T' + Input.tiltX.toFixed(2) + '/' + Input.tiltY.toFixed(2) : ' notilt';
+        g.text(cam + ' m' + Input.motion.toFixed(2) + ' x' + Input.motionX.toFixed(2) +
+               ' y' + Input.motionY.toFixed(2) + ' b' + Input.bright.toFixed(2) + tl,
                2, H - 8, 6, PAL.mid, 'left');
       }
     }
@@ -2532,13 +2625,11 @@ const Engine = {
         const rev = Math.min(1, this.photoReveal || 1);
         ctx.globalAlpha = rev;
         ctx.drawImage(photo, px, py, pw, ph);
-        // warm retro wash
-        ctx.globalAlpha = 0.18 * rev; ctx.fillStyle = PAL.accent; ctx.fillRect(px, py, pw, ph);
-        ctx.globalAlpha = 1;
         ctx.restore();
-        // scanlines
-        ctx.globalAlpha = 0.15;
-        for (let y = py; y < py + ph; y += 3) g.rect(px, y, pw, 1, PAL.bg);
+        // scanlines, kept light — the still is already toned, and at this scale
+        // a line every third row banded the whole picture
+        ctx.globalAlpha = 0.10;
+        for (let y = py; y < py + ph; y += 4) g.rect(px, y, pw, 1, PAL.bg);
         ctx.globalAlpha = 1;
       } else {
         g.text('NO PHOTO', CX, CY, 10, PAL.mid);
@@ -2623,7 +2714,7 @@ else {
 
     list.appendChild(mk('div', 'MICROGAMES', 'devhead'));
     const launch = (C) => {
-      Input.enableMotion(); Input.enableMic(); Sfx.unlock();
+      Input.enableMotion(); Input.enableTilt(); Input.enableMic(); Sfx.unlock();
       Engine.reset();
       Engine.testClass = loop ? C : null;
       Engine.testDiff = testDiff;
