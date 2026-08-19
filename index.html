@@ -1952,17 +1952,42 @@ class FreezeStatue extends Microgame {
     Input.enableCam();
     this.paused = Input.camPending; this.wait = 0;
     this.grace = 0.7;                          // a beat to settle before it counts
-    this.thr = this.byD(0.40, 0.30, 0.22);     // how much twitch is forgiven
+    // LEAN calls 0.18 "definitely leaning", so anything near that is a move,
+    // not a twitch. Sitting still still reads a little motion — sensor grain,
+    // mains flicker — so the bar also floats above the quietest reading this
+    // round: a noisy camera can't fail you for holding perfectly still.
+    this.base = this.byD(0.16, 0.12, 0.09);
+    this.thr = this.base;
+    this.noise = 1;                            // quietest motion while settling
+    this.ox = 0; this.oy = 0;                  // where the statue has been nudged
     this.hp = 1;                               // wobble meter — empty and you're caught
     this.wob = 0;
     this.cracks = [];
   }
   update(dt, input) {
     if (this.paused) { this.wait += dt; if (!Input.camPending || this.wait > 1.5) this.paused = false; return; }
-    if (this.grace > 0) { this.grace -= dt; return; }
+    // the statue mirrors you: it drifts toward wherever the camera sees movement
+    // and springs back when you hold still, so "you are moving" is visible
+    const pull = Math.min(1, input.motion * 2.5);
+    const tx = (input.motionX - 0.5) * 40 * pull, ty = (input.motionY - 0.5) * 24 * pull;
+    this.ox += (tx - this.ox) * Math.min(1, dt * 8);
+    this.oy += (ty - this.oy) * Math.min(1, dt * 8);
+    // The noise floor is learned only while settling — tracked across the whole
+    // round it would take sustained movement for "quiet" and lift the bar above
+    // it, and waving would pass. A settle reading above 0.12 isn't a grainy
+    // sensor, it's someone who kept moving through GET READY, so it buys them
+    // nothing; a genuinely noisy camera sits well below that and does get slack.
+    if (this.grace > 0) {
+      this.grace -= dt;
+      this.noise = Math.min(this.noise, input.motion);
+      this.thr = this.noise < 0.12 ? Math.min(0.25, Math.max(this.base, this.noise * 1.8 + 0.03)) : this.base;
+      return;
+    }
     const over = input.motion - this.thr;
     if (over > 0) {
-      this.hp -= over * dt * 2.2;
+      // a real move empties the meter in about half a second; a small shift
+      // costs a visible chunk but is survivable
+      this.hp -= (0.35 + over * 7) * dt;
       this.wob = Math.min(1, this.wob + over * dt * 5);
       // the statue cracks a little further with every chunk of meter lost
       const want = Math.min(6, 6 - Math.ceil(this.hp * 6));
@@ -1970,7 +1995,7 @@ class FreezeStatue extends Microgame {
       if (this.hp <= 0) { FX.shake(4); this.lose(); return; }
     } else {
       this.wob = Math.max(0, this.wob - dt * 2);
-      this.hp = Math.min(1, this.hp + dt * 0.12);   // slow, forgiving refill
+      this.hp = Math.min(1, this.hp + dt * 0.15);   // slow, forgiving refill
     }
   }
   // winOnTimeout: the engine calls this when the clock runs out, so the photo
@@ -1983,17 +2008,28 @@ class FreezeStatue extends Microgame {
     g.clear();
     if (this.paused) { g.text('ALLOW CAMERA…', CX, CY - 6, 11, PAL.ink); g.text('(then hold still)', CX, CY + 12, 7, PAL.mid); return; }
     const j = (Math.random() - 0.5) * this.wob * 7;
-    // plinth, then the shiba as a statue: frame 0, no idle animation at all
+    // plinth stays put — the statue shifting off it is the tell that you moved
     g.rect(CX - 28, CY + 22, 56, 5, PAL.mid);
     g.rect(CX - 22, CY + 27, 44, 4, PAL.mid);
-    g.sprite('face', CX + j, CY - 6, { w: 46, h: 46, frame: 0 });
+    const hx = CX + this.ox + j, hy = CY - 6 + this.oy;
+    ctx.save();
+    ctx.translate(hx, hy);
+    ctx.rotate(this.ox * 0.014);                     // leans the way you lean
+    g.sprite('face', 0, 0, { w: 46, h: 46, frame: 0 });
+    ctx.restore();
     for (const c of this.cracks) {
-      g.line(CX + Math.cos(c.a) * c.r, CY - 6 + Math.sin(c.a) * c.r,
-             CX + Math.cos(c.a) * (c.r + c.l), CY - 6 + Math.sin(c.a) * (c.r + c.l), PAL.bad, 1);
+      g.line(hx + Math.cos(c.a) * c.r, hy + Math.sin(c.a) * c.r,
+             hx + Math.cos(c.a) * (c.r + c.l), hy + Math.sin(c.a) * (c.r + c.l), PAL.bad, 1);
     }
     if (this.grace > 0) g.text('GET READY…', CX, TOP + 26, 9, PAL.mid);
     else g.text(Input.camReady ? 'DO NOT MOVE' : "DON'T TAP", CX, TOP + 26, 9, this.hp < 0.4 ? PAL.bad : PAL.accent);
-    g.bar(30, BOT - 18, W - 60, 8, this.hp, this.hp < 0.4 ? PAL.bad : PAL.accent);
+    // live motion, with a tick at the line that starts draining the meter —
+    // you can see the camera reacting, so a still round never feels like luck
+    const mw = W - 60;
+    g.rect(30, BOT - 30, mw, 3, PAL.mid);
+    g.rect(30, BOT - 30, Math.min(1, Input.motion / 0.6) * mw, 3, Input.motion > this.thr ? PAL.bad : PAL.ink);
+    g.rect(30 + Math.min(1, this.thr / 0.6) * mw, BOT - 33, 1, 9, PAL.accent);
+    g.bar(30, BOT - 18, mw, 8, this.hp, this.hp < 0.4 ? PAL.bad : PAL.accent);
   }
 }
 
@@ -2011,8 +2047,13 @@ class SwatFly extends Microgame {
     this.newFly();
   }
   newFly() {
-    // kept off the edges: the motion centre rarely reaches a corner of the frame
-    this.fly = { x: 36 + Math.random() * (W - 72), y: TOP + 44 + Math.random() * (BOT - TOP - 96), t: 0 };
+    // kept off the edges (the motion centre rarely reaches a corner of the
+    // frame) and away from where the hand already is, so it can't die on spawn
+    for (let i = 0; i < 12; i++) {
+      const x = 36 + Math.random() * (W - 72), y = TOP + 44 + Math.random() * (BOT - TOP - 96);
+      if (Math.hypot(x - this.hx, y - this.hy) > 46 || i === 11) { this.fly = { x, y, t: 0 }; break; }
+    }
+    this.arm = 0.3;                            // no kill in the first moment
   }
   update(dt, input) {
     if (this.paused) { this.wait += dt; if (!Input.camPending || this.wait > 1.5) this.paused = false; return; }
@@ -2031,8 +2072,9 @@ class SwatFly extends Microgame {
     this.fly.y += Math.sin(this.fly.t * 4.4) * 16 * dt;
 
     if (this.pop > 0) this.pop -= dt;
-    const near = Math.hypot(this.hx - this.fly.x, this.hy - this.fly.y) < 22;
-    const swinging = Input.camReady ? input.motion > 0.22 : input.justDown;
+    if (this.arm > 0) this.arm -= dt;
+    const near = this.arm <= 0 && Math.hypot(this.hx - this.fly.x, this.hy - this.fly.y) < 22;
+    const swinging = Input.camReady ? input.motion > 0.12 : input.justDown;
     if (near && swinging) {
       this.hit++; this.pop = 0.22;
       Sfx.tick(); buzz(15); FX.hit(this.fly.x, this.fly.y, PAL.accent);
@@ -2130,7 +2172,7 @@ class DanceBeat extends Microgame {
       this.beats.push({ t: this.need > 1 ? first + (last - first) * i / (this.need - 1) : first, hit: false, miss: false });
     }
     this.win = 0.32;                           // ± window around a beat
-    this.thr = this.byD(0.26, 0.32, 0.38);     // how big a move counts
+    this.thr = this.byD(0.14, 0.17, 0.20);     // how big a move counts
     this.hits = 0; this.pop = 0;
   }
   update(dt, input) {
@@ -2388,6 +2430,14 @@ const Engine = {
       let c = pct < 0.25 ? PAL.bad : PAL.accent;
       if (pct < 0.25 && Math.floor(this.time * 12) % 2) c = PAL.ink;
       g.rect(0, H - 6, W * pct, 6, c);
+      // DEBUG: what the camera is actually reading, for tuning thresholds on a
+      // real phone — a real lens reads nothing like a webcam test pattern
+      if (DEBUG && ['move', 'still', 'cover'].includes(this.game.meta.hint)) {
+        const cam = Input.camReady ? 'cam' : Input.camDenied ? 'NOCAM' : '…';
+        g.text(cam + ' m' + Input.motion.toFixed(2) + ' l' + Input.motionL.toFixed(2) + ' r' + Input.motionR.toFixed(2) +
+               ' x' + Input.motionX.toFixed(2) + ' y' + Input.motionY.toFixed(2) + ' b' + Input.bright.toFixed(2),
+               2, H - 8, 6, PAL.mid, 'left');
+      }
     }
     FX.post();
   },
