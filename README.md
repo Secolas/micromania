@@ -26,13 +26,20 @@ more precisely than the camera's centre-of-motion can. Hold the swatter on the
 fly to squash it (or tap). Whatever the phone was doing when the round starts
 becomes centre, so any comfortable hold works.
 
-A win in most of them snaps a still off the camera and shows it as a polaroid
-before the next round: cover-cropped to the frame (never stretched) and printed
-as a six-tone duotone along the palette, so it sits with the pixel art.
+MOVE, DRY, LEAN, FREEZE, DANCE and BLOW snap a still off the camera on a win and
+show it as a polaroid before the next round — in the camera's own colours, and
+cover-cropped so a portrait selfie frame is never squeezed into the 4:3 print.
+Opt a game in with `photo: true` in its meta.
+
+A game can stamp the still before handing it over: BLOW draws `PhotoFX.cake` on
+it, so you get a picture of yourself behind a birthday cake with the candles
+just blown out. Filters live in `PhotoFX`, draw in the photo's own pixel space,
+and use the five palette colours so they read as pixel art on a photograph.
 
 **BLOW** is the only game that uses the **microphone** — it measures the
 low-frequency energy of a puff, and falls back to fast tapping if the mic is
-denied. SODA reads the accelerometer (shake), with pointer wiggling as its
+denied. It also opens the camera for its photo, but never waits on it: no
+camera just means no picture. SODA reads the accelerometer (shake), with pointer wiggling as its
 fallback. Nothing else needs a sensor.
 
 ## Develop

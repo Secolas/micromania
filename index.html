@@ -375,13 +375,9 @@ const Input = {
     this._prevFrame = cur.slice(0);
   },
 
-  // Grab a still from the camera for the photo payoff.
-  // Two things made these look wrong. The frame was squashed into the 4:3
-  // polaroid whatever shape the camera gave — a phone's portrait selfie frame
-  // came out wide — so it is cover-cropped now. And a full-colour photo sat
-  // badly next to five-colour pixel art, so it prints as a six-tone duotone
-  // along the palette instead.
-  RAMP: [[16, 16, 16], [92, 66, 26], [168, 124, 38], [255, 210, 63], [250, 230, 150], [240, 240, 240]],
+  // Grab a still from the camera for the photo payoff, in the colours the
+  // camera saw. It is cover-cropped rather than scaled to fit: squeezing a
+  // phone's portrait selfie frame into the 4:3 polaroid came out wide.
   snapPhoto(fw = 120, fh = 90) {
     if (!this.camReady || !this._camVideo) return null;
     const v = this._camVideo;
@@ -390,26 +386,10 @@ const Input = {
     const k = Math.max(fw / sw, fh / sh);
     const cw = fw / k, ch = fh / k;
     const c = document.createElement('canvas'); c.width = fw; c.height = fh;
-    const cx = c.getContext('2d', { willReadFrequently: true });
+    const cx = c.getContext('2d');
     cx.save(); cx.scale(-1, 1);
     cx.drawImage(v, (sw - cw) / 2, (sh - ch) / 2, cw, ch, -fw, 0, fw, fh);   // mirrored
     cx.restore();
-
-    const im = cx.getImageData(0, 0, fw, fh), d = im.data;
-    // stretch the contrast first, so a dim room still prints something punchy
-    let lo = 255, hi = 0;
-    for (let i = 0; i < d.length; i += 4) {
-      const l = d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114;
-      if (l < lo) lo = l;
-      if (l > hi) hi = l;
-    }
-    const span = Math.max(1, hi - lo), top = this.RAMP.length - 1;
-    for (let i = 0; i < d.length; i += 4) {
-      const l = d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114;
-      const t = this.RAMP[Math.round(Math.max(0, Math.min(1, (l - lo) / span)) * top)];
-      d[i] = t[0]; d[i + 1] = t[1]; d[i + 2] = t[2];
-    }
-    cx.putImageData(im, 0, 0);
     return c;   // a canvas, so a game could filter it further
   },
 
@@ -638,6 +618,36 @@ const g = {
       // a palm coming down over the lens
       case 'cover': this.circle(x, y + 4, 5, PAL.mid); this.cRect(x, y - 3, 20, 8, c); for (let i = 0; i < 3; i++) this.line(x - 6 + i * 6, y - 8, x - 6 + i * 6, y - 12, c, 2); break;
     }
+  }
+};
+
+/* ── PHOTO FILTERS ────────────────────────────────────────────────────────────
+   Stamped onto a camera still before the engine shows it as a polaroid. They
+   draw in the photo's own pixel space (120x90) and in the five palette colours,
+   so they read as pixel art sitting on a real photograph.
+─────────────────────────────────────────────────────────────────────────────── */
+const PhotoFX = {
+  // A birthday cake with candles you have just blown out, for BLOW. Sized off
+  // the canvas rather than in fixed pixels, so a bigger still still works.
+  cake(c) {
+    const x = c.getContext('2d'), w = c.width, h = c.height;
+    const box = (a, b, ww, hh, col) => { x.fillStyle = col; x.fillRect(Math.round(a), Math.round(b), Math.round(ww), Math.round(hh)); };
+    const cw = Math.round(w * 0.46), cx0 = Math.round((w - cw) / 2);
+    const ch = Math.round(h * 0.20), cy0 = h - ch - Math.round(h * 0.04);
+
+    // candles first — the cake is drawn over their feet
+    const n = 3, gap = cw / (n + 1), cl = Math.round(h * 0.17);
+    for (let i = 0; i < n; i++) {
+      const px = Math.round(cx0 + gap * (i + 1)) - 1, top = cy0 - cl;
+      for (let sy = 0; sy < cl; sy += 3) box(px, top + sy, 3, 2, (sy / 3) % 2 ? PAL.bad : PAL.ink);
+      box(px + 1, top - 2, 1, 2, PAL.bg);                                  // wick
+      // a curl of smoke: the flame went out a moment ago
+      for (let k = 0; k < 4; k++) box(px + 1 + Math.round(Math.sin(k * 1.6) * 2), top - 5 - k * 3, 1, 2, PAL.mid);
+    }
+    box(cx0, cy0, cw, 3, PAL.ink);                                         // frosting
+    box(cx0, cy0 + 3, cw, ch - 3, PAL.accent);                             // cake
+    for (let i = 2; i < cw - 2; i += 8) box(cx0 + i, cy0 + 3, 3, ch - 3, PAL.ink);   // stripes
+    box(cx0 - 4, cy0 + ch, cw + 8, 2, PAL.mid);                            // plate
   }
 };
 
@@ -1320,7 +1330,7 @@ class Squeeze extends Microgame {
 
 // 20. BLOW — puff to fill the sail / spin the pinwheel (mic, or tap-fallback)
 class BlowSail extends Microgame {
-  static meta = { id: 'blow', prompt: 'BLOW!', hint: 'blow', duration: 4.2 };
+  static meta = { id: 'blow', prompt: 'BLOW!', hint: 'blow', duration: 4.2, photo: true, photoCap: 'MAKE A WISH!' };
   init() {
     this.fill = 0;
     this.need = this.byD(0.9, 1.3, 1.7);
@@ -1328,6 +1338,9 @@ class BlowSail extends Microgame {
     // If the mic permission is still pending, pause the round rather than start
     // it unfairly. Cap the wait so a slow/ignored prompt falls back to tapping.
     Input.enableMic();
+    // for the photo payoff only — the round never waits on the camera, and
+    // goes without a picture if it is denied or absent
+    Input.enableCam();
     this.paused = Input.micPending;
     this.wait = 0;
   }
@@ -1341,7 +1354,11 @@ class BlowSail extends Microgame {
     }
     this.fill += input.blow * dt * 1.6;
     this.spin += input.blow * dt * 14;
-    if (this.fill >= this.need) this.succeed();
+    if (this.fill >= this.need && !this.finished) {
+      const shot = Input.snapPhoto();
+      if (shot) { PhotoFX.cake(shot); Engine.lastPhoto = shot; }
+      this.succeed();
+    }
   }
   draw(g) {
     g.clear();
@@ -2100,7 +2117,7 @@ class FreezeStatue extends Microgame {
 
 // 34. SWAT — put your hand where the fly is; the camera tracks where you moved
 class SwatFly extends Microgame {
-  static meta = { id: 'swat', prompt: 'SWAT!', hint: 'move', duration: 5.0, minDuration: 4.2, photo: true, photoCap: 'GOOD SWAT!' };
+  static meta = { id: 'swat', prompt: 'SWAT!', hint: 'move', duration: 5.0, minDuration: 4.2 };
   init() {
     Input.enableCam();
     Input.enableTilt(); Input.zeroTilt();      // hold the phone however you like
@@ -2163,10 +2180,7 @@ class SwatFly extends Microgame {
       this.dwell = 0;
       this.hit++; this.pop = 0.22;
       Sfx.tick(); buzz(15); FX.hit(this.fly.x, this.fly.y, PAL.accent);
-      if (this.hit >= this.need) {
-        const shot = Input.snapPhoto(); if (shot) Engine.lastPhoto = shot;
-        this.succeed(); return;
-      }
+      if (this.hit >= this.need) { this.succeed(); return; }
       this.newFly();
     }
   }
@@ -2626,9 +2640,9 @@ const Engine = {
         ctx.globalAlpha = rev;
         ctx.drawImage(photo, px, py, pw, ph);
         ctx.restore();
-        // scanlines, kept light — the still is already toned, and at this scale
-        // a line every third row banded the whole picture
-        ctx.globalAlpha = 0.10;
+        // scanlines, kept faint — at this scale a line every third row banded
+        // the whole picture, and any tint on top just tinted the person
+        ctx.globalAlpha = 0.08;
         for (let y = py; y < py + ph; y += 4) g.rect(px, y, pw, 1, PAL.bg);
         ctx.globalAlpha = 1;
       } else {
