@@ -2613,13 +2613,277 @@ class Juggle extends Microgame {
   }
 }
 
+/* ── MORE MICROGAMES ──────────────────────────────────────────────────────────
+   Tilt (BALANCE, POUR, STEER), blow (CANDLES, PUFF) and touch (STACK, SORT).
+   All reuse existing sprites/primitives and fall back to touch where a sensor
+   is missing, so they stay playable on any device.
+─────────────────────────────────────────────────────────────────────────────── */
+
+// TILT — keep the ball on the see-saw plank until the clock runs out
+class BalanceBall extends Microgame {
+  static meta = { id: 'balance', prompt: 'BALANCE!', hint: 'move', duration: 5.0, minDuration: 4.2, winOnTimeout: true };
+  init() {
+    Input.enableTilt(); Input.zeroTilt();
+    this.pos = 0; this.vel = 0; this.tilt = 0;
+    this.grav = this.byD(1.6, 2.1, 2.6);
+    this.half = 62;
+  }
+  update(dt, input) {
+    // gyro tilt, or drag left/right, or ease back to flat
+    const want = Input.tiltReady ? input.tiltX
+               : input.down ? Math.max(-1, Math.min(1, (input.x - CX) / (W / 2))) : this.tilt * 0.9;
+    this.tilt += (Math.max(-1, Math.min(1, want)) - this.tilt) * Math.min(1, dt * 10);
+    this.vel += this.tilt * this.grav * dt;
+    this.vel *= 0.99;
+    this.pos += this.vel * dt;
+    if (Math.abs(this.pos) >= 1) { buzz(80); FX.shake(4); this.lose(); }
+  }
+  draw(g) {
+    g.clear();
+    const near = Math.abs(this.pos) > 0.7;
+    ctx.save(); ctx.translate(CX, CY + 6); ctx.rotate(this.tilt * 0.5);
+    g.rect(-this.half, -2, this.half * 2, 4, PAL.mid);       // plank
+    g.rect(-3, 2, 6, 10, PAL.mid);                           // pivot
+    const bx = this.pos * this.half;
+    g.sprite('face', bx, -12, { w: 20, h: 20, frame: Math.floor(this.t * 8) % 3 });
+    ctx.restore();
+    // edge markers turn red as the ball nears the drop
+    g.rect(CX - this.half - 3, CY + 4, 3, 8, near && this.pos < 0 ? PAL.bad : PAL.mid);
+    g.rect(CX + this.half, CY + 4, 3, 8, near && this.pos > 0 ? PAL.bad : PAL.mid);
+    g.text(Input.tiltReady ? 'HOLD IT LEVEL' : 'DRAG TO TILT', CX, TOP + 24, 8, near ? PAL.bad : PAL.mid);
+  }
+}
+
+// TILT — pour the drink to the line, then stop before it overflows
+class PourCup extends Microgame {
+  static meta = { id: 'pour', prompt: 'POUR!', hint: 'move', duration: 5.0, minDuration: 4.4 };
+  init() {
+    Input.enableTilt(); Input.zeroTilt();
+    this.fill = 0;
+    this.lo = this.byD(0.55, 0.62, 0.68);
+    this.hi = this.byD(0.85, 0.80, 0.76);
+    this.hold = 0; this.need = 0.5;
+  }
+  update(dt, input) {
+    // tilt magnitude pours; with no gyro, holding a touch pours
+    const t = Input.tiltReady ? Math.abs(input.tiltX) : (input.down ? 0.6 : 0);
+    const pouring = t > 0.25;
+    if (pouring) this.fill += t * dt * 0.55;
+    if (this.fill > 1) { buzz(100); FX.shake(3); this.lose(); return; }   // overflow
+    // hold only counts once you have STOPPED in the band — otherwise a steady
+    // pour drifts through the band and banks the hold on its way to overflowing
+    if (!pouring && this.fill >= this.lo && this.fill <= this.hi) { this.hold += dt; if (this.hold >= this.need) this.succeed(); }
+    else this.hold = 0;
+  }
+  draw(g) {
+    g.clear();
+    const inBand = this.fill >= this.lo && this.fill <= this.hi;
+    // the bottle, tipped by how much you are pouring
+    const t = Input.tiltReady ? Input.tiltX : (Input.down ? 0.6 : 0);
+    ctx.save(); ctx.translate(CX, TOP + 40); ctx.rotate(Math.max(-1, Math.min(1, t)) * 0.7);
+    g.rect(-8, -14, 16, 26, PAL.mid); g.rect(-3, -22, 6, 8, PAL.mid);
+    ctx.restore();
+    // cup with the target band and the fill
+    const cw = 44, ch = 70, cx0 = CX - cw / 2, cy0 = BOT - ch - 6;
+    g.box(cx0, cy0, cw, ch, PAL.ink);
+    g.rect(cx0, cy0 + ch - this.fill * ch, cw, this.fill * ch, inBand ? PAL.accent : PAL.ink);
+    // target band lines
+    g.line(cx0 - 4, cy0 + ch - this.lo * ch, cx0 + cw + 4, cy0 + ch - this.lo * ch, PAL.accent, 1);
+    g.line(cx0 - 4, cy0 + ch - this.hi * ch, cx0 + cw + 4, cy0 + ch - this.hi * ch, PAL.accent, 1);
+    g.text(this.fill > 0.92 ? 'STOP!' : inBand ? 'LEVEL OFF!' : (Input.tiltReady ? 'TIP TO POUR' : 'HOLD TO POUR'),
+           CX, TOP + 22, 8, this.fill > 0.92 ? PAL.bad : inBand ? PAL.accent : PAL.mid);
+  }
+}
+
+// TILT — steer the running shiba down the lane, dodging rocks
+class SteerRun extends Microgame {
+  static meta = { id: 'steer', prompt: 'STEER!', hint: 'move', duration: 5.0, minDuration: 4.0, winOnTimeout: true };
+  init() {
+    Input.enableTilt(); Input.zeroTilt();
+    this.px = CX; this.rocks = []; this.spawn = 0.5;
+    this.every = this.byD(0.72, 0.58, 0.46);
+    this.fall = this.byD(95, 118, 140);
+    this.runY = BOT - 22;
+  }
+  update(dt, input) {
+    const t = Input.tiltReady ? input.tiltX : (input.down ? (input.x - CX) / (W / 2) : 0);
+    this.px += Math.max(-1, Math.min(1, t)) * 95 * dt;
+    this.px = Math.max(12, Math.min(W - 12, this.px));
+    this.spawn -= dt;
+    if (this.spawn <= 0) {
+      this.spawn = this.every;
+      let x = 14 + Math.random() * (W - 28);
+      for (let k = 0; k < 20; k++) { if (this.rocks.every(o => o.y > TOP + 60 || Math.abs(o.x - x) > 46)) break; x = 14 + Math.random() * (W - 28); }
+      this.rocks.push({ x, y: TOP - 8, w: 12 + Math.random() * 12 });
+    }
+    for (const o of this.rocks) { o.y += this.fall * dt; if (Math.abs(o.y - this.runY) < 9 && Math.abs(o.x - this.px) < o.w / 2 + 7) { buzz(60); this.lose(); return; } }
+    this.rocks = this.rocks.filter(o => o.y < BOT + 12);
+  }
+  draw(g) {
+    g.clear();
+    for (const o of this.rocks) g.cRect(o.x, o.y, o.w, 8, PAL.bad);
+    g.sprite('runner', this.px, this.runY - 4, { w: 26, h: 24, frame: Math.floor(this.t * 14) % 4 });
+    g.rect(0, BOT - 4, W, 4, PAL.mid);
+    g.text(Input.tiltReady ? 'TILT TO STEER' : 'DRAG TO STEER', CX, TOP + 22, 8, PAL.mid);
+  }
+}
+
+// BLOW — blow out every candle before the clock runs out
+class BlowCandles extends Microgame {
+  static meta = { id: 'candles', prompt: 'BLOW!', hint: 'blow', duration: 4.6, minDuration: 4.0, photo: true, photoCap: 'MAKE A WISH!' };
+  init() {
+    Input.enableMic(); Input.enableCam();
+    this.paused = Input.micPending; this.wait = 0;
+    this.n = this.byD(3, 4, 5);
+    this.lit = []; for (let i = 0; i < this.n; i++) this.lit.push(1);
+  }
+  update(dt, input) {
+    if (this.paused) { this.wait += dt; if (!Input.micPending || this.wait > 1.2) this.paused = false; return; }
+    if (input.blow > 0.2) {
+      // snuff the candles left-to-right so progress is visible
+      for (let i = 0; i < this.n; i++) { if (this.lit[i] > 0) { this.lit[i] = Math.max(0, this.lit[i] - input.blow * dt * 1.6); break; } }
+    }
+    if (this.lit.every(l => l <= 0) && !this.finished) {
+      const shot = Input.snapPhoto(); if (shot) { PhotoFX.cake(shot); Engine.lastPhoto = shot; }
+      this.succeed();
+    }
+  }
+  draw(g) {
+    g.clear();
+    if (this.paused) { g.text('ALLOW MIC…', CX, CY - 6, 12, PAL.ink); g.text('(then blow)', CX, CY + 12, 7, PAL.mid); return; }
+    const cw = 34 + this.n * 14, cx0 = CX - cw / 2, cakeY = BOT - 34;
+    g.rect(cx0, cakeY, cw, 24, PAL.accent); g.rect(cx0, cakeY - 3, cw, 3, PAL.ink);
+    for (let i = 0; i < this.n; i++) {
+      const x = cx0 + (i + 0.5) * cw / this.n, top = cakeY - 20;
+      g.rect(x - 1, top, 2, 18, PAL.mid);                   // candle
+      if (this.lit[i] > 0) {                                // flame flickers while lit
+        const f = 3 + Math.sin(this.t * 20 + i) * this.lit[i];
+        g.circle(x, top - 3, Math.max(1, f * this.lit[i]), PAL.bad);
+      } else { for (let k = 0; k < 3; k++) g.rect(x, top - 5 - k * 3, 1, 2, PAL.mid); }  // smoke
+    }
+    g.text(Input.micReady ? 'BLOW THEM OUT!' : 'TAP FAST!', CX, TOP + 24, 9, PAL.mid);
+    const out = this.lit.filter(l => l <= 0).length;
+    for (let i = 0; i < this.n; i++) g.rect(CX - this.n * 4 + i * 8, TOP + 6, 5, 5, i < out ? PAL.accent : PAL.mid);
+  }
+}
+
+// BLOW — blow every seed off the dandelion
+class Dandelion extends Microgame {
+  static meta = { id: 'puff', prompt: 'BLOW!', hint: 'blow', duration: 4.2, minDuration: 3.6 };
+  init() {
+    Input.enableMic();
+    this.paused = Input.micPending; this.wait = 0;
+    this.n = this.byD(8, 12, 16); this.seeds = [];
+    for (let i = 0; i < this.n; i++) {
+      const a = (i / this.n) * 6.2832 + Math.random() * 0.4, r = 8 + Math.random() * 12;
+      this.seeds.push({ a, x: CX + Math.cos(a) * r, y: CY - 8 + Math.sin(a) * r, gone: false, vx: 0, vy: 0, t: 0 });
+    }
+    this.cleared = 0;
+  }
+  update(dt, input) {
+    if (this.paused) { this.wait += dt; if (!Input.micPending || this.wait > 1.2) this.paused = false; return; }
+    const b = input.blow;
+    if (b > 0.25) for (const s of this.seeds) {
+      if (!s.gone && Math.random() < b * 0.7) { s.gone = true; s.vx = Math.cos(s.a) * (60 + b * 140) + 40; s.vy = Math.sin(s.a) * (60 + b * 140) - 40; this.cleared++; }
+    }
+    for (const s of this.seeds) if (s.gone) { s.t += dt; s.x += s.vx * dt; s.y += s.vy * dt; s.vy += 80 * dt; }
+    if (this.cleared >= this.n && !this.finished) this.succeed();
+  }
+  draw(g) {
+    g.clear();
+    if (this.paused) { g.text('ALLOW MIC…', CX, CY - 6, 12, PAL.ink); g.text('(then blow)', CX, CY + 12, 7, PAL.mid); return; }
+    g.line(CX, CY - 8, CX, BOT - 6, PAL.mid, 2);            // stem
+    g.circle(CX, CY - 8, 3, PAL.ink);                       // head
+    for (const s of this.seeds) {
+      if (s.gone && s.t > 0.9) continue;
+      ctx.globalAlpha = s.gone ? Math.max(0, 1 - s.t / 0.9) : 1;
+      g.circle(s.x, s.y, 2, PAL.ink);
+      if (!s.gone) g.line(CX, CY - 8, s.x, s.y, PAL.mid, 1);
+      ctx.globalAlpha = 1;
+    }
+    g.text(Input.micReady ? 'BLOW!' : 'TAP FAST!', CX, TOP + 24, 9, PAL.mid);
+    g.bar(30, BOT - 14, W - 60, 6, this.cleared / this.n);
+  }
+}
+
+// TAP — drop each block on the stack; miss the tower and it topples
+class StackBlocks extends Microgame {
+  static meta = { id: 'stack', prompt: 'STACK!', hint: 'tap', duration: 5.0, minDuration: 4.2 };
+  init() {
+    this.need = this.byD(3, 4, 5); this.done = 0;
+    this.w = 46; this.h = 12;
+    this.baseX = CX; this.stackY = BOT - 10;
+    this.dir = 1; this.bx = 20; this.sp = this.byD(90, 115, 140);
+    this.tol = this.byD(14, 11, 9);
+  }
+  update(dt, input) {
+    this.bx += this.dir * this.sp * dt;
+    if (this.bx < this.w / 2 + 4) { this.bx = this.w / 2 + 4; this.dir = 1; }
+    if (this.bx > W - this.w / 2 - 4) { this.bx = W - this.w / 2 - 4; this.dir = -1; }
+    for (const t of input.taps) {
+      if (Math.abs(this.bx - this.baseX) <= this.tol) {
+        this.done++; Sfx.tick(); buzz(12); FX.hit(this.baseX, this.stackY - this.done * this.h, PAL.accent);
+        if (this.done >= this.need) { this.succeed(); return; }
+        this.dir = Math.random() < 0.5 ? 1 : -1; this.bx = this.dir > 0 ? this.w / 2 + 4 : W - this.w / 2 - 4;
+        this.sp += 12;
+      } else { buzz(90); FX.shake(4); this.lose(); return; }
+      break;
+    }
+  }
+  draw(g) {
+    g.clear();
+    for (let i = 0; i < this.done; i++) g.rect(this.baseX - this.w / 2, this.stackY - (i + 1) * this.h, this.w, this.h - 1, PAL.mid);
+    // the moving block you drop
+    const y = this.stackY - (this.done + 1) * this.h - 26;
+    g.rect(this.bx - this.w / 2, y, this.w, this.h - 1, PAL.accent);
+    // drop guide line down to the stack
+    ctx.globalAlpha = 0.3; g.line(this.bx, y + this.h, this.bx, this.stackY - this.done * this.h, PAL.mid, 1); ctx.globalAlpha = 1;
+    g.text('TAP TO DROP', CX, TOP + 22, 8, PAL.mid);
+    for (let i = 0; i < this.need; i++) g.rect(W - 8 - i * 8, TOP + 4, 5, 5, i < this.done ? PAL.accent : PAL.mid);
+  }
+}
+
+// SWIPE — send each treat to its matching bowl by colour
+class SortTreats extends Microgame {
+  static meta = { id: 'sort', prompt: 'SORT!', hint: 'swipe', duration: 5.0, minDuration: 4.2 };
+  init() {
+    this.need = this.byD(2, 3, 4); this.done = 0;
+    this.newTreat();
+  }
+  newTreat() { this.side = Math.random() < 0.5 ? 'left' : 'right'; this.tx = CX; this.pop = 0; }
+  update(dt, input) {
+    if (this.pop > 0) this.pop -= dt;
+    const sw = input.swipe;
+    if (sw && (sw.dir === 'left' || sw.dir === 'right')) {
+      if (sw.dir === this.side) {
+        this.done++; Sfx.tick(); buzz(12); FX.hit(this.side === 'left' ? 24 : W - 24, CY, PAL.accent); this.pop = 0.15;
+        if (this.done >= this.need) { this.succeed(); return; }
+        this.newTreat();
+      } else { buzz(90); FX.shake(4); this.lose(); return; }
+    }
+  }
+  draw(g) {
+    g.clear();
+    // two bowls, colour-coded, at the sides
+    g.text('YELLOW', 24, TOP + 30, 7, PAL.accent); g.rect(6, CY + 30, 36, 10, PAL.accent);
+    g.text('WHITE', W - 24, TOP + 30, 7, PAL.ink); g.rect(W - 42, CY + 30, 36, 10, PAL.ink);
+    // the treat in the middle, coloured to the side it belongs
+    const col = this.side === 'left' ? PAL.accent : PAL.ink;
+    g.sprite('coin', CX, CY - 4, { w: 16 + this.pop * 20, h: 16 + this.pop * 20, color: col });
+    g.circle(CX, CY - 4, 8, col);
+    g.text('SWIPE TO ITS BOWL', CX, TOP + 22, 8, PAL.mid);
+    for (let i = 0; i < this.need; i++) g.rect(CX - this.need * 4 + i * 8, BOT - 14, 5, 5, i < this.done ? PAL.accent : PAL.mid);
+  }
+}
+
 // ── REGISTRY ─────────────────────────────────────────────────────────────────
 const POOL = [
   TapBug, CatchCoin, RubClean, PullTissue, SodaShake, SwipeArrow, MashButton, HoldRelease, DontTap,
   StopBar, FollowDot, TapOrder, OddOneOut, FeedDog, WhackMole, PumpBalloon, CutRope,
   BlowSail, TracePath, GrabCount, FlickShot,
   Flappy, Crossy, Doodle, PianoTiles, DinoRun, KnockStack, MoveCam, DryShiba, LeanDodge,
-  FreezeStatue, SwatFly, HideLens, DanceBeat
+  FreezeStatue, SwatFly, HideLens, DanceBeat,
+  BalanceBall, PourCup, SteerRun, BlowCandles, Dandelion, StackBlocks, SortTreats
 ];
 const BOSSES = [Dodge, Squeeze, RedLight, Juggle];
 
