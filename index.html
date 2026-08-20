@@ -248,7 +248,7 @@ const Input = {
   taps: [], swipe: null, shake: 0, blow: 0,
   _rawDx: 0, _rawDy: 0, _sx: 0, _sy: 0, _st: 0, _travel: 0,
   _pendingTaps: [], _pendingSwipe: null, _shakeRaw: 0, _lastAcc: null,
-  _mic: null, _micData: null, _blowRaw: 0, micReady: false, micDenied: false, micPending: false,
+  _mic: null, _micData: null, _blowRaw: 0, micReady: false, micDenied: false, micPending: false, blowOk: false,
   // gyroscope: peak rotation rate seen since the last step, in deg/s summed
   // across the three axes. Shaking a phone spins it as much as it slings it,
   // and the gyro reads that far more cleanly than the accelerometer does.
@@ -503,11 +503,24 @@ const Input = {
     // blow: mic loudness if we have it, otherwise fast tapping stands in for a puff
     let raw = 0;
     if (this.micReady && this._mic) {
-      this._mic.getByteFrequencyData(this._micData);
-      // low-frequency energy — a breath is broadband but bottom-heavy
-      let sum = 0; const bins = Math.min(24, this._micData.length);
-      for (let i = 2; i < bins; i++) sum += this._micData[i];
-      raw = Math.max(0, (sum / (bins - 2) - 22) / 90);   // noise floor subtracted
+      const d = this._micData; this._mic.getByteFrequencyData(d);
+      // Tell a blow apart from any other loud sound. A puff into the mic is
+      // broadband low-frequency noise: energy piled into the bottom bins, spread
+      // flat across them rather than spiked into a tone, and with little up top.
+      // A whistle or a vowel spikes one bin (peaky); a clap or speech carries
+      // plenty of high end (not bottom-heavy). Both get rejected.
+      const lo0 = 2, lo1 = Math.min(24, d.length);
+      let loSum = 0, loMax = 0;
+      for (let i = lo0; i < lo1; i++) { loSum += d[i]; if (d[i] > loMax) loMax = d[i]; }
+      const loAvg = loSum / (lo1 - lo0);
+      const hi0 = Math.min(48, d.length - 1), hi1 = Math.min(110, d.length);
+      let hiSum = 0; for (let i = hi0; i < hi1; i++) hiSum += d[i];
+      const hiAvg = hi1 > hi0 ? hiSum / (hi1 - hi0) : 0;
+      const level = Math.max(0, (loAvg - 22) / 90);      // amplitude over noise floor
+      const flat = loAvg > 4 ? loAvg / (loMax + 1) : 0;  // ~1 broadband, ~0 tonal
+      const bottomHeavy = loAvg / (hiAvg + 6);           // low vs high content
+      this.blowOk = flat > 0.35 && bottomHeavy > 1.4;    // looks like a puff (for DEBUG)
+      raw = this.blowOk ? level : 0;
     } else {
       raw = this.justDown ? 0.9 : 0;                     // tap fallback
     }
@@ -2840,7 +2853,12 @@ class StackBlocks extends Microgame {
   }
   draw(g) {
     g.clear();
+    // a fixed base, dead centre, so the very first block has a clear target
+    g.rect(this.baseX - (this.w + 8) / 2, this.stackY, this.w + 8, 12, PAL.ink);
+    g.rect(this.baseX - 2, this.stackY + 12, 4, 8, PAL.mid);          // little pedestal
     for (let i = 0; i < this.done; i++) g.rect(this.baseX - this.w / 2, this.stackY - (i + 1) * this.h, this.w, this.h - 1, PAL.mid);
+    // a centre guide so you can see exactly where to line the first drop up
+    if (this.done === 0) { ctx.globalAlpha = 0.35; g.line(this.baseX, this.stackY, this.baseX, TOP + 30, PAL.accent, 1); ctx.globalAlpha = 1; }
     // the moving block you drop
     const y = this.stackY - (this.done + 1) * this.h - 26;
     g.rect(this.bx - this.w / 2, y, this.w, this.h - 1, PAL.accent);
@@ -3107,7 +3125,7 @@ const Engine = {
                2, H - 8, 6, PAL.mid, 'left');
       } else if (DEBUG && (hint === 'shake' || hint === 'blow')) {
         g.text('shake' + Input.shake.toFixed(2) + (Input.gyroReady ? ' gyro' : ' NOGYRO') +
-               ' blow' + Input.blow.toFixed(2) + (Input.micReady ? ' mic' : ' NOMIC'),
+               ' blow' + Input.blow.toFixed(2) + (Input.micReady ? (Input.blowOk ? ' PUFF' : ' mic') : ' NOMIC'),
                2, H - 8, 6, PAL.mid, 'left');
       }
     }
