@@ -1,6 +1,6 @@
 # MICROMANIA
 
-A WarioWare-style microgame collection — 36 fast microgames in a single
+A WarioWare-style microgame collection — 45 fast microgames in a single
 self-contained HTML file. Portrait, mobile-first, starring a pixel-art shiba inu.
 
 ## Play
@@ -49,7 +49,15 @@ peak per step so the reading does not depend on how often the device fires the
 event. Shaking a phone spins it as much as it slings it, and the gyro sees that
 far more cleanly than the accelerometer. It is tuned to want a firm, sustained
 shake — a gentle waggle barely moves the meter. Accelerometer energy and fast
-pointer wiggling stand behind it, in that order.
+pointer wiggling stand behind it, in that order. A short vibration re-fires every
+0.05s while you shake, so the motor hums the whole time you do.
+
+**Tilt games** (`deviceorientation`, via `Input.tiltX/tiltY`): BALANCE keeps a
+ball on a see-saw, POUR fills a cup to a line then levels off, STEER drives the
+runner down a lane. **More blow games**: CANDLES snuffs a birthday cake (reusing
+the cake polaroid), PUFF clears a dandelion. **Touch**: STACK drops blocks on a
+tower, SORT swipes treats to colour-matched bowls. Each falls back to touch
+where its sensor is missing.
 
 ## Develop
 
