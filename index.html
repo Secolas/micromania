@@ -2314,16 +2314,21 @@ class SwatFly extends Microgame {
     }
     // hand: a ring where the camera thinks you are, with a short motion trail
     for (const p of this.trail) { ctx.globalAlpha = 1 - p.t / 0.22; g.circle(p.x, p.y, 3, PAL.mid); ctx.globalAlpha = 1; }
+    // A hollow ring, not a filled disc: the shiba stays visible inside the
+    // reticle right up until the hit, instead of being painted over by a solid
+    // centre. Ticks sit on the rim so the middle stays clear too.
     const r = 13 + (this.pop > 0 ? this.pop * 40 : 0);
-    g.circle(this.hx, this.hy, r, PAL.accent);
-    g.circle(this.hx, this.hy, r - 3, PAL.bg);
-    g.line(this.hx - 5, this.hy, this.hx + 5, this.hy, PAL.accent, 1);
-    g.line(this.hx, this.hy - 5, this.hx, this.hy + 5, PAL.accent, 1);
-    // the swatter closing while you hold it on target
+    ctx.strokeStyle = PAL.accent; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(this.hx, this.hy, r, 0, 6.2832); ctx.stroke();
+    g.line(this.hx - r - 2, this.hy, this.hx - r + 3, this.hy, PAL.accent, 2);
+    g.line(this.hx + r - 3, this.hy, this.hx + r + 2, this.hy, PAL.accent, 2);
+    g.line(this.hx, this.hy - r - 2, this.hx, this.hy - r + 3, PAL.accent, 2);
+    g.line(this.hx, this.hy + r - 3, this.hx, this.hy + r + 2, PAL.accent, 2);
+    // the swatter closing while you hold it on target — a red ring drawing in
     if (this.dwell > 0) {
       const k = Math.min(1, this.dwell / this.dwellNeed);
-      g.circle(this.hx, this.hy, r + 7 - k * 7, PAL.bad);
-      g.circle(this.hx, this.hy, r + 5 - k * 7, PAL.bg);
+      ctx.strokeStyle = PAL.bad; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(this.hx, this.hy, r + 7 - k * 6, 0, 6.2832); ctx.stroke();
     }
     g.text(Input.tiltReady ? 'TILT TO AIM!' : Input.camReady ? 'REACH FOR IT!' : 'TAP IT!', CX, TOP + 26, 9, PAL.mid);
     for (let i = 0; i < this.need; i++) g.rect(W - 8 - i * 8, TOP + 4, 5, 5, i < this.hit ? PAL.accent : PAL.mid);
