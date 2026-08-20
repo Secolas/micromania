@@ -488,8 +488,17 @@ const Input = {
     // meter on its own — it takes a genuinely hard, sustained shake. The
     // accelerometer and pointer-wiggle fallbacks below are deliberately left
     // alone; this only raises the bar for the gyro.
+    // Idle deadzone. A phone held in the hand is never perfectly still — the
+    // gyro and accelerometer report constant low-level noise — and the 0.90
+    // integrator was accumulating it into a standing "shake" that crept the
+    // meter and jittered the sprite when nobody was shaking. Drop everything
+    // below a floor before it counts, and snap the settled value to zero when
+    // it decays back down, so only deliberate shaking registers.
     const spin = Math.min(1, this._gyroPeak / 1300);
-    this.shake = Math.min(1, this.shake * 0.90 + (spin * 0.12 + this._shakeRaw * 0.02 + wiggle * 0.02));
+    let drive = spin * 0.12 + this._shakeRaw * 0.02 + wiggle * 0.02;
+    if (drive < 0.04) drive = 0;                 // ignore idle sensor grain / hand tremor
+    this.shake = Math.min(1, this.shake * 0.86 + drive);
+    if (this.shake < 0.08) this.shake = 0;       // fully at rest between shakes
     this._shakeRaw = 0; this._gyroPeak = 0;
     // blow: mic loudness if we have it, otherwise fast tapping stands in for a puff
     let raw = 0;
@@ -923,7 +932,9 @@ class SodaShake extends Microgame {
       const fr = Math.max(0, Math.min(8, Math.floor(prog * 8.99)));
       // jitter grows with how hard you are shaking, and eases off near the end
       // where the fall itself carries the motion
-      const q = Input.shake * (1 - prog * 0.6);
+      // jitter only from real shaking (Input.shake is 0 at rest now), so the
+      // table sits dead still until the player actually shakes
+      const q = Input.shake > 0.12 ? Input.shake * (1 - prog * 0.6) : 0;
       const jx = (Math.random() - 0.5) * q * 10, jy = (Math.random() - 0.5) * q * 6;
       g.sprite('shaketable', CX + jx, CY - 2 + jy, { w: 104, h: 104, frame: fr });
       g.text(Input.gyroReady || Input.micReady ? 'SHAKE!' : 'SHAKE FAST!', CX, TOP + 26, 9, PAL.mid);
