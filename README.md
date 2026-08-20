@@ -47,8 +47,9 @@ camera just means no picture.
 **SHAKE** reads the **gyroscope**: `rotationRate` off `devicemotion`, taken as a
 peak per step so the reading does not depend on how often the device fires the
 event. Shaking a phone spins it as much as it slings it, and the gyro sees that
-far more cleanly than the accelerometer. Accelerometer energy and fast pointer
-wiggling stand behind it, in that order.
+far more cleanly than the accelerometer. It is tuned to want a firm, sustained
+shake — a gentle waggle barely moves the meter. Accelerometer energy and fast
+pointer wiggling stand behind it, in that order.
 
 ## Develop
 

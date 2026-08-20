@@ -477,8 +477,8 @@ const Input = {
     // shake: gyro spin first, then accelerometer energy, then fast pointer
     // wiggling. A hard shake tops 500 deg/s across the axes.
     const wiggle = this.down ? this.moveDist * 1.2 : 0;
-    const spin = Math.min(1, this._gyroPeak / 500);
-    this.shake = Math.min(1, this.shake * 0.90 + (spin * 0.28 + this._shakeRaw * 0.02 + wiggle * 0.02));
+    const spin = Math.min(1, this._gyroPeak / 850);
+    this.shake = Math.min(1, this.shake * 0.90 + (spin * 0.16 + this._shakeRaw * 0.02 + wiggle * 0.02));
     this._shakeRaw = 0; this._gyroPeak = 0;
     // blow: mic loudness if we have it, otherwise fast tapping stands in for a puff
     let raw = 0;
@@ -898,7 +898,7 @@ class PullTissue extends Microgame {
 // 5. SHAKE — build up pressure (accelerometer or frantic wiggling)
 class SodaShake extends Microgame {
   static meta = { id: 'shake', prompt: 'SHAKE!', hint: 'shake', duration: 3.6 };
-  init() { this.fill = 0; this.need = this.byD(1.0, 1.4, 1.8); }
+  init() { this.fill = 0; this.need = this.byD(1.4, 1.8, 2.3); }
   update(dt, input) {
     this.fill += input.shake * dt * 2.2;
     if (this.fill >= this.need) this.succeed();
@@ -1110,8 +1110,8 @@ class TapOrder extends Microgame {
     this.n = this.byD(3, 4, 5); this.i = 0; this.r = 17;
     // r stays 17 for spacing — it is what makes 5 signs fit — while the sprite
     // is drawn bigger over it, and hitR gives the bigger sign a matching target
-    this.sh = 52;                 // drawn sprite height
-    this.hitR = 24;
+    this.sh = 62;                 // drawn sprite height
+    this.hitR = 27;
     this.pts = [];
     let guard = 0;
     while (this.pts.length < this.n && guard++ < 500) {
@@ -1147,11 +1147,15 @@ class TapOrder extends Microgame {
       if (done) ctx.globalAlpha = 0.45;
       g.sprite('ordersign', p.x, p.y, { w: sw, h: this.sh, frame: fr });
       ctx.globalAlpha = 1;
-      // stamp the number on the sign (~62% down the sprite), always visible
-      const signY = p.y + this.sh * 0.14;
+      // The shiba holds a blank board low on the sprite — measured at 64.6% down
+      // and ~18/34 wide. Put the number on it, sized to it, so it sits inside
+      // the board instead of floating over the belly.
+      const signY = p.y + this.sh * 0.146;
+      const boardW = this.sh * 18 / 65;               // board width on screen
       if (!done) {
-        if (next) g.circle(p.x, signY, 11, PAL.accent);   // highlight the next target
-        g.text(String(k + 1), p.x, signY + 5, 15, next ? PAL.bg : PAL.bad);
+        // the next target gets a filled chip the shape of the board behind it
+        if (next) { g.rect(p.x - boardW / 2, signY - boardW * 0.42, boardW, boardW * 0.84, PAL.accent); }
+        g.text(String(k + 1), p.x, signY + boardW * 0.32, Math.round(boardW * 0.9), next ? PAL.bg : PAL.bad);
       }
     }
   }
