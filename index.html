@@ -477,8 +477,12 @@ const Input = {
     // shake: gyro spin first, then accelerometer energy, then fast pointer
     // wiggling. A hard shake tops 500 deg/s across the axes.
     const wiggle = this.down ? this.moveDist * 1.2 : 0;
-    const spin = Math.min(1, this._gyroPeak / 850);
-    this.shake = Math.min(1, this.shake * 0.90 + (spin * 0.16 + this._shakeRaw * 0.02 + wiggle * 0.02));
+    // Divisor and weight tuned for real phones: a light spin should not fill the
+    // meter on its own — it takes a genuinely hard, sustained shake. The
+    // accelerometer and pointer-wiggle fallbacks below are deliberately left
+    // alone; this only raises the bar for the gyro.
+    const spin = Math.min(1, this._gyroPeak / 1300);
+    this.shake = Math.min(1, this.shake * 0.90 + (spin * 0.12 + this._shakeRaw * 0.02 + wiggle * 0.02));
     this._shakeRaw = 0; this._gyroPeak = 0;
     // blow: mic loudness if we have it, otherwise fast tapping stands in for a puff
     let raw = 0;
@@ -1147,15 +1151,17 @@ class TapOrder extends Microgame {
       if (done) ctx.globalAlpha = 0.45;
       g.sprite('ordersign', p.x, p.y, { w: sw, h: this.sh, frame: fr });
       ctx.globalAlpha = 1;
-      // The shiba holds a blank board low on the sprite — measured at 64.6% down
-      // and ~18/34 wide. Put the number on it, sized to it, so it sits inside
-      // the board instead of floating over the belly.
-      const signY = p.y + this.sh * 0.146;
-      const boardW = this.sh * 18 / 65;               // board width on screen
+      // The shiba holds a blank placard low on the sprite. Measured on the art:
+      // ~15/34 wide, ~22/65 tall, centred 63% of the way down. EVERY unsolved
+      // sign gets a chip that shape — accent for the next one, cream for the
+      // rest — so the number sits inside the board instead of spilling over the
+      // belly, and the red numbers match the highlighted one in size and place.
       if (!done) {
-        // the next target gets a filled chip the shape of the board behind it
-        if (next) { g.rect(p.x - boardW / 2, signY - boardW * 0.42, boardW, boardW * 0.84, PAL.accent); }
-        g.text(String(k + 1), p.x, signY + boardW * 0.32, Math.round(boardW * 0.9), next ? PAL.bg : PAL.bad);
+        const bCY = p.y + (0.63 - 0.5) * this.sh;
+        const bW = 15 / 65 * this.sh, bH = 22 / 65 * this.sh;
+        g.rect(p.x - bW / 2, bCY - bH / 2, bW, bH, next ? PAL.accent : PAL.ink);
+        const f = Math.round(bH * 0.72);
+        g.text(String(k + 1), p.x, bCY + f * 0.36, f, next ? PAL.bg : PAL.bad);
       }
     }
   }
