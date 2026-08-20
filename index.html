@@ -648,6 +648,60 @@ const PhotoFX = {
     box(cx0, cy0 + 3, cw, ch - 3, PAL.accent);                             // cake
     for (let i = 2; i < cw - 2; i += 8) box(cx0 + i, cy0 + 3, 3, ch - 3, PAL.ink);   // stripes
     box(cx0 - 4, cy0 + ch, cw + 8, 2, PAL.mid);                            // plate
+  },
+
+  // The thing you just leaned out of the way of, for LEAN — it comes in past
+  // the ear you leaned away from, so the picture matches the dodge you made.
+  // `from` is the side it flies in from: 'L' or 'R'.
+  dodge(c, from) {
+    const x = c.getContext('2d'), w = c.width, h = c.height;
+    const box = (a, b, ww, hh, col) => { x.fillStyle = col; x.fillRect(Math.round(a), Math.round(b), Math.round(ww), Math.round(hh)); };
+    const dir = from === 'L' ? 1 : -1;                       // travel direction
+    const bx = from === 'L' ? Math.round(w * 0.26) : Math.round(w * 0.74);
+    const by = Math.round(h * 0.34), r = Math.round(h * 0.11);
+
+    // speed lines trailing back to the edge it came from
+    for (let i = 0; i < 5; i++) {
+      const ly = by - r + Math.round((r * 2 / 4) * i);
+      const tail = Math.round((w * 0.3) * (0.5 + Math.abs(2 - i) * 0.25));
+      box(bx - dir * (r + 2) - (dir > 0 ? tail : 0), ly, tail, 2, i % 2 ? PAL.ink : PAL.accent);
+    }
+    // a brick, pixel-round at the corners so it reads as thrown, not placed
+    box(bx - r, by - r + 2, r * 2, r * 2 - 4, PAL.bad);
+    box(bx - r + 2, by - r, r * 2 - 4, r * 2, PAL.bad);
+    box(bx - r + 3, by - r + 3, r - 1, 2, PAL.ink);          // highlight
+    // the near miss: a puff of dust where it went past
+    for (let i = 0; i < 3; i++) {
+      const px = bx + dir * (r + 4 + i * 5), py = by + (i % 2 ? -6 : 7);
+      box(px, py, 3, 3, PAL.mid);
+    }
+  },
+
+  // A plinth and a laurel, for FREEZE. The person is left in their own colours
+  // — the marble is the props, not a grey wash over somebody's face.
+  statue(c) {
+    const x = c.getContext('2d'), w = c.width, h = c.height;
+    const box = (a, b, ww, hh, col) => { x.fillStyle = col; x.fillRect(Math.round(a), Math.round(b), Math.round(ww), Math.round(hh)); };
+    // plinth across the bottom, stepped like cut stone
+    const pw = Math.round(w * 0.62), px0 = Math.round((w - pw) / 2), ph = Math.round(h * 0.23);
+    const py0 = h - ph;
+    box(px0 - 6, py0, pw + 12, 3, PAL.ink);                  // cap
+    box(px0, py0 + 3, pw, ph - 3, PAL.mid);                  // body
+    box(px0 + 4, py0 + 7, pw - 8, ph - 12, PAL.ink);         // inset panel
+    // block letters, drawn as bars — a real font would not survive this size
+    const word = Math.round(pw * 0.62), wx = Math.round((w - word) / 2), wy = py0 + Math.round(ph * 0.42);
+    for (let i = 0; i < 5; i++) box(wx + i * Math.round(word / 5), wy, Math.round(word / 7), 5, PAL.mid);
+    // laurel arcing over the head
+    const lr = Math.round(w * 0.3), ly = Math.round(h * 0.30);
+    for (let i = 0; i <= 12; i++) {
+      const a = Math.PI + (i / 12) * Math.PI;                // left to right, over the top
+      const lx = w / 2 + Math.cos(a) * lr, lyy = ly + Math.sin(a) * lr * 0.5;
+      box(lx - 1, lyy - 1, 3, 3, PAL.ink);
+      if (i % 2) box(lx - 2, lyy - 4, 2, 3, PAL.accent);     // leaves
+    }
+    // chipped corners, so it reads as old stone
+    box(2, 2, 7, 3, PAL.ink); box(2, 2, 3, 7, PAL.ink);
+    box(w - 9, 2, 7, 3, PAL.ink); box(w - 5, 2, 3, 7, PAL.ink);
   }
 };
 
@@ -1953,7 +2007,7 @@ class DryShiba extends Microgame {
 
 // 32. LEAN — move to the side the arrow points (motion on that half of frame)
 class LeanDodge extends Microgame {
-  static meta = { id: 'lean', prompt: 'LEAN!', hint: 'move', duration: 5.0, minDuration: 4.0, photo: true };
+  static meta = { id: 'lean', prompt: 'LEAN!', hint: 'move', duration: 5.0, minDuration: 4.0, photo: true, photoCap: 'DODGED IT!' };
   init() {
     this.need = this.byD(2, 2, 3); this.hit = 0;
     Input.enableCam();
@@ -1976,7 +2030,9 @@ class LeanDodge extends Microgame {
       if (this.hold >= this.holdNeed) {
         this.hit++; FX.hit(this.dir === 'L' ? 30 : W - 30, CY, PAL.accent); Sfx.tick(); buzz(15);
         if (this.hit >= this.need) {
-          const shot = Input.snapPhoto(); if (shot) Engine.lastPhoto = shot;
+          // it flies in from the side you leaned away from
+          const shot = Input.snapPhoto();
+          if (shot) { PhotoFX.dodge(shot, this.dir === 'L' ? 'R' : 'L'); Engine.lastPhoto = shot; }
           this.succeed(); return;
         }
         this.newDir();
@@ -2083,7 +2139,10 @@ class FreezeStatue extends Microgame {
   // winOnTimeout: the engine calls this when the clock runs out, so the photo
   // is snapped here rather than in update()
   succeed() {
-    if (!this.finished) { const shot = Input.snapPhoto(); if (shot) Engine.lastPhoto = shot; }
+    if (!this.finished) {
+      const shot = Input.snapPhoto();
+      if (shot) { PhotoFX.statue(shot); Engine.lastPhoto = shot; }
+    }
     super.succeed();
   }
   draw(g) {
@@ -2325,6 +2384,140 @@ class DanceBeat extends Microgame {
   }
 }
 
+// ── BOSSES ───────────────────────────────────────────────────────────────────
+/* Two bosses meant the pool strictly alternated — pick() skips the last id, so
+   with a boss every eight rounds you always knew which one was coming. */
+
+// B3. RED LIGHT — move on green, freeze on red. The camera boss: it is MOVE and
+// FREEZE in one, switching between them while you play.
+class RedLight extends Microgame {
+  static meta = { id: 'redlight', prompt: 'RED LIGHT!', hint: 'still', duration: 5.6, minDuration: 5.0, photo: true, photoCap: 'YOU MADE IT!' };
+  init() {
+    Input.enableCam();
+    this.paused = Input.camPending; this.wait = 0;
+    this.fill = 0; this.need = this.byD(0.6, 0.8, 1.0);
+    this.thr = this.byD(0.22, 0.18, 0.15);     // motion allowed while it is red
+    // Filling the bar is not enough on its own: the first green alone was long
+    // enough to finish it, so moving through the whole round used to win
+    // without ever meeting a red light. The reds are the boss.
+    this.needReds = this.byD(1, 2, 2);
+    this.reds = 0;
+    this.hp = 1;                               // caught meter, empty = out
+    this.light = 'green'; this.phase = 0.9;
+    this.grace = 0;                            // a beat to stop after it turns
+    this.flash = 0;
+  }
+  // never turns red on the very first beat — you get to move first
+  nextLight() {
+    if (this.light === 'green') { this.light = 'amber'; this.phase = 0.35; }
+    else if (this.light === 'amber') { this.light = 'red'; this.phase = 0.7 + Math.random() * 0.4; this.grace = 0.25; }
+    else { this.light = 'green'; this.phase = 0.7 + Math.random() * 0.4; this.flash = 0.2; this.reds++; }
+  }
+  update(dt, input) {
+    if (this.paused) { this.wait += dt; if (!Input.camPending || this.wait > 1.5) this.paused = false; return; }
+    this.phase -= dt;
+    if (this.flash > 0) this.flash -= dt;
+    if (this.phase <= 0) this.nextLight();
+
+    if (this.light === 'red') {
+      if (this.grace > 0) { this.grace -= dt; return; }
+      const over = input.motion - this.thr;
+      if (over > 0) {
+        this.hp -= (0.4 + over * 6) * dt;
+        if (this.hp <= 0) { FX.shake(5); buzz(120); this.lose(); return; }
+      }
+    } else {
+      // green and amber both count — amber is a warning, not a trap
+      this.fill += input.motion * dt * 1.5;
+      this.hp = Math.min(1, this.hp + dt * 0.2);
+      if (this.fill >= this.need && this.reds >= this.needReds && !this.finished) {
+        const shot = Input.snapPhoto(); if (shot) Engine.lastPhoto = shot;
+        this.succeed();
+      }
+    }
+  }
+  draw(g) {
+    g.clear();
+    if (this.paused) { g.text('ALLOW CAMERA…', CX, CY - 6, 11, PAL.ink); g.text('(move on green, freeze on red)', CX, CY + 12, 6, PAL.mid); return; }
+    const red = this.light === 'red', amber = this.light === 'amber';
+    const lit = red ? PAL.bad : amber ? PAL.accent : PAL.accent;
+    // the lamp, three bulbs with one of them on
+    g.rect(CX - 13, TOP + 8, 26, 60, PAL.mid);
+    g.circle(CX, TOP + 20, 8, red ? PAL.bad : PAL.bg);
+    g.circle(CX, TOP + 38, 8, amber ? PAL.accent : PAL.bg);
+    g.circle(CX, TOP + 56, 8, this.light === 'green' ? PAL.ink : PAL.bg);
+    // the shiba: bouncing on green, dead still on red
+    const bob = red ? 0 : Math.sin(this.t * 10) * 4 * Math.min(1, Input.motion * 2.5);
+    g.sprite('face', CX, CY + 42 + bob, { w: 40, h: 40, frame: red ? 0 : Math.floor(this.t * 8) % 3 });
+    g.text(red ? 'FREEZE!' : amber ? 'ABOUT TO STOP…' : 'GO GO GO!', CX, CY + 74, red ? 12 : 10, lit);
+    // progress, and how close being caught is
+    g.bar(24, BOT - 16, W - 48, 7, this.fill / this.need);
+    if (this.hp < 1) g.bar(24, BOT - 26, W - 48, 4, this.hp, PAL.bad, PAL.bg);
+    // one pip per red light you still have to sit through
+    for (let i = 0; i < this.needReds; i++) g.rect(24 + i * 8, BOT - 34, 5, 5, i < this.reds ? PAL.accent : PAL.mid);
+    if (this.flash > 0) { ctx.globalAlpha = this.flash * 2; g.rect(0, TOP, W, BOT - TOP, PAL.accent); ctx.globalAlpha = 1; }
+  }
+}
+
+// B4. JUGGLE — keep every ball off the floor. Both other bosses are survive-by-
+// dragging; this one is survive-by-tapping, and it splits your attention.
+class Juggle extends Microgame {
+  static meta = { id: 'juggle', prompt: 'JUGGLE!', hint: 'tap', duration: 5.5, winOnTimeout: true };
+  init() {
+    this.n = this.byD(2, 2, 3);
+    this.grav = this.byD(120, 140, 160);
+    this.floor = BOT - 4;
+    this.balls = [];
+    for (let i = 0; i < this.n; i++) {
+      // spread out and dropped at staggered heights, so they never arrive together
+      this.balls.push({
+        x: 30 + (i + 0.5) * (W - 60) / this.n,
+        y: TOP + 30 + i * 26,
+        vx: (Math.random() - 0.5) * 26, vy: 0, r: 8, spin: Math.random() * 6.28
+      });
+    }
+  }
+  update(dt, input) {
+    for (const b of this.balls) {
+      b.vy += this.grav * dt;
+      b.x += b.vx * dt; b.y += b.vy * dt;
+      b.spin += b.vx * dt * 0.1;
+      if (b.x < b.r + 2) { b.x = b.r + 2; b.vx = Math.abs(b.vx); }
+      if (b.x > W - b.r - 2) { b.x = W - b.r - 2; b.vx = -Math.abs(b.vx); }
+      if (b.y < TOP + b.r) { b.y = TOP + b.r; b.vy = Math.abs(b.vy) * 0.4; }
+      if (b.y > this.floor) { buzz(80); FX.shake(4); this.lose(); return; }
+    }
+    // a tap bats up whichever ball it landed nearest, if it landed near one
+    for (const t of input.taps) {
+      let best = null, bd = 1e9;
+      for (const b of this.balls) {
+        const d = Math.hypot(b.x - t.x, b.y - t.y);
+        if (d < bd) { bd = d; best = b; }
+      }
+      if (best && bd < 24) {
+        best.vy = -this.byD(150, 160, 170);
+        best.vx = Math.max(-75, Math.min(75, best.vx + (best.x - t.x) * 3));
+        Sfx.tick(); buzz(12); FX.hit(best.x, best.y, PAL.accent);
+      }
+    }
+  }
+  draw(g) {
+    g.clear();
+    g.rect(0, this.floor + 2, W, 2, PAL.bad);
+    for (const b of this.balls) {
+      // falling fast and low reads as urgent, so it turns red on the way down
+      const danger = b.vy > 0 && b.y > this.floor - 70;
+      g.circle(b.x, b.y, b.r, danger ? PAL.bad : PAL.accent);
+      g.circle(b.x + Math.cos(b.spin) * 3, b.y + Math.sin(b.spin) * 3, 2, PAL.bg);
+      // a shadow on the floor, so you can read how much room is left
+      ctx.globalAlpha = 0.35;
+      g.rect(b.x - 6, this.floor, 12, 1, PAL.mid);
+      ctx.globalAlpha = 1;
+    }
+    g.text('KEEP THEM UP!', CX, TOP + 20, 9, PAL.mid);
+  }
+}
+
 // ── REGISTRY ─────────────────────────────────────────────────────────────────
 const POOL = [
   TapBug, CatchCoin, RubClean, PullTissue, SodaShake, SwipeArrow, MashButton, HoldRelease, DontTap,
@@ -2333,7 +2526,7 @@ const POOL = [
   Flappy, Crossy, Doodle, PianoTiles, DinoRun, KnockStack, MoveCam, DryShiba, LeanDodge,
   FreezeStatue, SwatFly, HideLens, DanceBeat
 ];
-const BOSSES = [Dodge, Squeeze];
+const BOSSES = [Dodge, Squeeze, RedLight, Juggle];
 
 /* ── MASCOT ───────────────────────────────────────────────────────────────────
    The shiba is anchored on the shelf below the play field and NEVER moves — no

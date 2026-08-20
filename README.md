@@ -31,10 +31,13 @@ show it as a polaroid before the next round — in the camera's own colours, and
 cover-cropped so a portrait selfie frame is never squeezed into the 4:3 print.
 Opt a game in with `photo: true` in its meta.
 
-A game can stamp the still before handing it over: BLOW draws `PhotoFX.cake` on
-it, so you get a picture of yourself behind a birthday cake with the candles
-just blown out. Filters live in `PhotoFX`, draw in the photo's own pixel space,
-and use the five palette colours so they read as pixel art on a photograph.
+A game can stamp the still before handing it over. Filters live in `PhotoFX`,
+draw in the photo's own pixel space, and use the five palette colours so they
+read as pixel art on a photograph rather than a grade over someone's face:
+
+- `cake` — BLOW: a birthday cake with the candles just blown out
+- `dodge` — LEAN: a brick hurtling past the ear you leaned away from
+- `statue` — FREEZE: a marble plinth and a laurel over your head
 
 **BLOW** is the only game that uses the **microphone** — it measures the
 low-frequency energy of a puff, and falls back to fast tapping if the mic is
@@ -51,6 +54,13 @@ Everything lives in `index.html` — engine, all games, and the sprites
   (top-right). Flip to `false` to ship without it.
 - The DEV menu lists every game, with a difficulty selector and a LOOP mode
   that replays one game without losing lives — for testing and tuning.
+
+## Bosses
+
+A boss every eight rounds, always at difficulty 3 and 1.6x the round length:
+DODGE and SQUEEZE (drag to survive), JUGGLE (tap to keep every ball off the
+floor) and RED LIGHT (the camera boss — move on green, hold still on red, and
+you must sit through the reds, not just fill the bar).
 
 ## Structure
 
