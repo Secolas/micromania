@@ -242,6 +242,10 @@ const Input = {
   _rawDx: 0, _rawDy: 0, _sx: 0, _sy: 0, _st: 0, _travel: 0,
   _pendingTaps: [], _pendingSwipe: null, _shakeRaw: 0, _lastAcc: null,
   _mic: null, _micData: null, _blowRaw: 0, micReady: false, micDenied: false, micPending: false,
+  // gyroscope: peak rotation rate seen since the last step, in deg/s summed
+  // across the three axes. Shaking a phone spins it as much as it slings it,
+  // and the gyro reads that far more cleanly than the accelerometer does.
+  _gyroPeak: 0, gyroReady: false,
   // camera: optical-flow motion + photo capture. motion is a 0..1 "how much are
   // you moving" value; camReady/camDenied/camPending mirror the mic pattern.
   _cam: null, _camVideo: null, _camCanvas: null, _camCtx: null, _prevFrame: null,
@@ -440,6 +444,14 @@ const Input = {
 
   enableMotion() {
     const add = () => window.addEventListener('devicemotion', e => {
+      // rotation rate — the gyro proper. Peak rather than sum, so the reading
+      // does not depend on how often the device fires the event.
+      const rr = e.rotationRate;
+      if (rr) {
+        const spin = Math.abs(rr.alpha || 0) + Math.abs(rr.beta || 0) + Math.abs(rr.gamma || 0);
+        if (spin > this._gyroPeak) this._gyroPeak = spin;
+        if (spin > 25) this.gyroReady = true;      // real readings are arriving
+      }
       const a = e.accelerationIncludingGravity; if (!a) return;
       if (this._lastAcc) {
         const d = Math.abs(a.x - this._lastAcc.x) + Math.abs(a.y - this._lastAcc.y) + Math.abs(a.z - this._lastAcc.z);
@@ -462,10 +474,12 @@ const Input = {
     this.taps = this._pendingTaps; this._pendingTaps = [];
     this.swipe = this._pendingSwipe; this._pendingSwipe = null;
     this.holdTime = this.down ? this.holdTime + STEP : 0;
-    // shake: accelerometer energy, plus fast pointer wiggling as a fallback
+    // shake: gyro spin first, then accelerometer energy, then fast pointer
+    // wiggling. A hard shake tops 500 deg/s across the axes.
     const wiggle = this.down ? this.moveDist * 1.2 : 0;
-    this.shake = Math.min(1, this.shake * 0.90 + (this._shakeRaw * 0.02 + wiggle * 0.02));
-    this._shakeRaw = 0;
+    const spin = Math.min(1, this._gyroPeak / 500);
+    this.shake = Math.min(1, this.shake * 0.90 + (spin * 0.28 + this._shakeRaw * 0.02 + wiggle * 0.02));
+    this._shakeRaw = 0; this._gyroPeak = 0;
     // blow: mic loudness if we have it, otherwise fast tapping stands in for a puff
     let raw = 0;
     if (this.micReady && this._mic) {
@@ -1094,7 +1108,10 @@ class TapOrder extends Microgame {
   static meta = { id: 'order', prompt: 'IN ORDER!', hint: 'tap', duration: 4.2 };
   init() {
     this.n = this.byD(3, 4, 5); this.i = 0; this.r = 17;
-    this.sh = 40;                 // drawn sprite height
+    // r stays 17 for spacing — it is what makes 5 signs fit — while the sprite
+    // is drawn bigger over it, and hitR gives the bigger sign a matching target
+    this.sh = 52;                 // drawn sprite height
+    this.hitR = 24;
     this.pts = [];
     let guard = 0;
     while (this.pts.length < this.n && guard++ < 500) {
@@ -1106,13 +1123,16 @@ class TapOrder extends Microgame {
   }
   update(dt, input) {
     if (!input.justDown) return;
-    for (let k = 0; k < this.n; k++) {
-      if (Math.hypot(input.x - this.pts[k].x, input.y - this.pts[k].y) < this.r + 6) {
-        if (k === this.i) { this.i++; Sfx.tick(); FX.hit(this.pts[k].x, this.pts[k].y, PAL.accent); if (this.i >= this.n) this.succeed(); }
-        else if (k > this.i) { this.lose(); }
-        return;
-      }
+    // nearest, not first in range: with a target this size two of them can both
+    // cover a tap, and index order would sometimes blame the wrong sign
+    let k = -1, best = this.hitR;
+    for (let j = 0; j < this.n; j++) {
+      const d = Math.hypot(input.x - this.pts[j].x, input.y - this.pts[j].y);
+      if (d < best) { best = d; k = j; }
     }
+    if (k < 0) return;
+    if (k === this.i) { this.i++; Sfx.tick(); FX.hit(this.pts[k].x, this.pts[k].y, PAL.accent); if (this.i >= this.n) this.succeed(); }
+    else if (k > this.i) { this.lose(); }
   }
   draw(g) {
     g.clear();
@@ -1227,18 +1247,32 @@ class WhackMole extends Microgame {
       }
     }
   }
+  /* The sheet bakes the ground into every frame, but not the same ground: the
+     popped frames sit the dog on a raised mound low in the cell (widest row 42)
+     while the empty frame is a flat hole higher up (widest row 29). Stepping
+     through the frames therefore made the hole change shape and jump position
+     as the mole came up. So the hole is now always frame 8, drawn identically
+     in every cell, and the mole is frame 0 clipped to above the rim and slid
+     up through it — which also rises smoothly instead of in nine steps.
+     Rows below are in the 48px sprite's own pixels. */
+  drawMole(g, x, y, pop) {
+    const RIM = 30;    // the hole's near lip; the dog is cut off here
+    const RISE = 26;   // far enough that pop 0 leaves the dog fully out of sight
+    const k = this.sw / 48;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(x - this.sw / 2, y - this.sw / 2, this.sw, RIM * k);
+    ctx.clip();
+    g.sprite('whack', x, y + (1 - pop) * RISE * k, { w: this.sw, h: this.sw, frame: 0 });
+    ctx.restore();
+  }
   draw(g) {
     g.clear();
-    // draw non-active holes first (empty), active last so it overlaps neighbours
-    this.holes.forEach((h, k) => {
-      if (k === this.cur) return;
-      g.sprite('whack', h.x, h.y, { w: this.sw, h: this.sw, frame: 8 });
-    });
+    // every cell gets the same hole, including the live one
+    for (const hole of this.holes) g.sprite('whack', hole.x, hole.y, { w: this.sw, h: this.sw, frame: 8 });
     const h = this.holes[this.cur];
-    // pop progress 0..1 -> frame 8 (empty) down to 0 (fully out)
     const pop = Math.min(1, (this.up - this.left) * 6);
-    const fr = Math.max(0, Math.round(8 - pop * 8));
-    g.sprite('whack', h.x, h.y, { w: this.sw, h: this.sw, frame: fr });
+    this.drawMole(g, h.x, h.y, pop);
     for (let i = 0; i < this.need; i++) g.rect(CX - this.need * 4 + i * 8, TOP + 6, 5, 5, i < this.hit ? PAL.accent : PAL.mid);
   }
 }
@@ -2731,11 +2765,16 @@ const Engine = {
       g.rect(0, H - 6, W * pct, 6, c);
       // DEBUG: what the camera is actually reading, for tuning thresholds on a
       // real phone — a real lens reads nothing like a webcam test pattern
-      if (DEBUG && ['move', 'still', 'cover'].includes(this.game.meta.hint)) {
+      const hint = this.game.meta.hint;
+      if (DEBUG && ['move', 'still', 'cover'].includes(hint)) {
         const cam = Input.camReady ? 'cam' : Input.camDenied ? 'NOCAM' : '…';
         const tl = Input.tiltReady ? ' T' + Input.tiltX.toFixed(2) + '/' + Input.tiltY.toFixed(2) : ' notilt';
         g.text(cam + ' m' + Input.motion.toFixed(2) + ' x' + Input.motionX.toFixed(2) +
                ' y' + Input.motionY.toFixed(2) + ' b' + Input.bright.toFixed(2) + tl,
+               2, H - 8, 6, PAL.mid, 'left');
+      } else if (DEBUG && (hint === 'shake' || hint === 'blow')) {
+        g.text('shake' + Input.shake.toFixed(2) + (Input.gyroReady ? ' gyro' : ' NOGYRO') +
+               ' blow' + Input.blow.toFixed(2) + (Input.micReady ? ' mic' : ' NOMIC'),
                2, H - 8, 6, PAL.mid, 'left');
       }
     }

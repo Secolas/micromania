@@ -42,8 +42,13 @@ read as pixel art on a photograph rather than a grade over someone's face:
 **BLOW** is the only game that uses the **microphone** — it measures the
 low-frequency energy of a puff, and falls back to fast tapping if the mic is
 denied. It also opens the camera for its photo, but never waits on it: no
-camera just means no picture. SODA reads the accelerometer (shake), with pointer wiggling as its
-fallback. Nothing else needs a sensor.
+camera just means no picture.
+
+**SHAKE** reads the **gyroscope**: `rotationRate` off `devicemotion`, taken as a
+peak per step so the reading does not depend on how often the device fires the
+event. Shaking a phone spins it as much as it slings it, and the gyro sees that
+far more cleanly than the accelerometer. Accelerometer energy and fast pointer
+wiggling stand behind it, in that order.
 
 ## Develop
 
@@ -75,6 +80,14 @@ from touch when there is no camera, so no game has to special-case it.
 round with `zeroTilt`), and `tiltReady` stays false where there is no sensor.
 
 Motion thresholds are all on one scale — LEAN's `0.18` is "definitely leaning",
-so treat that as the reference when tuning a new game. With `DEBUG = true` every
-camera game prints its live readings along the bottom of the screen, which is
-the only way to calibrate against a real lens.
+so treat that as the reference when tuning a new game. With `DEBUG = true` the
+sensor games print their live readings along the bottom of the screen: the
+camera ones show motion, position, brightness and tilt, the shake and blow ones
+show their levels and whether the gyro and mic are answering at all. That is
+the only way to calibrate against a real device.
+
+WHACK draws its hole and its mole separately. The sprite sheet bakes ground into
+every frame but not the *same* ground — the popped frames sit the dog on a raised
+mound low in the cell, the empty frame is a flat hole higher up — so stepping the
+frames made the hole change shape and jump. The hole is always frame 8 now, and
+the mole is frame 0 clipped to above the rim and slid up through it.
