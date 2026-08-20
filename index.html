@@ -2660,19 +2660,24 @@ class PourCup extends Microgame {
   init() {
     Input.enableTilt(); Input.zeroTilt();
     this.fill = 0;
-    this.lo = this.byD(0.55, 0.62, 0.68);
-    this.hi = this.byD(0.85, 0.80, 0.76);
-    this.hold = 0; this.need = 0.5;
+    // a wide band so you don't have to be surgical; easier tiers are wider
+    this.lo = this.byD(0.50, 0.56, 0.62);
+    this.hi = this.byD(0.86, 0.82, 0.78);
+    this.hold = 0; this.need = 0.4;
+    this.pouring = false;
   }
   update(dt, input) {
-    // tilt magnitude pours; with no gyro, holding a touch pours
-    const t = Input.tiltReady ? Math.abs(input.tiltX) : (input.down ? 0.6 : 0);
-    const pouring = t > 0.25;
-    if (pouring) this.fill += t * dt * 0.55;
+    // Tilt to pour, level off to stop — with hysteresis so it is a real gesture,
+    // not a knife-edge. Start pouring past ~10 degrees, stop only once you bring
+    // it back under ~6; the gap between means hand tremor can't flicker it, and
+    // you never have to hold a dead-exact angle. No gyro → hold a touch to pour,
+    // release to stop.
+    const t = Input.tiltReady ? Math.abs(input.tiltX) : (input.down ? 0.7 : 0);
+    if (t > 0.5) this.pouring = true; else if (t < 0.3) this.pouring = false;
+    if (this.pouring) this.fill += Math.min(1, t) * dt * 0.42;
     if (this.fill > 1) { buzz(100); FX.shake(3); this.lose(); return; }   // overflow
-    // hold only counts once you have STOPPED in the band — otherwise a steady
-    // pour drifts through the band and banks the hold on its way to overflowing
-    if (!pouring && this.fill >= this.lo && this.fill <= this.hi) { this.hold += dt; if (this.hold >= this.need) this.succeed(); }
+    // once you have levelled off (not pouring) and the cup is in the band, hold
+    if (!this.pouring && this.fill >= this.lo && this.fill <= this.hi) { this.hold += dt; if (this.hold >= this.need) this.succeed(); }
     else this.hold = 0;
   }
   draw(g) {
@@ -2690,8 +2695,11 @@ class PourCup extends Microgame {
     // target band lines
     g.line(cx0 - 4, cy0 + ch - this.lo * ch, cx0 + cw + 4, cy0 + ch - this.lo * ch, PAL.accent, 1);
     g.line(cx0 - 4, cy0 + ch - this.hi * ch, cx0 + cw + 4, cy0 + ch - this.hi * ch, PAL.accent, 1);
-    g.text(this.fill > 0.92 ? 'STOP!' : inBand ? 'LEVEL OFF!' : (Input.tiltReady ? 'TIP TO POUR' : 'HOLD TO POUR'),
-           CX, TOP + 22, 8, this.fill > 0.92 ? PAL.bad : inBand ? PAL.accent : PAL.mid);
+    const msg = this.fill > 0.92 ? 'STOP!'
+              : (inBand && !this.pouring) ? 'HOLD STEADY!'
+              : inBand ? 'LEVEL OFF!'
+              : (Input.tiltReady ? 'TIP TO POUR' : 'HOLD TO POUR');
+    g.text(msg, CX, TOP + 22, 8, this.fill > 0.92 ? PAL.bad : inBand ? PAL.accent : PAL.mid);
   }
 }
 
