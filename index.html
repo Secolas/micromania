@@ -2290,13 +2290,21 @@ class SwatFly extends Microgame {
   draw(g) {
     g.clear();
     if (this.paused) { g.text('ALLOW CAMERA…', CX, CY - 6, 11, PAL.ink); g.text('(then reach for the fly)', CX, CY + 12, 7, PAL.mid); return; }
-    // fly: buzzing body plus two flapping wings
-    const f = this.fly, wg = Math.sin(f.t * 40) * 3;
+    // the "fly": a little winged shiba that buzzes around. Uses the flydog
+    // sprite once its art lands; until then it falls back to the drawn fly, so
+    // this is safe to ship before the PNG is embedded.
+    const f = this.fly;
     const bx = f.x + Math.sin(f.t * 33) * 1.5, by = f.y + Math.cos(f.t * 29) * 1.5;
-    g.line(bx - 6, by - 4 + wg, bx, by - 1, PAL.mid, 2);
-    g.line(bx + 6, by - 4 - wg, bx, by - 1, PAL.mid, 2);
-    g.circle(bx, by, 4, PAL.ink);
-    g.circle(bx, by - 3, 2, PAL.ink);
+    if (Assets.get('flydog')) {
+      // wings flap fast; the whole sprite bobs with the buzz
+      g.sprite('flydog', bx, by, { w: 26, h: 26 });   // frame auto-cycles at its fps
+    } else {
+      const wg = Math.sin(f.t * 40) * 3;
+      g.line(bx - 6, by - 4 + wg, bx, by - 1, PAL.mid, 2);
+      g.line(bx + 6, by - 4 - wg, bx, by - 1, PAL.mid, 2);
+      g.circle(bx, by, 4, PAL.ink);
+      g.circle(bx, by - 3, 2, PAL.ink);
+    }
     // hand: a ring where the camera thinks you are, with a short motion trail
     for (const p of this.trail) { ctx.globalAlpha = 1 - p.t / 0.22; g.circle(p.x, p.y, 3, PAL.mid); ctx.globalAlpha = 1; }
     const r = 13 + (this.pop > 0 ? this.pop * 40 : 0);
