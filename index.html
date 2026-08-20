@@ -918,9 +918,13 @@ class PullTissue extends Microgame {
 // 5. SHAKE — build up pressure (accelerometer or frantic wiggling)
 class SodaShake extends Microgame {
   static meta = { id: 'shake', prompt: 'SHAKE!', hint: 'shake', duration: 3.6 };
-  init() { this.fill = 0; this.need = this.byD(1.4, 1.8, 2.3); }
+  init() { this.fill = 0; this.need = this.byD(1.4, 1.8, 2.3); this.buzzT = 0; }
   update(dt, input) {
     this.fill += input.shake * dt * 2.2;
+    // buzz continuously while the player is actually shaking, harder the harder
+    // they shake — re-fired on a short cadence so the motor stays humming
+    this.buzzT -= dt;
+    if (input.shake > 0.15 && this.buzzT <= 0) { buzz(Math.round(25 + input.shake * 45)); this.buzzT = 0.05; }
     if (this.fill >= this.need) this.succeed();
   }
   draw(g) {
