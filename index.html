@@ -2602,9 +2602,11 @@ class RedLight extends Microgame {
     g.circle(CX, TOP + 20, 8, red ? PAL.bad : PAL.bg);
     g.circle(CX, TOP + 38, 8, amber ? PAL.accent : PAL.bg);
     g.circle(CX, TOP + 56, 8, this.light === 'green' ? PAL.ink : PAL.bg);
-    // the shiba (top-down runner): running on green, frozen on red
+    // the shiba doll spins like SQUID: back turned on green (go), mid-spin on
+    // amber, facing you on red (watching) — facedir frames 4=back, 2=profile, 0=front
     const bob = red ? 0 : Math.sin(this.t * 10) * 3 * Math.min(1, Input.motion * 2.5);
-    g.sprite('hero', CX, CY + 40 + bob, { w: 26, h: 54, frame: red ? 0 : Math.floor(this.t * 14) % 9 });
+    const df = red ? 0 : amber ? 2 : 4;
+    g.sprite('facedir', CX, CY + 40 + bob, { w: 72, h: 72, frame: df });
     g.text(red ? 'FREEZE!' : amber ? 'ABOUT TO STOP…' : 'GO GO GO!', CX, CY + 74, red ? 12 : 10, lit);
     // progress, and how close being caught is
     g.bar(24, BOT - 16, W - 48, 7, this.fill / this.need);
