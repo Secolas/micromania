@@ -3005,9 +3005,10 @@ class SquidDoll extends Microgame {
       case 'red':                                     // doll watching — FREEZE
         this.face = 0;                                // facing you
         if (moving > this.thr) {
-          this.caught += dt; this.flash = 0.15; FX.shake(1.5);
-          if (this.caught > 0.3) { buzz(90); FX.shake(5); this.lose(); return; }
-        } else this.caught = Math.max(0, this.caught - dt * 0.6);
+          this.caught += dt;
+          if (this.caught > 0.12) this.flash = 0.15;  // only react to sustained movement, not camera noise
+          if (this.caught > 0.35) { buzz(90); FX.shake(4); this.lose(); return; }
+        } else this.caught = Math.max(0, this.caught - dt * 0.8);
         if (this.pt <= 0) { this.phase = 'toGreen'; this.pt = this.turn; }
         break;
       case 'toGreen':                                 // spinning back away
