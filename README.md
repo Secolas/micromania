@@ -74,8 +74,10 @@ Everything lives in `index.html` — engine, all games, and the sprites
 
 A boss every eight rounds, always at difficulty 3 and 1.6x the round length:
 DODGE and SQUEEZE (drag to survive), JUGGLE (tap to keep every ball off the
-floor) and RED LIGHT (the camera boss — move on green, hold still on red, and
-you must sit through the reds, not just fill the bar).
+floor), RED LIGHT (the camera boss — move on green, hold still on red, and
+you must sit through the reds, not just fill the bar), and SQUID (the spinning
+doll — move your head to run to the goal while its back is turned, freeze the
+instant it faces you or you're caught).
 
 ## Structure
 
