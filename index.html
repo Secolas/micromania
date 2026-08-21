@@ -996,8 +996,11 @@ class SwipeArrow extends Microgame {
     // side-view runner (native art looks left, flipped for right); up/down
     // use the hopping dog (leaping up, flipped upside-down for down).
     if (d === 'left' || d === 'right') {
-      // native runner art faces right, so flip it to face left
-      g.sprite('runner', CX, CY - 6, { w: 60, h: 56, frame: Math.floor(this.t * 12) % 9, flip: d === 'left' });
+      // native runner art faces right, so flip it to face left. cycle the
+      // designer's ground-run frames (0-3,7-8) so it gallops, skipping the
+      // airborne leap poses (4-6) that made it look frozen mid-jump
+      const RUN = [0, 1, 2, 3, 7, 8], rf = RUN[Math.floor(this.t * 14) % RUN.length];
+      g.sprite('runner', CX, CY - 6, { w: 60, h: 56, frame: rf, flip: d === 'left' });
     } else if (d === 'up') {
       g.sprite('hopdog', CX, CY - 6, { w: 62, h: 62, frame: Math.floor(this.t * 12) % 9 });
     } else {
