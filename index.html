@@ -991,12 +991,17 @@ class SwipeArrow extends Microgame {
     g.clear();
     const d = this.seq[this.i];
     const ang = { up: -Math.PI / 2, down: Math.PI / 2, left: Math.PI, right: 0 }[d];
-    ctx.save(); ctx.translate(CX, CY); ctx.rotate(ang);
-    g.line(-22, 0, 20, 0, PAL.ink, 6);
-    g.line(20, 0, 8, -12, PAL.ink, 6);
-    g.line(20, 0, 8, 12, PAL.ink, 6);
+    const ux = Math.cos(ang), uy = Math.sin(ang);
+    // the shiba faces you and leans the way it wants you to swipe
+    const lean = 6, fr = Math.floor(this.t * 6) % 9;
+    g.sprite('face', CX + ux * lean, CY - 6 + uy * lean, { w: 46, h: 47, frame: fr });
+    // bold arrow pushed out past the face so the dog stays visible
+    ctx.save(); ctx.translate(CX + ux * 54, CY - 6 + uy * 54); ctx.rotate(ang);
+    g.line(-16, 0, 14, 0, PAL.ink, 7);
+    g.line(14, 0, 2, -12, PAL.ink, 7);
+    g.line(14, 0, 2, 12, PAL.ink, 7);
     ctx.restore();
-    for (let k = 0; k < this.seq.length; k++) g.circle(CX - (this.seq.length - 1) * 6 + k * 12, CY + 46, 3, k < this.i ? PAL.accent : PAL.mid);
+    for (let k = 0; k < this.seq.length; k++) g.circle(CX - (this.seq.length - 1) * 6 + k * 12, BOT - 20, 3, k < this.i ? PAL.accent : PAL.mid);
   }
 }
 
