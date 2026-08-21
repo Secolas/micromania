@@ -2790,24 +2790,36 @@ class BlowCandles extends Microgame {
 
 // BLOW — blow every seed off the dandelion
 class Dandelion extends Microgame {
-  static meta = { id: 'puff', prompt: 'BLOW!', hint: 'blow', duration: 4.2, minDuration: 3.6 };
+  static meta = { id: 'puff', prompt: 'BLOW!', hint: 'blow', duration: 4.8, minDuration: 4.2 };
   init() {
     Input.enableMic();
     this.paused = Input.micPending; this.wait = 0;
-    this.n = this.byD(8, 12, 16); this.seeds = [];
+    this.n = this.byD(6, 7, 8); this.seeds = [];
     for (let i = 0; i < this.n; i++) {
-      const a = (i / this.n) * 6.2832 + Math.random() * 0.4, r = 8 + Math.random() * 12;
-      this.seeds.push({ a, x: CX + Math.cos(a) * r, y: CY - 8 + Math.sin(a) * r, gone: false, vx: 0, vy: 0, t: 0 });
+      const a = (i / this.n) * 6.2832 + Math.random() * 0.4, r = 9 + Math.random() * 11;
+      this.seeds.push({ a, x: CX + Math.cos(a) * r, y: CY - 8 + Math.sin(a) * r, gone: false, vx: 0, vy: 0, t: 0, spin: 0 });
     }
-    this.cleared = 0;
+    this.cleared = 0; this.cool = 0;
   }
   update(dt, input) {
     if (this.paused) { this.wait += dt; if (!Input.micPending || this.wait > 1.2) this.paused = false; return; }
+    this.cool -= dt;
     const b = input.blow;
-    if (b > 0.25) for (const s of this.seeds) {
-      if (!s.gone && Math.random() < b * 0.7) { s.gone = true; s.vx = Math.cos(s.a) * (60 + b * 140) + 40; s.vy = Math.sin(s.a) * (60 + b * 140) - 40; this.cleared++; }
+    // one petal per puff: a blow peels the next seed off, then a short cooldown
+    // gates the following one, so clearing the flower takes ~7-8 puffs (or one
+    // long breath peeling them off one at a time) with each seed flying away
+    if (b > 0.3 && this.cool <= 0) {
+      const s = this.seeds.find(x => !x.gone);
+      if (s) {
+        s.gone = true;
+        s.vx = Math.cos(s.a) * (70 + b * 120) + (s.x >= CX ? 40 : -40);
+        s.vy = Math.sin(s.a) * (70 + b * 120) - 70;
+        s.spin = (Math.random() - 0.5) * 12;
+        this.cleared++; this.cool = 0.28;
+        Sfx.tick(); buzz(14); FX.hit(s.x, s.y, PAL.ink);
+      }
     }
-    for (const s of this.seeds) if (s.gone) { s.t += dt; s.x += s.vx * dt; s.y += s.vy * dt; s.vy += 80 * dt; }
+    for (const s of this.seeds) if (s.gone) { s.t += dt; s.x += s.vx * dt; s.y += s.vy * dt; s.vy += 70 * dt; s.vx *= 0.99; }
     if (this.cleared >= this.n && !this.finished) this.succeed();
   }
   draw(g) {
