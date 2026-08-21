@@ -516,15 +516,23 @@ const Input = {
       const hi0 = Math.min(48, d.length - 1), hi1 = Math.min(110, d.length);
       let hiSum = 0; for (let i = hi0; i < hi1; i++) hiSum += d[i];
       const hiAvg = hi1 > hi0 ? hiSum / (hi1 - hi0) : 0;
-      const level = Math.max(0, (loAvg - 22) / 90);      // amplitude over noise floor
+      // Higher noise floor + gentler gain so only a firm, close puff registers —
+      // quiet talking or room noise stays near zero. Discriminator a touch
+      // stricter too, so a soft sound has to really be a breath to count.
+      const level = Math.max(0, (loAvg - 40) / 78);      // amplitude over noise floor
       const flat = loAvg > 4 ? loAvg / (loMax + 1) : 0;  // ~1 broadband, ~0 tonal
       const bottomHeavy = loAvg / (hiAvg + 6);           // low vs high content
-      this.blowOk = flat > 0.35 && bottomHeavy > 1.4;    // looks like a puff (for DEBUG)
+      this.blowOk = flat > 0.4 && bottomHeavy > 1.6;     // looks like a puff (for DEBUG)
       raw = this.blowOk ? level : 0;
     } else {
-      raw = this.justDown ? 0.9 : 0;                     // tap fallback
+      raw = this.justDown ? 1.6 : 0;                     // tap fallback (over-driven; see integrator)
     }
-    this.blow = Math.min(1, this.blow * 0.75 + raw);
+    // Unity-gain low-pass: blow tracks the actual level instead of the old
+    // blow*0.75 + raw, which had a 4x DC gain that let any sustained sound pile
+    // up to full — the real reason it felt so sensitive. A steady tone now
+    // settles at its true amplitude, so only a firm blow reaches the game
+    // thresholds. (The tap fallback over-drives raw to stay responsive.)
+    this.blow = Math.min(1, this.blow * 0.7 + raw * 0.3);
     this._blowRaw = 0;
     // tilt: 20 degrees off centre reaches the edge, so a small comfortable
     // lean covers the whole play field
@@ -1498,8 +1506,9 @@ class BlowSail extends Microgame {
       if (!Input.micPending || this.wait > 1.2) this.paused = false;
       return;
     }
-    this.fill += input.blow * dt * 1.6;
-    this.spin += input.blow * dt * 14;
+    const b = input.blow > 0.28 ? input.blow : 0;   // only a real blow fills the sail
+    this.fill += b * dt * 1.9;
+    this.spin += b * dt * 16;
     if (this.fill >= this.need && !this.finished) {
       const shot = Input.snapPhoto();
       if (shot) { PhotoFX.cake(shot); Engine.lastPhoto = shot; }
@@ -2760,7 +2769,7 @@ class BlowCandles extends Microgame {
   }
   update(dt, input) {
     if (this.paused) { this.wait += dt; if (!Input.micPending || this.wait > 1.2) this.paused = false; return; }
-    if (input.blow > 0.2) {
+    if (input.blow > 0.3) {
       // snuff the candles left-to-right so progress is visible
       for (let i = 0; i < this.n; i++) { if (this.lit[i] > 0) { this.lit[i] = Math.max(0, this.lit[i] - input.blow * dt * 1.6); break; } }
     }
