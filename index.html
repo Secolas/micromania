@@ -2229,7 +2229,7 @@ class FreezeStatue extends Microgame {
     // not a twitch. Sitting still still reads a little motion — sensor grain,
     // mains flicker — so the bar also floats above the quietest reading this
     // round: a noisy camera can't fail you for holding perfectly still.
-    this.base = this.byD(0.16, 0.12, 0.09);
+    this.base = this.byD(0.09, 0.065, 0.05);
     this.thr = this.base;
     this.noise = 1;                            // quietest motion while settling
     this.ox = 0; this.oy = 0;                  // where the statue has been nudged
@@ -2239,36 +2239,40 @@ class FreezeStatue extends Microgame {
   }
   update(dt, input) {
     if (this.paused) { this.wait += dt; if (!Input.camPending || this.wait > 1.5) this.paused = false; return; }
-    // the statue mirrors you: it drifts toward wherever the camera sees movement
-    // and springs back when you hold still, so "you are moving" is visible
-    const pull = Math.min(1, input.motion * 2.5);
-    const tx = (input.motionX - 0.5) * 40 * pull, ty = (input.motionY - 0.5) * 24 * pull;
-    this.ox += (tx - this.ox) * Math.min(1, dt * 8);
-    this.oy += (ty - this.oy) * Math.min(1, dt * 8);
+    // the statue mirrors you: the head snaps toward wherever the camera sees
+    // movement (fast, so it tracks your face left/right/up) and eases back to
+    // facing you when you hold still, so "you are moving" is unmistakable.
+    if (input.motion > 0.04) {
+      const tx = (input.motionX - 0.5) * 60, ty = (input.motionY - 0.5) * 40;
+      this.ox += (tx - this.ox) * Math.min(1, dt * 16);
+      this.oy += (ty - this.oy) * Math.min(1, dt * 16);
+    } else {
+      this.ox -= this.ox * Math.min(1, dt * 6);       // ease back to facing you
+      this.oy -= this.oy * Math.min(1, dt * 6);
+    }
     // The noise floor is learned only while settling — tracked across the whole
     // round it would take sustained movement for "quiet" and lift the bar above
-    // it, and waving would pass. A settle reading above 0.12 isn't a grainy
+    // it, and waving would pass. A settle reading above 0.08 isn't a grainy
     // sensor, it's someone who kept moving through GET READY, so it buys them
-    // nothing; a genuinely noisy camera sits well below that and does get slack.
+    // nothing; a genuinely noisy camera sits well below that and gets a little slack.
     if (this.grace > 0) {
       this.grace -= dt;
       this.noise = Math.min(this.noise, input.motion);
-      this.thr = this.noise < 0.12 ? Math.min(0.25, Math.max(this.base, this.noise * 1.8 + 0.03)) : this.base;
+      this.thr = this.noise < 0.08 ? Math.min(0.12, Math.max(this.base, this.noise * 1.4 + 0.02)) : this.base;
       return;
     }
     const over = input.motion - this.thr;
     if (over > 0) {
-      // a real move empties the meter in about half a second; a small shift
-      // costs a visible chunk but is survivable
-      this.hp -= (0.35 + over * 7) * dt;
-      this.wob = Math.min(1, this.wob + over * dt * 5);
-      // the statue cracks a little further with every chunk of meter lost
+      // strict: even a small shift drains fast and barely refills, so you must
+      // hold genuinely still — a couple of seconds of fidgeting empties the meter
+      this.hp -= (0.8 + over * 12) * dt;
+      this.wob = Math.min(1, this.wob + over * dt * 6);
       const want = Math.min(6, 6 - Math.ceil(this.hp * 6));
       while (this.cracks.length < want) this.cracks.push({ a: Math.random() * 6.2832, r: 17 + Math.random() * 5, l: 7 + Math.random() * 12 });
       if (this.hp <= 0) { FX.shake(4); this.lose(); return; }
     } else {
       this.wob = Math.max(0, this.wob - dt * 2);
-      this.hp = Math.min(1, this.hp + dt * 0.15);   // slow, forgiving refill
+      this.hp = Math.min(1, this.hp + dt * 0.04);   // very slow refill — stillness is the only real recovery
     }
   }
   // winOnTimeout: the engine calls this when the clock runs out, so the photo
@@ -2292,7 +2296,7 @@ class FreezeStatue extends Microgame {
     // facing you (south); nudged = the matching compass direction.
     let df = 0, flip = false;                         // 0 = south / facing you
     const mag = Math.hypot(this.ox, this.oy);
-    if (mag > 3) {
+    if (mag > 1.5) {                                   // even a small turn registers
       let a = Math.atan2(this.oy, this.ox); if (a < 0) a += Math.PI * 2;
       const oct = Math.round(a / (Math.PI / 4)) % 8;  // 0=E,1=SE,2=S,3=SW,4=W,5=NW,6=N,7=NE
       // facedir frames: 0 S, 1 SE, 2 E, 3 NE, 4 N, 5 W, 6 SW  (NW = NE flipped)
@@ -2301,7 +2305,7 @@ class FreezeStatue extends Microgame {
     }
     ctx.save();
     ctx.translate(hx, hy);
-    ctx.rotate(this.ox * 0.006);                      // a faint lean on top of the turn
+    ctx.rotate(Math.max(-0.35, Math.min(0.35, this.ox * 0.012)));   // head tilts/rotates with you
     g.sprite('facedir', 0, 0, { w: 84, h: 84, frame: df, flip });
     ctx.restore();
     for (const c of this.cracks) {
