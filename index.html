@@ -2961,7 +2961,7 @@ class SortTreats extends Microgame {
 // spins to face you (red) → hold perfectly still or you're caught. Reach the
 // goal before the clock runs out to win. Uses the full portrait set for the spin.
 class SquidDoll extends Microgame {
-  static meta = { id: 'squid', prompt: 'RUN & FREEZE!', hint: 'move', duration: 7.0, minDuration: 6.0 };
+  static meta = { id: 'squid', prompt: 'RUN & FREEZE!', hint: 'move', duration: 7.0, minDuration: 6.0, photo: true, photoCap: 'YOU MADE IT!' };
   init() {
     Input.enableCam();
     this.paused = Input.camPending; this.wait = 0;
@@ -3008,6 +3008,10 @@ class SquidDoll extends Microgame {
         if (this.pt <= 0) { this.phase = 'green'; this.pt = this.gT; }
         break;
     }
+  }
+  succeed() {
+    if (!this.finished) { const shot = Input.snapPhoto(); if (shot) Engine.lastPhoto = shot; }
+    super.succeed();
   }
   draw(g) {
     g.clear();
