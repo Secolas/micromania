@@ -2292,21 +2292,11 @@ class FreezeStatue extends Microgame {
     g.rect(CX - 28, CY + 22, 56, 5, PAL.mid);
     g.rect(CX - 22, CY + 27, 44, 4, PAL.mid);
     const hx = CX + this.ox + j, hy = CY - 6 + this.oy;
-    // the head actually turns toward the way you moved (pseudo-3D): still =
-    // facing you (south); nudged = the matching compass direction.
-    let df = 0, flip = false;                         // 0 = south / facing you
-    const mag = Math.hypot(this.ox, this.oy);
-    if (mag > 1.5) {                                   // even a small turn registers
-      let a = Math.atan2(this.oy, this.ox); if (a < 0) a += Math.PI * 2;
-      const oct = Math.round(a / (Math.PI / 4)) % 8;  // 0=E,1=SE,2=S,3=SW,4=W,5=NW,6=N,7=NE
-      // facedir frames: 0 S, 1 SE, 2 E, 3 NE, 4 N, 5 W, 6 SW  (NW = NE flipped)
-      const MAP = [[2, false], [1, false], [0, false], [6, false], [5, false], [3, true], [4, false], [3, false]];
-      df = MAP[oct][0]; flip = MAP[oct][1];
-    }
+    // flat face that slides and leans the way you move — the tell that you moved
     ctx.save();
     ctx.translate(hx, hy);
-    ctx.rotate(Math.max(-0.35, Math.min(0.35, this.ox * 0.012)));   // head tilts/rotates with you
-    g.sprite('facedir', 0, 0, { w: 84, h: 84, frame: df, flip });
+    ctx.rotate(Math.max(-0.25, Math.min(0.25, this.ox * 0.010)));
+    g.sprite('face', 0, 0, { w: 46, h: 46, frame: 0 });
     ctx.restore();
     for (const c of this.cracks) {
       g.line(hx + Math.cos(c.a) * c.r, hy + Math.sin(c.a) * c.r,
