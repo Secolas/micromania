@@ -1,6 +1,6 @@
 # MICROMANIA
 
-A WarioWare-style microgame collection — 45 fast microgames in a single
+A WarioWare-style microgame collection — 46 fast microgames in a single
 self-contained HTML file. Portrait, mobile-first, starring a pixel-art shiba inu.
 
 ## Play
@@ -20,6 +20,7 @@ so they stay playable anywhere. The deployed Vercel URL is HTTPS.
 | SWAT | where the movement is | move your finger, tap |
 | HIDE | frame brightness — a hand over the lens | hold the screen |
 | DANCE | movement in time with a beat | tap on the beat |
+| SQUID | move on green, freeze on red (red-light/green-light) | hold on green, release on red |
 
 SWAT prefers the **gyro** where the device has one — tilting the phone aims far
 more precisely than the camera's centre-of-motion can. Hold the swatter on the

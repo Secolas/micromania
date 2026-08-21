@@ -2962,6 +2962,76 @@ class SortTreats extends Microgame {
   }
 }
 
+// 42. SQUID — red-light / green-light with the spinning doll (camera)
+// The doll turns away (green) → you move your head to run toward the goal; it
+// spins to face you (red) → hold perfectly still or you're caught. Reach the
+// goal before the clock runs out to win. Uses the full portrait set for the spin.
+class SquidDoll extends Microgame {
+  static meta = { id: 'squid', prompt: 'RUN & FREEZE!', hint: 'move', duration: 7.0, minDuration: 6.0 };
+  init() {
+    Input.enableCam();
+    this.paused = Input.camPending; this.wait = 0;
+    this.prog = 0;                                   // 0..1 toward the goal
+    this.base = this.byD(0.11, 0.085, 0.06);         // move threshold for "caught"
+    this.thr = this.base; this.noise = 1; this.settle = 0.6;
+    this.speed = this.byD(0.46, 0.39, 0.33);         // how fast movement advances you
+    this.gT = this.byD(1.8, 1.5, 1.2);               // green (safe) window
+    this.rT = this.byD(1.0, 1.25, 1.5);              // red (watching) window
+    this.turn = 0.4;                                 // spin telegraph either way
+    this.phase = 'green'; this.pt = this.gT;
+    this.caught = 0; this.face = 4; this.flash = 0;
+  }
+  update(dt, input) {
+    if (this.paused) { this.wait += dt; if (!Input.camPending || this.wait > 1.5) this.paused = false; return; }
+    const moving = Input.camReady ? input.motion : (input.down ? 0.5 : 0);
+    // learn the camera's quiet floor briefly so a grainy sensor can't "catch" a still player
+    if (this.settle > 0) { this.settle -= dt; this.noise = Math.min(this.noise, moving);
+      this.thr = this.noise < 0.08 ? Math.min(0.14, Math.max(this.base, this.noise * 1.5 + 0.02)) : this.base; }
+    if (this.flash > 0) this.flash -= dt;
+    this.pt -= dt;
+    switch (this.phase) {
+      case 'green':                                   // doll turned away — RUN
+        this.face = 4;                                // back of head
+        if (moving > this.thr) this.prog = Math.min(1, this.prog + dt * this.speed * Math.min(1.4, moving / 0.2));
+        if (this.prog >= 1) { this.succeed(); return; }
+        if (this.pt <= 0) { this.phase = 'toRed'; this.pt = this.turn; }
+        break;
+      case 'toRed':                                   // spinning to face you (grace — no fail yet)
+        this.face = 2;                                // profile mid-spin
+        if (this.pt <= 0) { this.phase = 'red'; this.pt = this.rT; this.caught = 0; }
+        break;
+      case 'red':                                     // doll watching — FREEZE
+        this.face = 0;                                // facing you
+        if (moving > this.thr) {
+          this.caught += dt; this.flash = 0.15; FX.shake(1.5);
+          if (this.caught > 0.3) { buzz(90); FX.shake(5); this.lose(); return; }
+        } else this.caught = Math.max(0, this.caught - dt * 0.6);
+        if (this.pt <= 0) { this.phase = 'toGreen'; this.pt = this.turn; }
+        break;
+      case 'toGreen':                                 // spinning back away
+        this.face = 2;
+        if (this.pt <= 0) { this.phase = 'green'; this.pt = this.gT; }
+        break;
+    }
+  }
+  draw(g) {
+    g.clear();
+    if (this.paused) { g.text('ALLOW CAMERA…', CX, CY - 6, 11, PAL.ink); g.text('(then run & freeze)', CX, CY + 12, 7, PAL.mid); return; }
+    // goal track
+    g.text('REACH THE GOAL', CX, TOP + 16, 8, PAL.mid);
+    g.bar(30, TOP + 24, W - 60, 10, this.prog, PAL.accent);
+    // status light: green = run, red = freeze, grey = turning
+    const lit = this.phase === 'green' ? PAL.accent : this.phase === 'red' ? PAL.bad : PAL.mid;
+    g.circle(CX, TOP + 48, 6, lit);
+    // the doll: back (turned away) -> profile (spinning) -> front (watching)
+    const jx = (this.phase === 'red' && this.flash > 0) ? (Math.random() - 0.5) * 6 : 0;
+    g.sprite('facedir', CX + jx, CY + 6, { w: 100, h: 100, frame: this.face });
+    // instruction
+    const label = this.phase === 'green' ? 'RUN! MOVE!' : this.phase === 'red' ? 'FREEZE!' : '…TURNING…';
+    g.text(label, CX, BOT - 18, 11, this.phase === 'red' ? PAL.bad : this.phase === 'green' ? PAL.accent : PAL.mid);
+  }
+}
+
 // ── REGISTRY ─────────────────────────────────────────────────────────────────
 const POOL = [
   TapBug, CatchCoin, RubClean, PullTissue, SodaShake, SwipeArrow, MashButton, HoldRelease, DontTap,
@@ -2969,7 +3039,7 @@ const POOL = [
   BlowSail, TracePath, GrabCount, FlickShot,
   Flappy, Crossy, Doodle, PianoTiles, DinoRun, KnockStack, MoveCam, DryShiba, LeanDodge,
   FreezeStatue, SwatFly, HideLens, DanceBeat,
-  BalanceBall, PourCup, SteerRun, BlowCandles, Dandelion, StackBlocks, SortTreats
+  BalanceBall, PourCup, SteerRun, BlowCandles, Dandelion, StackBlocks, SortTreats, SquidDoll
 ];
 const BOSSES = [Dodge, Squeeze, RedLight, Juggle];
 
