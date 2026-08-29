@@ -2714,7 +2714,43 @@ class BalanceBall extends Microgame {
   }
 }
 
-// TILT — pour the drink to the line, then stop before it overflows
+/* Water in a tipped bottle stays level, so to draw it we need the horizontal line
+   that leaves exactly the remaining volume below it inside the tilted interior:
+   clip the interior to the half-plane under a candidate line, measure what's left,
+   and bisect. Used by POUR for the liquid you can see draining out of the bottle. */
+function polyArea(poly) {
+  let s = 0;
+  for (let i = 0; i < poly.length; i++) { const a = poly[i], b = poly[(i + 1) % poly.length]; s += a.x * b.y - b.x * a.y; }
+  return Math.abs(s) / 2;
+}
+function polyBelow(poly, y) {            // the part of the polygon under the line y
+  const out = [];
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i], b = poly[(i + 1) % poly.length];
+    if (a.y >= y) out.push(a);
+    if ((a.y >= y) !== (b.y >= y)) out.push({ x: a.x + (b.x - a.x) * (y - a.y) / (b.y - a.y), y });
+  }
+  return out;
+}
+function levelIn(poly, frac) {           // the surface height holding `frac` of it
+  let y0 = Math.min(...poly.map(p => p.y)), y1 = Math.max(...poly.map(p => p.y));
+  const want = polyArea(poly) * Math.max(0, Math.min(1, frac));
+  for (let i = 0; i < 16; i++) {
+    const m = (y0 + y1) / 2;
+    if (polyArea(polyBelow(poly, m)) > want) y0 = m; else y1 = m;
+  }
+  return (y0 + y1) / 2;
+}
+
+/* TILT — pour the drink to the line, then stop before it overflows.
+
+   The water is simulated, not drawn: every step the bottle sheds one parcel of
+   liquid at its lip, with the speed it runs off at, and from there gravity owns
+   it. The stream you see is those parcels smeared over the distance each covers
+   in a step, which is why it narrows and stretches as it falls. The level only
+   rises when a parcel actually lands. That leaves water in the air after you
+   level off — already spent, still falling — so the target check counts it, and
+   a ghost line shows where the vase will settle. */
 class PourCup extends Microgame {
   static meta = { id: 'pour', prompt: 'POUR!', hint: 'move', duration: 5.0, minDuration: 4.4 };
   init() {
@@ -2725,16 +2761,27 @@ class PourCup extends Microgame {
     this.hi = this.byD(0.86, 0.82, 0.78);
     this.hold = 0; this.need = 0.4;
     this.pouring = false;
-    this.angle = 0;            // how far the bottle is tipped, in radians
-    this.flow = 0;             // scrolls the highlights down the stream
-    this.ripple = 0;           // how choppy the surface in the vase is
-    this.drops = [];           // splash thrown up where the stream lands
-    this.cw = 44; this.ch = 70; this.cx0 = CX - 22; this.cy0 = BOT - 70 - 6;
+    this.angle = 0;      // the bottle's own tilt, swinging after your hand's
+    this.raw = 0;        // the tilt your hand is holding right now
+    this.air = 0;        // volume in flight: poured already, just not landed
+    this.jet = [];       // the stream — one parcel of water per step, in free fall
+    this.spray = [];     // splash thrown back up where the stream lands
+    this.ripple = 0;
+    this.emit = 0;
+    this.cw = 44; this.ch = 70; this.cx0 = CX - 22; this.cy0 = BOT - this.ch - 6;
+    this.lipY = TOP + 112;                 // the bottle pours from close over the vase
   }
-  // the lip of the bottle, swung round by however far it is tipped
-  spout() { return { x: CX + 22 * Math.sin(this.angle), y: TOP + 40 - 22 * Math.cos(this.angle) }; }
-  // where the stream lands, and the water line it lands on
-  landing() { return CX + Math.sin(this.angle) * 7; }
+  // The bottle pivots on its mouth, the way a hand pours: the lip stays over the
+  // vase and the body swings up behind it. Water runs off the lower corner.
+  lip() {
+    const o = this.angle >= 0 ? 3 : -3;
+    return { x: CX + o * Math.cos(this.angle), y: this.lipY + o * Math.sin(this.angle) };
+  }
+  // it leaves along the neck, at the speed a shallow head of liquid runs out at
+  exitVel() {
+    const sp = 14 + 16 * Math.min(1, Math.max(0, (Math.abs(this.raw) - 0.5) * 2));
+    return { vx: Math.sin(this.angle) * sp, vy: -Math.cos(this.angle) * sp };
+  }
   surfaceY() { return this.cy0 + this.ch - Math.min(1, this.fill) * this.ch; }
   update(dt, input) {
     // Tilt to pour, level off to stop — with hysteresis so it is a real gesture,
@@ -2742,75 +2789,92 @@ class PourCup extends Microgame {
     // it back under ~6; the gap between means hand tremor can't flicker it, and
     // you never have to hold a dead-exact angle. No gyro → hold a touch to pour,
     // release to stop.
-    const raw = Input.tiltReady ? Math.max(-1, Math.min(1, input.tiltX)) : (input.down ? 0.7 : 0);
-    this.angle = raw * 0.7;
-    const t = Math.abs(raw);
+    this.raw = Input.tiltReady ? Math.max(-1, Math.min(1, input.tiltX)) : (input.down ? 0.7 : 0);
+    const t = Math.abs(this.raw);
     if (t > 0.5) this.pouring = true; else if (t < 0.3) this.pouring = false;
-    if (this.pouring) this.fill += t * dt * 0.42;
-    // the stream: beads travel down it, and it splashes where it hits the water
-    this.flow += dt * (this.pouring ? 24 : 0);
-    const land = this.landing(), sy = this.surfaceY();
+    // the bottle has weight — it swings toward the angle you are holding, and
+    // tips right past level, so the mouth genuinely turns over the vase
+    this.angle += (this.raw * 1.9 - this.angle) * Math.min(1, dt * 12);
+    // one parcel of water per step, then nothing about it is scripted
     if (this.pouring) {
-      this.ripple = Math.min(1, this.ripple + dt * 5);
-      if (Math.random() < 0.6) this.drops.push({ x: land, y: sy, vx: (Math.random() - 0.5) * 50, vy: -34 - Math.random() * 34 });
-    } else this.ripple = Math.max(0, this.ripple - dt * 2.2);
-    for (const d of this.drops) { d.vy += 340 * dt; d.x += d.vx * dt; d.y += d.vy * dt; }
-    this.drops = this.drops.filter(d => d.y < sy && d.x > this.cx0 && d.x < this.cx0 + this.cw);
+      const l = this.lip(), v = this.exitVel();
+      this.jet.push({ x: l.x, y: l.y, vx: v.vx, vy: v.vy, dv: t * dt * 0.42, k: this.emit++ });
+      this.air += t * dt * 0.42;
+    }
+    const G = 900;                                   // gravity, in game pixels
+    for (const p of this.jet) { p.vy += G * dt; p.x += p.vx * dt; p.y += p.vy * dt; }
+    // a parcel that reaches the water is absorbed — that, and only that, is what
+    // raises the level in the vase
+    this.jet = this.jet.filter(p => {
+      const sy = this.surfaceY();
+      if (p.y < sy) return true;
+      this.air -= p.dv;
+      if (p.x > this.cx0 && p.x < this.cx0 + this.cw) {
+        this.fill += p.dv;
+        this.ripple = Math.min(1, this.ripple + 0.14);
+        const hard = Math.min(1, p.vy / 520);        // splash scales with the impact
+        for (let i = 0; i < 2; i++) this.spray.push({ x: p.x, y: sy - 1, vx: (Math.random() - 0.5) * 80 * hard, vy: -(30 + Math.random() * 70) * hard });
+      }
+      return false;
+    });
+    for (const s of this.spray) { s.vy += G * dt; s.x += s.vx * dt; s.y += s.vy * dt; }
+    this.spray = this.spray.filter(s => s.y < this.surfaceY());
+    this.ripple = Math.max(0, this.ripple - dt * 1.5);
     if (this.fill > 1) { buzz(100); FX.shake(3); this.lose(); return; }   // overflow
-    // once you have levelled off (not pouring) and the cup is in the band, hold
-    if (!this.pouring && this.fill >= this.lo && this.fill <= this.hi) { this.hold += dt; if (this.hold >= this.need) this.succeed(); }
+    // once you have levelled off and what you have poured — landed or still
+    // falling — comes to rest in the band, hold it there
+    const settled = this.fill + this.air;
+    if (!this.pouring && settled >= this.lo && settled <= this.hi) { this.hold += dt; if (this.hold >= this.need) this.succeed(); }
     else this.hold = 0;
   }
   draw(g) {
     g.clear();
-    const inBand = this.fill >= this.lo && this.fill <= this.hi;
-    const wc = inBand ? PAL.accent : PAL.ink;               // the water reads yellow once you're in the band
-    // the bottle, tipped by how much you are pouring, draining as it goes
-    const by = TOP + 40, base = ctx.getTransform();
-    ctx.save();
-    ctx.translate(CX, by); ctx.rotate(this.angle);
-    g.rect(-3, -22, 6, 8, PAL.mid); g.rect(-8, -14, 16, 26, PAL.mid);
-    // what's left inside — clipped to the bottle, but drawn level in world space,
-    // so the liquid stays flat while the glass tips over it
-    ctx.beginPath(); ctx.rect(-6, -12, 12, 22); ctx.clip();
-    ctx.setTransform(base);
-    const level = by + 10 - Math.max(0, 1 - this.fill) * 20;
-    g.rect(CX - 20, level, 40, 34, wc);
-    ctx.restore();
-    // the stream — leaves the lip sideways, then arcs down into the vase
+    const settled = this.fill + this.air, inBand = settled >= this.lo && settled <= this.hi;
+    const wc = inBand ? PAL.accent : PAL.ink;        // the water reads yellow once it is on target
     const cw = this.cw, ch = this.ch, cx0 = this.cx0, cy0 = this.cy0, sy = this.surfaceY();
-    if (this.pouring) {
-      const sp = this.spout(), lx = this.landing(), f = Math.floor(this.flow);
-      const drop = Math.max(8, sy - sp.y), n = Math.round(drop / 4);
-      for (let i = 0; i <= n; i++) {
-        // evenly spaced down the fall, so the water reads as one unbroken column
-        const y = sp.y + drop * (i / n);
-        const s = Math.sqrt((y - sp.y) / drop);                   // it picks up speed on the way
-        const x = sp.x + (lx - sp.x) * (1 - (1 - s) * (1 - s));   // out of the lip first
-        const w = 3 - s;                                          // and thins as it stretches
-        const j = Math.sin(s * 9 + this.t * 6) * 0.9;             // a little wobble in the fall
-        // a highlight every few beads, travelling down: the stream visibly flows
-        g.rect(x + j - w / 2, y, w, 5, ((i - f) % 6 + 6) % 6 === 0 ? (inBand ? PAL.ink : PAL.accent) : wc);
-      }
-    }
-    // the vase: water, then the chop on its surface, then the glass over the top
+    // the bottle, pivoting on its lip, with the liquid inside lying level
+    const a = this.angle, base = ctx.getTransform();
+    ctx.save();
+    ctx.translate(CX, this.lipY); ctx.rotate(a);
+    g.rect(-3, 0, 6, 8, PAL.mid);                    // neck, hanging off the mouth
+    g.rect(-8, 8, 16, 26, PAL.mid);                  // body
+    ctx.beginPath(); ctx.rect(-6, 2, 12, 30); ctx.clip();
+    ctx.setTransform(base);
+    const inner = [[-6, 2], [6, 2], [6, 32], [-6, 32]].map(([x, y]) =>
+      ({ x: CX + x * Math.cos(a) - y * Math.sin(a), y: this.lipY + x * Math.sin(a) + y * Math.cos(a) }));
+    // never above the lip: anything higher than that has already run out
+    g.rect(CX - 40, Math.max(levelIn(inner, 1 - settled), this.lip().y), 80, 48, wc);
+    ctx.restore();
+    // the vase, then the water in it
     g.rect(cx0, sy, cw, cy0 + ch - sy, wc);
-    if (this.ripple > 0.02 && this.fill > 0.02) {
+    if (this.ripple > 0.02 && this.fill > 0.02) {    // the surface is still moving
       for (let x = 2; x < cw - 2; x++) {
         const dy = Math.round(Math.sin(x * 0.5 + this.t * 9) * this.ripple * 1.6);
         if (dy) g.rect(cx0 + x, sy + Math.min(dy, 0), 1, Math.abs(dy), dy < 0 ? wc : PAL.bg);
       }
     }
-    for (const d of this.drops) g.rect(d.x - 1, d.y - 1, 2, 2, wc);
+    // where it will come to rest once the water in the air lands
+    if (this.air > 0.004) {
+      const wy = cy0 + ch - Math.min(1, settled) * ch;
+      for (let x = 1; x < cw - 2; x += 4) g.rect(cx0 + x, wy, 2, 1, PAL.mid);
+    }
+    // the stream: each parcel smeared over the ground it covers in one step, so it
+    // stretches and narrows exactly as fast as it speeds up
+    for (const p of this.jet) {
+      const v = Math.hypot(p.vx, p.vy);
+      const h = v * STEP + 1, w = Math.max(1, Math.min(3, 760 / (v + 180)));
+      g.rect(p.x - w / 2, p.y - h / 2, w, h, p.k % 7 === 0 ? (inBand ? PAL.ink : PAL.accent) : wc);
+    }
+    for (const s of this.spray) g.rect(s.x - 1, s.y - 1, 2, 2, wc);
     g.box(cx0, cy0, cw, ch, PAL.ink);
     // target band lines
     g.line(cx0 - 4, cy0 + ch - this.lo * ch, cx0 + cw + 4, cy0 + ch - this.lo * ch, PAL.accent, 1);
     g.line(cx0 - 4, cy0 + ch - this.hi * ch, cx0 + cw + 4, cy0 + ch - this.hi * ch, PAL.accent, 1);
-    const msg = this.fill > 0.92 ? 'STOP!'
+    const msg = settled > 0.92 ? 'STOP!'
               : (inBand && !this.pouring) ? 'HOLD STEADY!'
               : inBand ? 'LEVEL OFF!'
               : (Input.tiltReady ? 'TIP TO POUR' : 'HOLD TO POUR');
-    g.text(msg, CX, TOP + 22, 8, this.fill > 0.92 ? PAL.bad : inBand ? PAL.accent : PAL.mid);
+    g.text(msg, CX, TOP + 22, 8, settled > 0.92 ? PAL.bad : inBand ? PAL.accent : PAL.mid);
   }
 }
 
