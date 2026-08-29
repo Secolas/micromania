@@ -2725,16 +2725,37 @@ class PourCup extends Microgame {
     this.hi = this.byD(0.86, 0.82, 0.78);
     this.hold = 0; this.need = 0.4;
     this.pouring = false;
+    this.angle = 0;            // how far the bottle is tipped, in radians
+    this.flow = 0;             // scrolls the highlights down the stream
+    this.ripple = 0;           // how choppy the surface in the vase is
+    this.drops = [];           // splash thrown up where the stream lands
+    this.cw = 44; this.ch = 70; this.cx0 = CX - 22; this.cy0 = BOT - 70 - 6;
   }
+  // the lip of the bottle, swung round by however far it is tipped
+  spout() { return { x: CX + 22 * Math.sin(this.angle), y: TOP + 40 - 22 * Math.cos(this.angle) }; }
+  // where the stream lands, and the water line it lands on
+  landing() { return CX + Math.sin(this.angle) * 7; }
+  surfaceY() { return this.cy0 + this.ch - Math.min(1, this.fill) * this.ch; }
   update(dt, input) {
     // Tilt to pour, level off to stop — with hysteresis so it is a real gesture,
     // not a knife-edge. Start pouring past ~10 degrees, stop only once you bring
     // it back under ~6; the gap between means hand tremor can't flicker it, and
     // you never have to hold a dead-exact angle. No gyro → hold a touch to pour,
     // release to stop.
-    const t = Input.tiltReady ? Math.abs(input.tiltX) : (input.down ? 0.7 : 0);
+    const raw = Input.tiltReady ? Math.max(-1, Math.min(1, input.tiltX)) : (input.down ? 0.7 : 0);
+    this.angle = raw * 0.7;
+    const t = Math.abs(raw);
     if (t > 0.5) this.pouring = true; else if (t < 0.3) this.pouring = false;
-    if (this.pouring) this.fill += Math.min(1, t) * dt * 0.42;
+    if (this.pouring) this.fill += t * dt * 0.42;
+    // the stream: beads travel down it, and it splashes where it hits the water
+    this.flow += dt * (this.pouring ? 24 : 0);
+    const land = this.landing(), sy = this.surfaceY();
+    if (this.pouring) {
+      this.ripple = Math.min(1, this.ripple + dt * 5);
+      if (Math.random() < 0.6) this.drops.push({ x: land, y: sy, vx: (Math.random() - 0.5) * 50, vy: -34 - Math.random() * 34 });
+    } else this.ripple = Math.max(0, this.ripple - dt * 2.2);
+    for (const d of this.drops) { d.vy += 340 * dt; d.x += d.vx * dt; d.y += d.vy * dt; }
+    this.drops = this.drops.filter(d => d.y < sy && d.x > this.cx0 && d.x < this.cx0 + this.cw);
     if (this.fill > 1) { buzz(100); FX.shake(3); this.lose(); return; }   // overflow
     // once you have levelled off (not pouring) and the cup is in the band, hold
     if (!this.pouring && this.fill >= this.lo && this.fill <= this.hi) { this.hold += dt; if (this.hold >= this.need) this.succeed(); }
@@ -2743,15 +2764,45 @@ class PourCup extends Microgame {
   draw(g) {
     g.clear();
     const inBand = this.fill >= this.lo && this.fill <= this.hi;
-    // the bottle, tipped by how much you are pouring
-    const t = Input.tiltReady ? Input.tiltX : (Input.down ? 0.6 : 0);
-    ctx.save(); ctx.translate(CX, TOP + 40); ctx.rotate(Math.max(-1, Math.min(1, t)) * 0.7);
-    g.rect(-8, -14, 16, 26, PAL.mid); g.rect(-3, -22, 6, 8, PAL.mid);
+    const wc = inBand ? PAL.accent : PAL.ink;               // the water reads yellow once you're in the band
+    // the bottle, tipped by how much you are pouring, draining as it goes
+    const by = TOP + 40, base = ctx.getTransform();
+    ctx.save();
+    ctx.translate(CX, by); ctx.rotate(this.angle);
+    g.rect(-3, -22, 6, 8, PAL.mid); g.rect(-8, -14, 16, 26, PAL.mid);
+    // what's left inside — clipped to the bottle, but drawn level in world space,
+    // so the liquid stays flat while the glass tips over it
+    ctx.beginPath(); ctx.rect(-6, -12, 12, 22); ctx.clip();
+    ctx.setTransform(base);
+    const level = by + 10 - Math.max(0, 1 - this.fill) * 20;
+    g.rect(CX - 20, level, 40, 34, wc);
     ctx.restore();
-    // cup with the target band and the fill
-    const cw = 44, ch = 70, cx0 = CX - cw / 2, cy0 = BOT - ch - 6;
+    // the stream — leaves the lip sideways, then arcs down into the vase
+    const cw = this.cw, ch = this.ch, cx0 = this.cx0, cy0 = this.cy0, sy = this.surfaceY();
+    if (this.pouring) {
+      const sp = this.spout(), lx = this.landing(), f = Math.floor(this.flow);
+      const drop = Math.max(8, sy - sp.y), n = Math.round(drop / 4);
+      for (let i = 0; i <= n; i++) {
+        // evenly spaced down the fall, so the water reads as one unbroken column
+        const y = sp.y + drop * (i / n);
+        const s = Math.sqrt((y - sp.y) / drop);                   // it picks up speed on the way
+        const x = sp.x + (lx - sp.x) * (1 - (1 - s) * (1 - s));   // out of the lip first
+        const w = 3 - s;                                          // and thins as it stretches
+        const j = Math.sin(s * 9 + this.t * 6) * 0.9;             // a little wobble in the fall
+        // a highlight every few beads, travelling down: the stream visibly flows
+        g.rect(x + j - w / 2, y, w, 5, ((i - f) % 6 + 6) % 6 === 0 ? (inBand ? PAL.ink : PAL.accent) : wc);
+      }
+    }
+    // the vase: water, then the chop on its surface, then the glass over the top
+    g.rect(cx0, sy, cw, cy0 + ch - sy, wc);
+    if (this.ripple > 0.02 && this.fill > 0.02) {
+      for (let x = 2; x < cw - 2; x++) {
+        const dy = Math.round(Math.sin(x * 0.5 + this.t * 9) * this.ripple * 1.6);
+        if (dy) g.rect(cx0 + x, sy + Math.min(dy, 0), 1, Math.abs(dy), dy < 0 ? wc : PAL.bg);
+      }
+    }
+    for (const d of this.drops) g.rect(d.x - 1, d.y - 1, 2, 2, wc);
     g.box(cx0, cy0, cw, ch, PAL.ink);
-    g.rect(cx0, cy0 + ch - this.fill * ch, cw, this.fill * ch, inBand ? PAL.accent : PAL.ink);
     // target band lines
     g.line(cx0 - 4, cy0 + ch - this.lo * ch, cx0 + cw + 4, cy0 + ch - this.lo * ch, PAL.accent, 1);
     g.line(cx0 - 4, cy0 + ch - this.hi * ch, cx0 + cw + 4, cy0 + ch - this.hi * ch, PAL.accent, 1);
