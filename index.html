@@ -296,10 +296,83 @@ const Sfx = {
   splash() { this.noise(0.2, 0.05, 350); },
   whoosh() { this.noise(0.14, 0.04, 2200); },
   thud()   { this.slide(140, 60, 0.12, 'sine', 0.12); },
+  fizz(k)  { this.noise(0.07, 0.012 + k * 0.035, 2600 + k * 3400); },     // soda pressure, k 0..1
+  roll(k)  { this.noise(0.05, 0.01 + k * 0.04, 260); },                    // a ball rolling, k = speed 0..1
+  sniff()  { this.noise(0.04, 0.035, 3200); setTimeout(() => this.noise(0.05, 0.03, 3200), 90); },
+  heart()  { this.slide(110, 55, 0.09, 'sine', 0.13); setTimeout(() => this.slide(95, 50, 0.08, 'sine', 0.09), 150); },
+  // tonal, not noise, so a blow game's mic can't take it for another puff
+  poof()   { this.slide(760, 210, 0.13, 'sine', 0.05); },
+  // one note of a rising major scale, step 0..7 — progress you can hear
+  step(i)  { this.blip(523 * [1, 9/8, 5/4, 4/3, 3/2, 5/3, 15/8, 2][Math.max(0, Math.min(7, i))], 0.07, 'square', 0.035); },
+  speedup() { [523, 659, 784, 1047].forEach((f, i) => setTimeout(() => this.blip(f, 0.07, 'square', 0.045), i * 70)); },
   tap()  { this.blip(660, 0.05); },
   win()  { this.blip(880, 0.08); setTimeout(() => this.blip(1320, 0.10), 70); },
   fail() { this.blip(180, 0.20, 'sawtooth'); },
   tick() { this.blip(1200, 0.02, 'square', 0.03); }
+};
+
+// ── BEAT ─────────────────────────────────────────────────────────────────────
+/* A little backing loop: kick, snare, hats and a bouncy bass line, synthesised
+   and scheduled a beat ahead on the audio clock so it never drifts with the
+   frame rate. Its tempo follows Engine.speed, so it quickens with every SPEED
+   UP. It runs through its own gain bus, which mute and stop fade to silence,
+   and it goes quiet during mic games so the speaker can't read as a blow. */
+const Beat = {
+  BPM: 116, VOL: 0.14,          // sits under the sound effects, not over them
+  bus: null, buf: null, on: false, next: 0, i: 0,
+  // eighth-note steps over two bars: bass note (Hz, 0 = rest)
+  BASS: [131, 0, 262, 131, 196, 0, 220, 196,  175, 0, 349, 175, 196, 0, 247, 196],
+  setup() {
+    const ac = Sfx.ac;
+    if (!ac || this.bus) return !!this.bus;
+    this.bus = ac.createGain(); this.bus.gain.value = 0; this.bus.connect(ac.destination);
+    const n = Math.floor(ac.sampleRate * 0.2);
+    this.buf = ac.createBuffer(1, n, ac.sampleRate);
+    const d = this.buf.getChannelData(0);
+    for (let k = 0; k < n; k++) d[k] = Math.random() * 2 - 1;
+    return true;
+  },
+  // called every frame with whether the beat should be heard right now
+  update(want) {
+    if (!this.setup()) return;
+    const ac = Sfx.ac, now = ac.currentTime;
+    want = want && !Sfx.muted;
+    if (want !== this.on) {
+      this.on = want;
+      this.bus.gain.cancelScheduledValues(now);
+      this.bus.gain.setTargetAtTime(want ? this.VOL : 0, now, want ? 0.05 : 0.04);
+      if (want && this.next < now) { this.next = now + 0.05; this.i = 0; }
+    }
+    if (!this.on) return;
+    const step = 30 / (this.BPM * Math.min(2, Engine.speed || 1));   // an eighth note
+    if (this.next < now - 0.2) this.next = now + 0.02;               // tab was asleep: don't burst
+    while (this.next < now + 0.12) { this.play(this.i, this.next, step); this.next += step; this.i = (this.i + 1) % 16; }
+  },
+  play(i, t, step) {
+    if (i % 4 === 0) this.kick(t);
+    if (i % 4 === 2) this.hit(t, 0.09, 0.22, 1400);                   // snare
+    if (i % 2 === 1) this.hit(t, 0.03, 0.07, 7000);                   // hat
+    const f = this.BASS[i];
+    if (f) this.tone(t, f, step * 0.8, 'triangle', 0.16);
+  },
+  kick(t) {
+    const ac = Sfx.ac, o = ac.createOscillator(), gn = ac.createGain();
+    o.frequency.setValueAtTime(130, t); o.frequency.exponentialRampToValueAtTime(45, t + 0.12);
+    gn.gain.setValueAtTime(0.5, t); gn.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
+    o.connect(gn).connect(this.bus); o.start(t); o.stop(t + 0.17);
+  },
+  hit(t, dur, vol, hp) {
+    const ac = Sfx.ac, src = ac.createBufferSource(), f = ac.createBiquadFilter(), gn = ac.createGain();
+    src.buffer = this.buf; f.type = 'highpass'; f.frequency.value = hp;
+    gn.gain.setValueAtTime(vol, t); gn.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    src.connect(f).connect(gn).connect(this.bus); src.start(t); src.stop(t + dur + 0.01);
+  },
+  tone(t, freq, dur, type, vol) {
+    const ac = Sfx.ac, o = ac.createOscillator(), gn = ac.createGain();
+    o.type = type; o.frequency.value = freq;
+    gn.gain.setValueAtTime(vol, t); gn.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(gn).connect(this.bus); o.start(t); o.stop(t + dur + 0.01);
+  }
 };
 
 // ── INPUT ────────────────────────────────────────────────────────────────────
@@ -1404,8 +1477,11 @@ class SodaShake extends Microgame {
     // buzz continuously while the player is actually shaking, harder the harder
     // they shake — re-fired on a short cadence so the motor stays humming
     this.buzzT -= dt;
-    if (input.shake > 0.15 && this.buzzT <= 0) { buzz(Math.round(25 + input.shake * 45)); this.buzzT = 0.05; }
-    if (this.fill >= this.need) this.succeed();
+    if (input.shake > 0.15 && this.buzzT <= 0) {
+      buzz(Math.round(25 + input.shake * 45)); this.buzzT = 0.05;
+      Sfx.fizz(Math.min(1, this.fill / this.need));   // the fizz builds with the pressure
+    }
+    if (this.fill >= this.need) { Sfx.splash(); this.succeed(); }
   }
   draw(g) {
     g.clear();
@@ -1709,6 +1785,7 @@ class FollowDot extends Microgame {
     this.vx = Math.cos(a) * sp; this.vy = Math.sin(a) * sp;
     this.r = this.byD(20, 17, 14);
     this.off = 0; this.grace = 0.7;     // time to get your finger there
+    this.pingT = 0; this.warned = false;
     this.dx = CX; this.dy = BOT - 20; this.face = 1;   // the shiba chasing the dot
   }
   update(dt, input) {
@@ -1723,6 +1800,10 @@ class FollowDot extends Microgame {
     if (this.grace > 0) return;
     const on = input.down && Math.hypot(input.x - this.x, input.y - this.y) < this.r;
     this.off = on ? 0 : this.off + dt;
+    // a soft ping while you're on it, one warning blip the moment you slip off
+    this.pingT -= dt;
+    if (on) { this.warned = false; if (this.pingT <= 0) { Sfx.blip(1320, 0.04, 'sine', 0.03); this.pingT = 0.35; } }
+    else if (this.off > 0.12 && !this.warned) { this.warned = true; Sfx.blip(330, 0.08, 'square', 0.04); }
     if (this.off > 0.42) this.lose();
   }
   draw(g) {
@@ -2657,6 +2738,7 @@ class MoveCam extends Microgame {
     this.paused = Input.camPending;
     this.wait = 0;
     this.flash = 0;
+    this.note = 0;
   }
   update(dt, input) {
     if (this.paused) {
@@ -2665,6 +2747,8 @@ class MoveCam extends Microgame {
       return;
     }
     this.fill += input.motion * dt * 1.4;
+    const n = Math.floor(Math.min(1, this.fill / this.need) * 8);   // a rising scale as the meter fills
+    if (n > this.note) { this.note = n; Sfx.step(n - 1); }
     if (this.fill >= this.need && !this.finished) {
       this.flash = 1;
       this.succeed();
@@ -2825,6 +2909,7 @@ class FreezeStatue extends Microgame {
     this.hp = 1;                               // wobble meter — empty and you're caught
     this.wob = 0;
     this.cracks = [];
+    this.beatT = 0.3;
   }
   update(dt, input) {
     if (this.paused) { this.wait += dt; if (!Input.camPending || this.wait > 1.5) this.paused = false; return; }
@@ -2857,9 +2942,12 @@ class FreezeStatue extends Microgame {
       this.hp -= (0.8 + over * 12) * dt;
       this.wob = Math.min(1, this.wob + over * dt * 6);
       const want = Math.min(6, 6 - Math.ceil(this.hp * 6));
+      if (this.cracks.length < want) Sfx.crunch();   // the statue cracks as you move
       while (this.cracks.length < want) this.cracks.push({ a: Math.random() * 6.2832, r: 17 + Math.random() * 5, l: 7 + Math.random() * 12 });
       if (this.hp <= 0) { FX.shake(4); this.lose(); return; }
     } else {
+      this.beatT -= dt;                               // a slow heartbeat while you hold still
+      if (this.beatT <= 0) { Sfx.heart(); this.beatT = 0.9; }
       this.wob = Math.max(0, this.wob - dt * 2);
       this.hp = Math.min(1, this.hp + dt * 0.04);   // very slow refill — stillness is the only real recovery
     }
@@ -3021,6 +3109,7 @@ class HideLens extends Microgame {
     this.base = 0.06;
     this.need = this.byD(0.7, 1.0, 1.3);       // seconds of darkness needed
     this.held = 0; this.cover = 0; this.dark = false;
+    this.sniffT = 0.2; this.note = 0;
   }
   update(dt, input) {
     if (this.paused) { this.wait += dt; if (!Input.camPending || this.wait > 1.5) this.paused = false; return; }
@@ -3030,10 +3119,17 @@ class HideLens extends Microgame {
     if (input.bright > this.base) this.base = input.bright;   // brightest seen wins
     this.cover = Math.max(0, Math.min(1, 1 - input.bright / this.base));
     this.dark = input.bright < this.base * 0.55;
+    this.sniffT -= dt;
     if (this.dark) {
       this.held += dt;
+      const n = Math.floor(this.held / this.need * 4);   // hidden: a quiet rising count
+      if (n > this.note && n < 4) { this.note = n; Sfx.step(n * 2); }
       if (this.held >= this.need && !this.finished) { this.succeed(); }
-    } else this.held = Math.max(0, this.held - dt * 0.6);
+    } else {
+      this.held = Math.max(0, this.held - dt * 0.6);
+      this.note = Math.floor(this.held / this.need * 4);
+      if (this.sniffT <= 0) { Sfx.sniff(); this.sniffT = 0.75; }   // the shiba sniffing for you
+    }
   }
   draw(g) {
     g.clear();
@@ -3268,6 +3364,7 @@ class BalanceBall extends Microgame {
     this.pos = 0; this.vel = 0; this.tilt = 0;
     this.grav = this.byD(1.6, 2.1, 2.6);
     this.half = 62;
+    this.rollT = 0; this.edgeT = 0;
   }
   update(dt, input) {
     // gyro tilt, or drag left/right, or ease back to flat
@@ -3277,6 +3374,12 @@ class BalanceBall extends Microgame {
     this.vel += this.tilt * this.grav * dt;
     this.vel *= 0.99;
     this.pos += this.vel * dt;
+    // the ball rumbles as it rolls, and beeps faster the nearer it gets to the edge
+    this.rollT -= dt; this.edgeT -= dt;
+    const sp = Math.min(1, Math.abs(this.vel) * 1.5);
+    if (sp > 0.08 && this.rollT <= 0) { Sfx.roll(sp); this.rollT = 0.05; }
+    const edge = Math.abs(this.pos);
+    if (edge > 0.65 && this.edgeT <= 0) { Sfx.blip(990, 0.04, 'square', 0.03); this.edgeT = 0.5 - (edge - 0.65) * 1.1; }
     if (Math.abs(this.pos) >= 1) { buzz(80); FX.shake(4); this.lose(); }
   }
   draw(g) {
@@ -3425,7 +3528,13 @@ class BlowCandles extends Microgame {
     if (this.paused) { this.wait += dt; if (!Input.micPending || this.wait > 1.2) this.paused = false; return; }
     if (input.blow > 0.3) {
       // snuff the candles left-to-right so progress is visible
-      for (let i = 0; i < this.n; i++) { if (this.lit[i] > 0) { this.lit[i] = Math.max(0, this.lit[i] - input.blow * dt * 1.6); break; } }
+      for (let i = 0; i < this.n; i++) {
+        if (this.lit[i] > 0) {
+          this.lit[i] = Math.max(0, this.lit[i] - input.blow * dt * 1.6);
+          if (this.lit[i] <= 0) Sfx.poof();   // each candle goes out with a little fwip
+          break;
+        }
+      }
     }
     if (this.lit.every(l => l <= 0) && !this.finished) this.succeed();
   }
@@ -4290,6 +4399,16 @@ const Engine = {
     }
   },
 
+  // the backing beat kicks in on GO and runs until GAME OVER, but not on menus or in
+  // the shop, and drops out while a mic game listens for your blow
+  beatOn() {
+    const s = this.state;
+    if (!['STAGE', 'PROMPT', 'PLAYING', 'RESULT', 'PHOTO', 'SPEEDUP', 'CLEAR'].includes(s)) return false;
+    const how = this.game && this.game.meta.how;
+    if ((s === 'PROMPT' || s === 'PLAYING') && how && how.mic && (Input.micReady || Input.micPending)) return false;
+    return true;
+  },
+
   // WarioWare Snapped!-style: no posing. While a photo game is played the
   // camera keeps the frame with the most action in it — the biggest wave,
   // shake, lean or dance move, the hardest blow, or for FREEZE the stillest
@@ -4438,7 +4557,7 @@ const Engine = {
     if (this.lives <= 0) { this.state = 'GAMEOVER'; this.timer = 0.8; return; }
     if (this.round % this.SPEEDUP_EVERY === 0) {
       this.speed = Math.min(2.6, this.speed + 0.12);
-      this.state = 'SPEEDUP'; this.timer = 0.9;
+      this.state = 'SPEEDUP'; this.timer = 0.9; Sfx.speedup();
     } else { this.startRound(); }
   },
 
@@ -4688,6 +4807,7 @@ function frame(t) {
       FX.update(STEP);
       acc -= STEP;
     }
+    Beat.update(Engine.beatOn());
     Engine.draw();
   }
   requestAnimationFrame(frame);

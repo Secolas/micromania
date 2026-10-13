@@ -87,7 +87,7 @@ Set it with `how` in a game's meta.
 Games play in a place, not on black: a game names a backdrop with `env` in its
 meta — `lawn`, `sky`, `bath`, `snow`, `field@Y` (horizon/ground at Y), `room@Y`
 or `wall@Y` (floor at Y), and three bright ones: `sunny@Y` (PUFF), `beach@Y`
-(FETCH) and `park@Y` (THROW). They use a small set of dark, muted scenery colours
+(FETCH) and `park@Y` (LEAP). They use a small set of dark, muted scenery colours
 (`SCENE`) so the sprites and play colours stay on top; each is painted once and
 cached. Camera games keep the plain dark screen so the live view stays the focus.
 
@@ -98,7 +98,17 @@ Once you have met PAT! or TAP!, about one time in seven it comes back as
 A game opts in with `this.fakeOut(chance, prompt, how)` in `init()`.
 
 `Sfx` has a small kit beyond the blips — `bark`, `growl`, `boop`, `squeak`,
-`crunch`, `chomp`, `splash`, `whoosh`, `thud` — all synthesised, no samples.
+`crunch`, `chomp`, `splash`, `whoosh`, `thud`, `fizz`, `roll`, `sniff`,
+`heart`, `poof`, `step` (a rising scale for progress) and the SPEED UP
+fanfare — all synthesised, no samples. Every game makes a sound while you play:
+the sensor games say what is happening (the soda fizzes harder, the statue's
+heartbeat, a crack when you twitch, the shiba sniffing for you while HIDE's lens
+is uncovered).
+
+`Beat` is the backing loop — kick, snare, hats and a bass line, scheduled
+ahead on the audio clock. It starts on GO, speeds up with `Engine.speed`, is
+off on menus and in the shop, follows mute, and drops out while a mic game is
+listening so the speaker can't count as a blow.
 
 Props are drawn in code in the five palette colours (`g.bone`, `g.choc`,
 `g.paw`, `g.doghouse`, `g.tennis`, `g.pot`, `g.car`, `g.fence`), so new scenes
