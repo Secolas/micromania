@@ -133,9 +133,11 @@ const ART = {
         duration      seconds at speed 1.0 (engine divides by current speed)
         minDuration   floor on the round length, for games speed can't shrink
         winOnTimeout  true = survive-the-clock game (default false)
-        photo         true = a win poses for a photo (live preview, 3-2-1); a
-                      game's stampPhoto(canvas) can draw on it (PhotoFX)
+        photo         true = the win shows an action shot: the frame with the most
+                      movement (or blow, or stillness for 'still') caught while
+                      playing; a game's stampPhoto(canvas) can draw on it (PhotoFX)
         photoCap      caption printed under that photo (default 'NICE MOVES!')
+        env           backdrop: 'lawn' 'sky' 'bath' 'snow' 'field@Y' 'room@Y' (see Env)
         cam           true = played with the camera: the shelf shows the live
                       view while it runs (a game can veto it with a usesCam getter)
         how           how to play, shown under the prompt ("TAP THE DOG"; '\n'
@@ -156,7 +158,9 @@ const ART = {
    Five colours only (PAL). Keep new art inside that palette.
 ============================================================================= */
 
-const DEBUG = false;
+// The DEV test menu (every game, a difficulty picker, LOOP) and the live sensor
+// readouts. Off for players; add ?dev to the address to turn it on.
+const DEBUG = /[?&]dev\b/.test(location.search);
 
 // ── CONFIG ───────────────────────────────────────────────────────────────────
 const W = 180, H = 320;        // virtual pixels
@@ -745,7 +749,13 @@ try { FX.reduce = matchMedia('(prefers-reduced-motion: reduce)').matches; } catc
 
 // ── RENDERER ─────────────────────────────────────────────────────────────────
 const g = {
-  clear(c = PAL.bg) { ctx.fillStyle = c; ctx.fillRect(0, 0, W, H); },
+  // With no colour, inside a microgame that has a backdrop, this paints the
+  // backdrop instead (see Env) — so every game's own g.clear() picks it up.
+  clear(c) {
+    if (c === undefined && this.env) { Env.paint(this.env); return; }
+    ctx.fillStyle = c || PAL.bg; ctx.fillRect(0, 0, W, H);
+  },
+  env: null,
   rect(x, y, w, h, c) { ctx.fillStyle = c; ctx.fillRect(Math.round(x), Math.round(y), Math.round(w), Math.round(h)); },
   box(x, y, w, h, c, lw = 1) { ctx.strokeStyle = c; ctx.lineWidth = lw; ctx.strokeRect(Math.round(x) + 0.5, Math.round(y) + 0.5, Math.round(w) - 1, Math.round(h) - 1); },
   cRect(x, y, w, h, c) { this.rect(x - w / 2, y - h / 2, w, h, c); },
@@ -972,6 +982,198 @@ const PhotoFX = {
   }
 };
 
+
+/* ── SCENERY ──────────────────────────────────────────────────────────────────
+   Backdrops behind the microgames, so each one reads as a place — a lawn, a
+   living room, the sky — rather than shapes on black. They use a small extra
+   palette of dark, muted tones, so the sprites and the five play colours still
+   pop in front of them; the HUD, prompts and shelf stay black.
+   A game picks one with `env` in its meta:
+     'lawn'  grass seen from above          'sky'   dusk sky, drifting clouds
+     'bath'  bathroom tiles                 'snow'  a night ski slope
+     'field@Y'  side view: sky down to a horizon, grass from the ground at Y
+     'room@Y'   a living room: wallpaper down to a floor at Y ('wall@Y' is the same)
+     'sunny@Y'  a bright day: blue sky, the sun, a flowery meadow from Y
+     'beach@Y'  a beach from above: sea down to the waterline at Y, then sand
+     'park@Y'   the sunny day with a row of trees and a bench, grass from Y
+   Each is painted once into a 180x320 canvas and blitted after that, so it
+   costs nothing per frame; only the sky's clouds are drawn live.
+─────────────────────────────────────────────────────────────────────────────── */
+const SCENE = {
+  sky0: '#131c31', sky1: '#27395b', cloud: '#34496f', star: '#4d5f82',
+  hill: '#1d3526', grass: '#284b2f', grassHi: '#386840', grassLo: '#203e26',
+  wall: '#33262d', wallHi: '#3b2c34', skirt: '#24191a', floor: '#45301f', floorLo: '#35251a',
+  tile: '#1b303a', tileHi: '#21394a', grout: '#2b4655',
+  snow: '#24324a', snowHi: '#344660', pine: '#1a2b33',
+  // a bright day, for the one game that should feel like one
+  day0: '#3b7cc4', day1: '#6aa5dc', dayCloud: '#e6f0fa', dayHill: '#3f8a47',
+  meadow: '#4a9a4f', meadowHi: '#62b466', stem: '#3d7a35',
+  // the beach, for FETCH
+  sea0: '#2a74ad', sea1: '#3a8cc9', wetSand: '#b99460', sand: '#dcc08a', sandLo: '#c8a86e',
+  // the park, for THROW
+  leaf: '#2f7a3a', leafHi: '#3f9449', trunk: '#6b4a2e',
+};
+const Env = {
+  cache: {},
+  paint(spec) {
+    let c = this.cache[spec];
+    if (!c) c = this.cache[spec] = this.build(spec);
+    ctx.fillStyle = PAL.bg; ctx.fillRect(0, 0, W, H);
+    ctx.drawImage(c, 0, 0, W, H);
+    if (spec === 'sky') this.clouds();
+    if (spec.startsWith('sunny') || spec.startsWith('park')) this.dayClouds();
+    if (spec.startsWith('beach')) this.surf(+spec.split('@')[1]);
+  },
+  // the waterline washing in and out, and the sun glinting off the sea
+  surf(y) {
+    const t = Engine.time, tide = Math.sin(t * 0.9) * 3;
+    ctx.fillStyle = PAL.ink;
+    for (let x = 0; x < W; x += 3) ctx.fillRect(x, Math.round(y + tide + Math.sin(x / 9 + t * 2) * 1.5), 3, 2);
+    ctx.globalAlpha = 0.35;
+    ctx.fillRect(0, Math.round(y + tide + 3), W, 1);
+    ctx.globalAlpha = 1;
+    for (let i = 0; i < 6; i++) {
+      if ((Math.floor(t * 3) + i) % 4) continue;
+      ctx.fillStyle = PAL.accent; ctx.fillRect((i * 37 + 11) % W, TOP + 6 + (i * 13) % Math.max(4, y - TOP - 10), 2, 1);
+    }
+  },
+  // fat white clouds, drifting slowly across a sunny sky
+  dayClouds() {
+    const t = Engine.time;
+    for (let i = 0; i < 3; i++) {
+      const x = ((i * 83 + t * (3 + i * 2)) % (W + 70)) - 35, y = TOP + 22 + i * 30;
+      ctx.fillStyle = SCENE.dayCloud;
+      ctx.fillRect(Math.round(x - 14), Math.round(y), 28, 6);
+      ctx.fillRect(Math.round(x - 9), Math.round(y - 4), 14, 4);
+      ctx.fillRect(Math.round(x + 1), Math.round(y - 7), 10, 7);
+    }
+  },
+  // a few clouds drifting across the sky, drawn live so they move
+  clouds() {
+    const t = Engine.time;
+    for (let i = 0; i < 4; i++) {
+      const sp = 4 + i * 3, x = ((i * 67 + t * sp) % (W + 60)) - 30, y = TOP + 20 + i * 58;
+      this.cloud(ctx, x, y, 18 + (i % 2) * 8);
+    }
+  },
+  cloud(x, cx, cy, w) {
+    x.fillStyle = SCENE.cloud;
+    x.fillRect(Math.round(cx - w / 2), Math.round(cy), Math.round(w), 4);
+    x.fillRect(Math.round(cx - w / 3), Math.round(cy - 3), Math.round(w * 0.45), 3);
+    x.fillRect(Math.round(cx), Math.round(cy - 5), Math.round(w * 0.3), 5);
+  },
+  build(spec) {
+    const c = document.createElement('canvas'); c.width = W; c.height = H;
+    const x = c.getContext('2d');
+    let seed = 1234;                                   // same scene every time
+    const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    const R = (a, b, w, h, col) => { x.fillStyle = col; x.fillRect(Math.round(a), Math.round(b), Math.round(w), Math.round(h)); };
+    const mix = (a, b, k) => {                         // blend two #rrggbb colours
+      const p = s => [1, 3, 5].map(i => parseInt(s.slice(i, i + 2), 16));
+      const A = p(a), B = p(b);
+      return '#' + A.map((v, i) => Math.round(v + (B[i] - v) * k).toString(16).padStart(2, '0')).join('');
+    };
+    // dusk sky in flat bands, as pixel art does gradients
+    const sky = (y0, y1) => {
+      const bands = 8, h = (y1 - y0) / bands;
+      for (let i = 0; i < bands; i++) R(0, y0 + i * h, W, h + 1, mix(SCENE.sky0, SCENE.sky1, i / (bands - 1)));
+      for (let i = 0; i < 14; i++) R(rnd() * W, y0 + rnd() * (y1 - y0) * 0.5, 1, 1, SCENE.star);
+    };
+    const tufts = (y0, y1, n) => {
+      for (let i = 0; i < n; i++) {
+        const tx = rnd() * W, ty = y0 + rnd() * (y1 - y0);
+        R(tx, ty, 1, 2, SCENE.grassHi); R(tx + 2, ty - 1, 1, 3, SCENE.grassHi);
+      }
+    };
+    const [kind, arg] = spec.split('@');
+    const y = arg ? +arg : BOT;
+    if (kind === 'lawn') {
+      // mown stripes, darker patches, tufts and the odd flower
+      for (let i = 0; i < W; i += 30) R(i, TOP, 15, BOT - TOP, SCENE.grass), R(i + 15, TOP, 15, BOT - TOP, SCENE.grassLo);
+      tufts(TOP, BOT, 70);
+      for (let i = 0; i < 7; i++) { const fx = rnd() * W, fy = TOP + rnd() * (BOT - TOP); R(fx, fy, 2, 2, i % 2 ? PAL.accent : PAL.ink); }
+    } else if (kind === 'sky') {
+      sky(TOP, BOT);
+    } else if (kind === 'field') {
+      sky(TOP, y);
+      // rolling hills on the horizon, then the grass
+      for (let i = 0; i < W; i++) { const hh = 6 + Math.sin(i / 17) * 4 + Math.sin(i / 7) * 2; R(i, y - hh, 1, hh, SCENE.hill); }
+      this.cloud(x, 40, TOP + 26, 26); this.cloud(x, 132, TOP + 44, 20);
+      R(0, y, W, BOT - y, SCENE.grass);
+      R(0, y, W, 2, SCENE.grassHi);
+      tufts(y + 3, BOT, Math.max(4, (BOT - y) / 2));
+    } else if (kind === 'room' || kind === 'wall') {
+      // striped wallpaper, skirting, floorboards. (A little framed picture
+      // used to hang here; at this size it read as a stray UI box.)
+      for (let i = 0; i < W; i += 12) R(i, TOP, 6, y - TOP, SCENE.wall), R(i + 6, TOP, 6, y - TOP, SCENE.wallHi);
+      R(0, y - 4, W, 4, SCENE.skirt);
+      R(0, y, W, BOT - y, SCENE.floor);
+      for (let fy = y + 7, row = 0; fy < BOT; fy += 7, row++) {
+        R(0, fy, W, 1, SCENE.floorLo);
+        for (let fx = (row % 2) * 22; fx < W; fx += 44) R(fx, fy - 7, 1, 7, SCENE.floorLo);
+      }
+    } else if (kind === 'sunny' || kind === 'park') {
+      const bands = 8, h = (y - TOP) / bands;
+      for (let i = 0; i < bands; i++) R(0, TOP + i * h, W, h + 1, mix(SCENE.day0, SCENE.day1, i / (bands - 1)));
+      // the sun, rays and all, in the top corner
+      const sx = W - 30, sy = TOP + 28;
+      x.fillStyle = PAL.accent;
+      for (let k = 0; k < 8; k++) {
+        const a = k * Math.PI / 4;
+        R(sx + Math.cos(a) * 17 - 1.5, sy + Math.sin(a) * 17 - 1.5, 3, 3, PAL.accent);
+        R(sx + Math.cos(a) * 21 - 1, sy + Math.sin(a) * 21 - 1, 2, 2, PAL.accent);
+      }
+      x.beginPath(); x.arc(sx, sy, 12, 0, 6.2832); x.fill();
+      for (let i = 0; i < W; i++) { const hh = 7 + Math.sin(i / 19) * 4 + Math.sin(i / 6) * 1.5; R(i, y - hh, 1, hh, SCENE.dayHill); }
+      if (kind === 'park') {
+        // a row of round park trees along the far side, and a bench
+        for (const [tx, s] of [[14, 15], [44, 11], [96, 13], [128, 10], [166, 14]]) {
+          R(tx - 2, y - s - 6, 4, s + 6, SCENE.trunk);
+          x.fillStyle = SCENE.leaf; x.beginPath(); x.arc(tx, y - s - 10, s, 0, 6.2832); x.fill();
+          x.fillStyle = SCENE.leafHi; x.beginPath(); x.arc(tx - s * 0.3, y - s - 13, s * 0.5, 0, 6.2832); x.fill();
+        }
+        R(64, y - 9, 22, 2, SCENE.trunk); R(64, y - 5, 22, 2, SCENE.trunk);      // bench slats
+        R(66, y - 9, 2, 9, PAL.bg); R(82, y - 9, 2, 9, PAL.bg);                  // its legs
+      }
+      R(0, y, W, BOT - y, SCENE.meadow);
+      R(0, y, W, 2, SCENE.meadowHi);
+      for (let i = 0; i < 18; i++) {                  // tufts and little flowers
+        const tx = rnd() * W, ty = y + 3 + rnd() * (BOT - y - 5);
+        R(tx, ty, 1, 2, SCENE.meadowHi); R(tx + 2, ty - 1, 1, 3, SCENE.meadowHi);
+        if (i % 3 === 0) R(tx + 4, ty - 1, 2, 2, [PAL.accent, PAL.ink, PAL.bad][i % 9 / 3 | 0]);
+      }
+    } else if (kind === 'beach') {
+      R(0, TOP, W, y - TOP, SCENE.sea0);
+      for (let i = 0; i < 22; i++) R(rnd() * W, TOP + rnd() * (y - TOP - 3), 6 + rnd() * 10, 1, SCENE.sea1);   // swell
+      R(0, y, W, 46, SCENE.wetSand);
+      R(0, y + 46, W, BOT - y - 46, SCENE.sand);
+      for (let i = 0; i < 60; i++) R(rnd() * W, y + 48 + rnd() * (BOT - y - 50), 1, 1, SCENE.sandLo);     // grain
+      for (let i = 0; i < 5; i++) { const sx = 50 + rnd() * 80, sy = y + 60 + rnd() * 90; R(sx, sy, 3, 2, PAL.ink); R(sx + 1, sy - 1, 1, 1, PAL.bad); }   // shells
+      // a striped towel, and a beach umbrella seen from above
+      for (let i = 0; i < 8; i++) R(10, BOT - 72 + i * 6, 28, 6, i % 2 ? PAL.ink : PAL.bad);
+      const ux = W - 30, uy = BOT - 62;
+      for (let k = 0; k < 8; k++) {
+        x.fillStyle = k % 2 ? PAL.ink : PAL.bad;
+        x.beginPath(); x.moveTo(ux, uy); x.arc(ux, uy, 20, k * Math.PI / 4, (k + 1) * Math.PI / 4); x.closePath(); x.fill();
+      }
+      R(ux - 2, uy - 2, 4, 4, PAL.accent);
+    } else if (kind === 'bath') {
+      for (let ty = TOP; ty < BOT; ty += 16) for (let tx = 0; tx < W; tx += 16) {
+        R(tx, ty, 16, 16, SCENE.grout); R(tx + 1, ty + 1, 14, 14, ((tx + ty) / 16) % 2 ? SCENE.tile : SCENE.tileHi);
+      }
+    } else if (kind === 'snow') {
+      R(0, TOP, W, BOT - TOP, SCENE.snow);
+      for (let i = 0; i < 26; i++) { const sx = rnd() * W, sy = TOP + rnd() * (BOT - TOP); R(sx, sy, 10 + rnd() * 16, 1, SCENE.snowHi); }
+      // pines down both edges of the run
+      for (let ty = TOP + 10; ty < BOT; ty += 34) for (const tx of [6, W - 6]) {
+        const ox = tx + (rnd() - 0.5) * 6;
+        for (let k = 0; k < 4; k++) R(ox - 1 - k * 1.5, ty + k * 3, 3 + k * 3, 3, SCENE.pine);
+      }
+    }
+    return c;
+  }
+};
+
 // ── MICROGAME BASE ───────────────────────────────────────────────────────────
 class Microgame {
   static meta = { id: 'base', prompt: 'DO IT!', hint: 'tap', duration: 3.5, winOnTimeout: false };
@@ -1005,7 +1207,7 @@ class Microgame {
 
 // 1. TAP — tap the bouncing shiba (sometimes a DON'T TAP! fake-out)
 class TapBug extends Microgame {
-  static meta = { id: 'tap', prompt: 'TAP!', hint: 'tap', duration: 3.2,
+  static meta = { id: 'tap', env: 'lawn', prompt: 'TAP!', hint: 'tap', duration: 3.2,
     how: 'TAP THE DOG' };
   init() {
     this.miss = 0;
@@ -1037,7 +1239,7 @@ class TapBug extends Microgame {
 
 // 2. DRAG — catch every falling treat
 class CatchCoin extends Microgame {
-  static meta = { id: 'catch', prompt: 'CATCH!', hint: 'drag', duration: 4.0,
+  static meta = { id: 'catch', env: 'lawn', prompt: 'CATCH!', hint: 'drag', duration: 4.0,
     how: 'DRAG THE SHIBA\nCATCH EVERY TREAT' };
   init() {
     this.bx = CX;
@@ -1100,7 +1302,7 @@ class CatchCoin extends Microgame {
 
 // 3. RUB — scrub the mud off a muddy shiba
 class RubClean extends Microgame {
-  static meta = { id: 'rub', prompt: 'RUB!', hint: 'rub', duration: 3.6,
+  static meta = { id: 'rub', env: 'bath', prompt: 'RUB!', hint: 'rub', duration: 3.6,
     how: 'RUB OFF\nALL THE MUD' };
   init() {
     // mud splats over the shiba; each one fades as you scrub over it
@@ -1149,7 +1351,7 @@ class RubClean extends Microgame {
 
 // 4. SWIPE UP — pull the tissues out
 class PullTissue extends Microgame {
-  static meta = { id: 'pull', prompt: 'PULL DOWN!', hint: 'swipe', duration: 4.0,
+  static meta = { id: 'pull', env: 'room@250', prompt: 'PULL DOWN!', hint: 'swipe', duration: 4.0,
     how: 'SWIPE DOWN TO\nPULL A TISSUE' };
   init() {
     this.pulled = 0; this.need = this.byD(2, 3, 4);
@@ -1194,7 +1396,7 @@ class PullTissue extends Microgame {
 
 // 5. SHAKE — build up pressure (accelerometer or frantic wiggling)
 class SodaShake extends Microgame {
-  static meta = { id: 'shake', prompt: 'SHAKE!', hint: 'shake', duration: 3.6,
+  static meta = { id: 'shake', env: 'room@196', prompt: 'SHAKE!', hint: 'shake', duration: 3.6,
     how: { motion: 'SHAKE YOUR PHONE\nHARD!', touch: 'WIGGLE YOUR FINGER\nFAST' } };
   init() { this.fill = 0; this.need = this.byD(1.4, 1.8, 2.3); this.buzzT = 0; }
   update(dt, input) {
@@ -1231,7 +1433,7 @@ class SodaShake extends Microgame {
 
 // 6. SWIPE — follow the arrow, in order
 class SwipeArrow extends Microgame {
-  static meta = { id: 'swipe', prompt: 'SWIPE!', hint: 'swipe', duration: 4.0,
+  static meta = { id: 'swipe', env: 'field@190', prompt: 'SWIPE!', hint: 'swipe', duration: 4.0,
     how: 'SWIPE THE WAY\nEACH ARROW POINTS' };
   init() {
     const dirs = ['up', 'down', 'left', 'right'];
@@ -1272,7 +1474,7 @@ class SwipeArrow extends Microgame {
 
 // 7. PAT — pat the sad shiba until it's cheering (tap fast)
 class PatShiba extends Microgame {
-  static meta = { id: 'pat', prompt: 'PAT!', hint: 'mash', duration: 3.6,
+  static meta = { id: 'pat', env: 'room@206', prompt: 'PAT!', hint: 'mash', duration: 3.6,
     how: 'TAP THE SHIBA\nTO CHEER IT UP' };
   init() {
     this.count = 0; this.need = this.byD(6, 10, 14); this.squish = 0; this.pops = []; this.snap = 0;
@@ -1325,7 +1527,7 @@ class PatShiba extends Microgame {
 
 // 8. CHARGE — hold to charge a jump, release at the couch's height
 class HoldRelease extends Microgame {
-  static meta = { id: 'hold', prompt: 'CHARGE!', hint: 'hold', duration: 4.2,
+  static meta = { id: 'hold', env: 'room@217', prompt: 'CHARGE!', hint: 'hold', duration: 4.2,
     how: 'HOLD TO CHARGE A JUMP\nLET GO AT THE COUCH' };
   init() {
     this.p = 0; this.dir = 1;
@@ -1370,7 +1572,7 @@ class HoldRelease extends Microgame {
 
 // 9. DODGE — survive the falling flower pots (boss-capable)
 class Dodge extends Microgame {
-  static meta = { id: 'dodge', prompt: 'DODGE!', hint: 'drag', duration: 5.0, winOnTimeout: true,
+  static meta = { id: 'dodge', env: 'lawn', prompt: 'DODGE!', hint: 'drag', duration: 5.0, winOnTimeout: true,
     how: 'DRAG TO DODGE\nTHE FALLING POTS' };
   init() {
     this.px = CX; this.py = BOT - 26;
@@ -1418,7 +1620,7 @@ class Dodge extends Microgame {
 
 // 10. SHH — don't wake the sleeping shiba. The classic do-nothing trap.
 class DontTap extends Microgame {
-  static meta = { id: 'dont', prompt: 'SHH!', hint: 'wait', duration: 3.0, winOnTimeout: true,
+  static meta = { id: 'dont', env: 'room@205', prompt: 'SHH!', hint: 'wait', duration: 3.0, winOnTimeout: true,
     how: "IT'S SLEEPING.\nDON'T WAKE IT!" };
   init() { this.woke = 0; }
   update(dt, input) {
@@ -1444,46 +1646,61 @@ class DontTap extends Microgame {
   }
 }
 
-// 11. THROW — tap when the running shiba is under the frisbee zone
+// 11. LEAP — tap to jump when the running shiba is under the hanging frisbee
 class StopBar extends Microgame {
-  static meta = { id: 'stop', prompt: 'THROW!', hint: 'tap', duration: 3.4,
-    how: 'TAP TO THROW WHEN THE\nSHIBA IS IN THE ZONE' };
+  static meta = { id: 'stop', env: 'park@177', prompt: 'LEAP!', hint: 'tap', duration: 3.6,
+    how: 'TAP TO JUMP WHEN THE\nSHIBA IS UNDER THE FRISBEE' };
   init() {
     this.p = Math.random(); this.dir = Math.random() < 0.5 ? 1 : -1;
-    // >= 2.4 units of travel guarantees the runner crosses the zone from any
-    // starting point, however short the round has become.
+    // >= 2.4 units of travel guarantees the runner passes under the frisbee
+    // from any starting point, however short the round has become.
     this.speed = Math.max(this.byD(0.75, 1.05, 1.45), 2.4 / this.timeLimit);
-    this.band = this.byD(0.26, 0.18, 0.12);
-    this.at = 0.28 + Math.random() * 0.44;
+    this.band = this.byD(0.26, 0.18, 0.12);   // how close counts as "under it"
+    this.at = 0.2 + Math.random() * 0.6;      // where the frisbee hangs
+    this.jump = -1;                           // seconds into the jump, -1 = running
+    this.caught = false;
   }
   update(dt, input) {
+    if (this.jump >= 0) {                     // mid-leap: play it out, then score it
+      this.jump += dt;
+      if (this.jump > 0.5) { if (this.caught) this.succeed(); else this.lose(); }
+      return;
+    }
     this.p += this.dir * this.speed * dt;
     if (this.p > 1) { this.p = 1; this.dir = -1; }
     if (this.p < 0) { this.p = 0; this.dir = 1; }
     if (input.justDown) {
+      this.jump = 0;
+      this.caught = Math.abs(this.p - this.at) < this.band / 2;
       Sfx.whoosh();
-      if (Math.abs(this.p - this.at) < this.band / 2) { Sfx.bark(); this.succeed(); } else this.lose();
+      if (this.caught) setTimeout(() => Sfx.bark(), 200); else buzz(40);
     }
   }
   draw(g) {
     g.clear();
-    const x = 20, w = W - 40, ground = CY + 30;
-    g.rect(0, ground, W, 2, PAL.mid);
-    // the catch zone on the ground, with the frisbee hanging over it
-    const zx = x + (this.at - this.band / 2) * w, zw = this.band * w;
-    g.rect(zx, ground - 2, zw, 6, PAL.accent);
-    ctx.globalAlpha = 0.25; g.rect(zx, TOP + 30, zw, ground - TOP - 30, PAL.accent); ctx.globalAlpha = 1;
-    const fy = TOP + 40 + Math.sin(this.t * 4) * 3;
-    g.rect(zx + zw / 2 - 9, fy, 18, 4, PAL.accent); g.rect(zx + zw / 2 - 6, fy - 2, 12, 2, PAL.accent);
-    // the shiba sprinting back and forth under it
-    const sx = x + this.p * w;
-    g.sprite(this.dir > 0 ? 'swiperight' : 'swipeleft', sx, ground - 18, { w: 64, h: 64, frame: Math.floor(this.t * 16) % 9 });
+    const x0 = 20, w = W - 40, ground = CY + 30;
+    const fx = x0 + this.at * w, fy = ground - 78 + Math.sin(this.t * 3) * 3;
+    // the frisbee's spot on the grass, so "under it" is something you can see
+    const sw = this.band * w;
+    ctx.globalAlpha = 0.5; g.rect(fx - sw / 2, ground + 2, sw, 3, PAL.bg); ctx.globalAlpha = 1;
+    for (let y = fy + 6; y < ground - 2; y += 6) g.rect(fx - 0.5, y, 1, 3, PAL.ink);
+    // the shiba: running, or leaping straight up
+    const sx = x0 + this.p * w;
+    const k = this.jump >= 0 ? Math.sin(Math.min(1, this.jump / 0.5) * Math.PI) : 0;
+    const sy = ground - 18 - k * 64;
+    if (this.jump >= 0) g.sprite('runjump', sx, sy, { w: 62, h: 62, frame: k > 0.6 ? 3 : 2, flip: this.dir < 0 });
+    else g.sprite(this.dir > 0 ? 'swiperight' : 'swipeleft', sx, sy, { w: 64, h: 64, frame: Math.floor(this.t * 16) % 9 });
+    // the frisbee: hanging in the air, or in the shiba's mouth once caught
+    const held = this.caught && this.jump > 0.12;
+    const dx = held ? sx + (this.dir > 0 ? 14 : -14) : fx, dy = held ? sy - 10 : fy;
+    g.rect(dx - 10, dy - 1, 20, 6, PAL.bg); g.rect(dx - 7, dy - 3, 14, 3, PAL.bg);   // dark rim
+    g.rect(dx - 9, dy, 18, 4, PAL.accent); g.rect(dx - 6, dy - 2, 12, 2, PAL.accent);
   }
 }
 
 // 12. LASER — keep your finger on the laser dot the shiba is chasing
 class FollowDot extends Microgame {
-  static meta = { id: 'follow', prompt: 'LASER!', hint: 'drag', duration: 4.6, winOnTimeout: true,
+  static meta = { id: 'follow', env: 'room@236', prompt: 'LASER!', hint: 'drag', duration: 4.6, winOnTimeout: true,
     how: 'KEEP YOUR FINGER\nON THE LASER DOT' };
   init() {
     this.x = CX; this.y = CY;
@@ -1521,7 +1738,7 @@ class FollowDot extends Microgame {
 
 // 13. SEQUENCE — tap the targets in numbered order
 class TapOrder extends Microgame {
-  static meta = { id: 'order', prompt: 'IN ORDER!', hint: 'tap', duration: 4.2,
+  static meta = { id: 'order', env: 'lawn', prompt: 'IN ORDER!', hint: 'tap', duration: 4.2,
     how: 'TAP THE NUMBERS\nIN ORDER: 1, 2, 3' };
   init() {
     this.n = this.byD(3, 4, 5); this.i = 0; this.r = 17;
@@ -1582,7 +1799,7 @@ class TapOrder extends Microgame {
 
 // 14. ODD ONE — one of these shibas is not like the others
 class OddOneOut extends Microgame {
-  static meta = { id: 'odd', prompt: 'ODD ONE!', hint: 'tap', duration: 3.8,
+  static meta = { id: 'odd', env: 'room@250', prompt: 'ODD ONE!', hint: 'tap', duration: 3.8,
     how: 'TAP THE SHIBA\nTHAT LOOKS DIFFERENT' };
   init() {
     const cols = this.byD(2, 3, 3), rows = this.byD(2, 2, 3);
@@ -1620,7 +1837,7 @@ class OddOneOut extends Microgame {
 
 // 15. DRAG TO TARGET — get the treat to the dog
 class FeedDog extends Microgame {
-  static meta = { id: 'feed', prompt: 'FEED!', hint: 'drag', duration: 4.4,
+  static meta = { id: 'feed', env: 'lawn', prompt: 'FEED!', hint: 'drag', duration: 4.4,
     how: 'DRAG THE TREAT\nTO THE DOG' };
   init() {
     this.dx = CX; this.dy = TOP + 42;
@@ -1648,7 +1865,7 @@ class FeedDog extends Microgame {
 
 // 16. BOOP — boop each snoot before it ducks back down
 class WhackMole extends Microgame {
-  static meta = { id: 'whack', prompt: 'BOOP!', hint: 'mash', duration: 4.4,
+  static meta = { id: 'whack', env: 'lawn', prompt: 'BOOP!', hint: 'mash', duration: 4.4,
     how: 'BOOP EACH SNOOT\nAS IT POPS UP' };
   init() {
     this.need = this.byD(2, 3, 4); this.hit = 0; this.r = 18;
@@ -1719,7 +1936,7 @@ class WhackMole extends Microgame {
 
 // 17. RESTRAINT — pump into the band, then stop before it bursts
 class PumpBalloon extends Microgame {
-  static meta = { id: 'pump', prompt: 'PUMP!', hint: 'mash', duration: 4.2,
+  static meta = { id: 'pump', env: 'room@196', prompt: 'PUMP!', hint: 'mash', duration: 4.2,
     how: 'TAP TO PUMP\nSTOP IN THE BAND' };
   init() {
     this.f = 0; this.still = 0; this.bounce = 0;
@@ -1760,7 +1977,7 @@ class PumpBalloon extends Microgame {
 
 // 18. CUT — cut the rope with the bone so it drops to the shiba
 class CutRope extends Microgame {
-  static meta = { id: 'cut', prompt: 'CUT!', hint: 'swipe', duration: 4.0,
+  static meta = { id: 'cut', env: 'wall@262', prompt: 'CUT!', hint: 'swipe', duration: 4.0,
     how: 'SWIPE ACROSS THE ROPE\nHOLDING THE BONE' };
   init() {
     this.n = this.byD(2, 3, 4);
@@ -1821,7 +2038,7 @@ class CutRope extends Microgame {
 
 // 19. BOSS — squeeze through the gaps in the fences
 class Squeeze extends Microgame {
-  static meta = { id: 'squeeze', prompt: 'SQUEEZE!', hint: 'drag', duration: 5.0, winOnTimeout: true,
+  static meta = { id: 'squeeze', env: 'lawn', prompt: 'SQUEEZE!', hint: 'drag', duration: 5.0, winOnTimeout: true,
     how: 'DRAG THROUGH\nTHE GAPS IN THE FENCE' };
   init() {
     this.px = CX; this.py = BOT - 26;
@@ -1864,7 +2081,7 @@ class Squeeze extends Microgame {
 
 // 20. BLOW — blow a big bubble (mic, or tap-fallback)
 class BlowSail extends Microgame {
-  static meta = { id: 'blow', prompt: 'BLOW!', hint: 'blow', duration: 4.2, photo: true, photoCap: 'BIG BUBBLE!',
+  static meta = { id: 'blow', env: 'field@240', prompt: 'BLOW!', hint: 'blow', duration: 4.2, photo: true, photoCap: 'BIG BUBBLE!',
     how: { mic: 'BLOW INTO THE MIC\nBLOW A BIG BUBBLE', touch: 'TAP FAST\nTO BLOW A BUBBLE' } };
   init() {
     this.fill = 0;
@@ -1917,7 +2134,7 @@ class BlowSail extends Microgame {
 
 // 21. WALK — drag the shiba along the path home without straying
 class TracePath extends Microgame {
-  static meta = { id: 'trace', prompt: 'WALK!', hint: 'trace', duration: 4.8,
+  static meta = { id: 'trace', env: 'lawn', prompt: 'WALK!', hint: 'trace', duration: 4.8,
     how: 'DRAG THE SHIBA\nALONG THE PATH HOME' };
   init() {
     // a polyline of 3-4 nodes; you must drag through each in order
@@ -1979,7 +2196,7 @@ class TracePath extends Microgame {
 
 // 22. COUNT — tap exactly the number asked for, no more
 class GrabCount extends Microgame {
-  static meta = { id: 'count', prompt: 'GRAB 3!', hint: 'count', duration: 4.2,
+  static meta = { id: 'count', env: 'lawn', prompt: 'GRAB 3!', hint: 'count', duration: 4.2,
     how: 'TAP EXACTLY\nTHAT MANY TREATS' };
   init() {
     const total = this.byD(5, 7, 9);
@@ -2017,13 +2234,13 @@ class GrabCount extends Microgame {
 
 // 23. FETCH — swipe up to throw the ball to the running shiba
 class FlickShot extends Microgame {
-  static meta = { id: 'flick', prompt: 'FETCH!', hint: 'flick', duration: 4.6,
+  static meta = { id: 'flick', env: 'beach@56', prompt: 'FETCH!', hint: 'flick', duration: 4.6,
     how: 'SWIPE UP TO THROW\nTHE BALL TO THE SHIBA' };
   init() {
     this.ox = CX; this.oy = BOT - 26;
     this.ball = { x: this.ox, y: this.oy, vx: 0, vy: 0, flying: false, z: 0 };
     // the shiba runs back and forth across the far end of the yard
-    this.dy = TOP + 48 + Math.random() * 30;
+    this.dy = TOP + 58 + Math.random() * 26;            // running the wet sand at the water's edge
     this.dx = 30 + Math.random() * (W - 60);
     this.dvx = this.byD(30, 48, 66) * (Math.random() < 0.5 ? 1 : -1);
     this.catchR = this.byD(26, 22, 18);
@@ -2045,30 +2262,30 @@ class FlickShot extends Microgame {
     const b = this.ball;
     b.x += b.vx * dt; b.y += b.vy * dt; b.z += dt;
     if (Math.hypot(b.x - this.dx, b.y - this.dy) < this.catchR) { Sfx.bark(); FX.hit(this.dx, this.dy, PAL.accent); this.succeed(); return; }
-    if (b.y < TOP - 10 || b.x < -10 || b.x > W + 10) { Sfx.fail(); this.lose(); }
+    if (b.y < TOP - 10 || b.x < -10 || b.x > W + 10) { Sfx.splash(); this.lose(); }   // in the sea
   }
   draw(g) {
     g.clear();
-    // the yard: grass tufts and the line you throw from
-    for (let i = 0; i < 14; i++) { const x = (i * 37) % W + 6, y = TOP + 30 + ((i * 53) % (BOT - TOP - 60)); g.rect(x, y, 1, 3, PAL.mid); g.rect(x + 2, y + 1, 1, 2, PAL.mid); }
-    g.rect(20, this.oy + 12, W - 40, 1, PAL.mid);
+    // the line in the sand you throw from
+    for (let x = 24; x < W - 24; x += 6) g.rect(x, this.oy + 12, 3, 1, PAL.bg);
     g.sprite(this.dvx > 0 ? 'swiperight' : 'swipeleft', this.dx, this.dy, { w: 58, h: 58, frame: Math.floor(this.t * 16) % 9 });
     // the ball shrinks a little as it flies away from you
     const r = this.ball.flying ? Math.max(3.5, 6 - this.ball.z * 3) : 6;
+    g.circle(this.ball.x, this.ball.y, r + 1, PAL.bg);    // dark rim so it reads on sand
     g.tennis(this.ball.x, this.ball.y, r);
     if (!this.ball.flying) {
       const a = Math.sin(this.t * 6) * 3;
-      g.line(this.ox, this.oy - 12 - a, this.ox, this.oy - 22 - a, PAL.accent, 2);
-      g.line(this.ox, this.oy - 22 - a, this.ox - 4, this.oy - 18 - a, PAL.accent, 2);
-      g.line(this.ox, this.oy - 22 - a, this.ox + 4, this.oy - 18 - a, PAL.accent, 2);
-      g.text('SWIPE UP TO THROW', CX, BOT - 2, 7, PAL.mid);
+      g.line(this.ox, this.oy - 12 - a, this.ox, this.oy - 22 - a, PAL.bg, 2);
+      g.line(this.ox, this.oy - 22 - a, this.ox - 4, this.oy - 18 - a, PAL.bg, 2);
+      g.line(this.ox, this.oy - 22 - a, this.ox + 4, this.oy - 18 - a, PAL.bg, 2);
+      g.text('SWIPE UP TO THROW', CX, BOT - 2, 7, PAL.bg);
     }
   }
 }
 
 // 24. FLAPPY — tap to flap through the pipe gaps
 class Flappy extends Microgame {
-  static meta = { id: 'flappy', prompt: 'FLAP!', hint: 'mash', duration: 4.4, winOnTimeout: true, minDuration: 2.8,
+  static meta = { id: 'flappy', env: 'sky', prompt: 'FLAP!', hint: 'mash', duration: 4.4, winOnTimeout: true, minDuration: 2.8,
     how: 'TAP TO FLAP\nTHROUGH THE GAPS' };
   init() {
     this.y = CY; this.vy = 0;
@@ -2123,7 +2340,7 @@ class Flappy extends Microgame {
 
 // 25. CROSSY — hop forward across lanes of traffic to the far side
 class Crossy extends Microgame {
-  static meta = { id: 'crossy', prompt: 'CROSS!', hint: 'tap', duration: 4.8, minDuration: 4.4,
+  static meta = { id: 'crossy', env: 'lawn', prompt: 'CROSS!', hint: 'tap', duration: 4.8, minDuration: 4.4,
     how: 'TAP TO HOP\nACROSS THE ROAD' };
   init() {
     this.lanes = this.byD(2, 3, 4);
@@ -2174,7 +2391,7 @@ class Crossy extends Microgame {
 
 // 26. DOODLE — auto-bounce; steer to land on each rising platform
 class Doodle extends Microgame {
-  static meta = { id: 'doodle', prompt: 'HOP!', hint: 'drag', duration: 5.0, winOnTimeout: true,
+  static meta = { id: 'doodle', env: 'sky', prompt: 'HOP!', hint: 'drag', duration: 5.0, winOnTimeout: true,
     how: 'DRAG LEFT/RIGHT\nTO LAND ON STEPS' };
   init() {
     this.x = CX; this.vy = 0;
@@ -2217,7 +2434,7 @@ class Doodle extends Microgame {
 
 // 27. PAWS — tap the paw prints as they fall, never miss one (Piano Tiles)
 class PianoTiles extends Microgame {
-  static meta = { id: 'tiles', prompt: 'PAWS!', hint: 'tap', duration: 4.6,
+  static meta = { id: 'tiles', env: 'lawn', prompt: 'PAWS!', hint: 'tap', duration: 4.6,
     how: "TAP EVERY PAW PRINT\nDON'T MISS ONE" };
   init() {
     this.cols = 4; this.colW = W / this.cols;
@@ -2262,7 +2479,7 @@ class PianoTiles extends Microgame {
 
 // 28. RUN — Chrome-dino style: auto-run, tap to jump the cacti, survive to the end
 class DinoRun extends Microgame {
-  static meta = { id: 'run', prompt: 'JUMP!', hint: 'tap', duration: 5.0, winOnTimeout: true, minDuration: 3.2,
+  static meta = { id: 'run', env: 'field@270', prompt: 'JUMP!', hint: 'tap', duration: 5.0, winOnTimeout: true, minDuration: 3.2,
     how: 'TAP TO JUMP\nOVER THE CACTI' };
   init() {
     this.ground = BOT - 6;
@@ -2333,7 +2550,7 @@ class DinoRun extends Microgame {
 
 // 29. KNOCK — Angry-Birds style: sling the shiba to topple the block stack
 class KnockStack extends Microgame {
-  static meta = { id: 'knock', prompt: 'KNOCK IT!', hint: 'flick', duration: 5.0, minDuration: 3.2,
+  static meta = { id: 'knock', env: 'field@270', prompt: 'KNOCK IT!', hint: 'flick', duration: 5.0, minDuration: 3.2,
     how: 'PULL BACK, LET GO\nTO KNOCK IT DOWN' };
   init() {
     this.K = 6;                               // pull -> velocity (same as flick)
@@ -2472,7 +2689,7 @@ class MoveCam extends Microgame {
 
 // 31. DRY OFF — big separate shakes at the camera, like a wet dog (Snapped! homage)
 class DryShiba extends Microgame {
-  static meta = { id: 'dry', cam: true, prompt: 'DRY OFF!', hint: 'move', duration: 5.0, minDuration: 4.0, photo: true, photoCap: 'ALL FLUFFY!',
+  static meta = { id: 'dry', env: 'bath', cam: true, prompt: 'DRY OFF!', hint: 'move', duration: 5.0, minDuration: 4.0, photo: true, photoCap: 'ALL FLUFFY!',
     how: { cam: 'SHAKE HARD, STOP,\nSHAKE AGAIN!', touch: 'TAP, TAP, TAP\nTO SHAKE IT OFF' } };
   init() {
     // Not MOVE's steady wiggle: a wet dog shakes in big bursts. Each burst is a
@@ -2680,7 +2897,7 @@ class FreezeStatue extends Microgame {
 
 // 34. SWAT — put your hand where the fly is; the camera tracks where you moved
 class SwatFly extends Microgame {
-  static meta = { id: 'swat', cam: true, prompt: 'SWAT!', hint: 'move', duration: 5.0, minDuration: 4.2,
+  static meta = { id: 'swat', cam: true, photo: true, photoCap: 'GOT IT!', prompt: 'SWAT!', hint: 'move', duration: 5.0, minDuration: 4.2,
     how: { tilt: 'TILT THE PHONE\nTO AIM AT THE FLY', cam: 'WAVE YOUR HAND\nAT THE FLY', touch: 'TAP THE FLY' } };
   init() {
     Input.enableCam();
@@ -2840,7 +3057,7 @@ class HideLens extends Microgame {
     g.rect(CX - 30, BOT - 40, 60, 18, PAL.mid);
     g.box(CX - 30, BOT - 40, 60, 18, PAL.ink);
     // the darkness the lens is actually seeing, painted over everything
-    if (this.cover > 0.02) { ctx.globalAlpha = Math.min(0.92, this.cover); g.clear(); ctx.globalAlpha = 1; }
+    if (this.cover > 0.02) { ctx.globalAlpha = Math.min(0.92, this.cover); g.clear(PAL.bg); ctx.globalAlpha = 1; }
     g.text(this.settle > 0 ? 'GET READY…' : (Input.camReady ? 'COVER THE CAMERA!' : 'HOLD THE SCREEN!'), CX, TOP + 26, 9, this.dark ? PAL.accent : PAL.ink);
     g.bar(30, BOT - 18, W - 60, 8, this.held / this.need);
   }
@@ -2914,7 +3131,7 @@ class DanceBeat extends Microgame {
 // B3. RED LIGHT — move on green, freeze on red. The camera boss: it is MOVE and
 // FREEZE in one, switching between them while you play.
 class RedLight extends Microgame {
-  static meta = { id: 'redlight', prompt: 'RED LIGHT!', hint: 'mash', duration: 5.6, minDuration: 5.0,
+  static meta = { id: 'redlight', env: 'field@222', prompt: 'RED LIGHT!', hint: 'mash', duration: 5.6, minDuration: 5.0,
     how: 'TAP ON GREEN\nSTOP ON RED' };
   init() {
     // tap-based boss (no camera) — mash on green, stop on red. SQUID is the
@@ -2980,7 +3197,7 @@ class RedLight extends Microgame {
 // B4. JUGGLE — keep every ball off the floor. Both other bosses are survive-by-
 // dragging; this one is survive-by-tapping, and it splits your attention.
 class Juggle extends Microgame {
-  static meta = { id: 'juggle', prompt: 'JUGGLE!', hint: 'tap', duration: 5.5, winOnTimeout: true,
+  static meta = { id: 'juggle', env: 'lawn', prompt: 'JUGGLE!', hint: 'tap', duration: 5.5, winOnTimeout: true,
     how: 'TAP THE BALLS\nKEEP THEM UP' };
   init() {
     this.n = this.byD(2, 2, 3);
@@ -3044,7 +3261,7 @@ class Juggle extends Microgame {
 
 // TILT — keep the ball on the see-saw plank until the clock runs out
 class BalanceBall extends Microgame {
-  static meta = { id: 'balance', prompt: 'BALANCE!', hint: 'move', duration: 5.0, minDuration: 4.2, winOnTimeout: true,
+  static meta = { id: 'balance', env: 'field@200', prompt: 'BALANCE!', hint: 'move', duration: 5.0, minDuration: 4.2, winOnTimeout: true,
     how: { tilt: 'TILT THE PHONE\nKEEP THE BALL ON', touch: 'HOLD LEFT OR RIGHT\nTO TILT' } };
   init() {
     Input.enableTilt(); Input.zeroTilt();
@@ -3080,7 +3297,7 @@ class BalanceBall extends Microgame {
 
 // TILT — fill the shiba's water bowl to the line, then stop
 class PourCup extends Microgame {
-  static meta = { id: 'pour', prompt: 'POUR!', hint: 'move', duration: 5.0, minDuration: 4.4,
+  static meta = { id: 'pour', env: 'room@268', prompt: 'POUR!', hint: 'move', duration: 5.0, minDuration: 4.4,
     how: { tilt: 'TILT TO FILL THE BOWL\nSTOP AT THE LINE', touch: 'HOLD TO FILL THE BOWL\nSTOP AT THE LINE' } };
   init() {
     Input.enableTilt(); Input.zeroTilt();
@@ -3134,7 +3351,7 @@ class PourCup extends Microgame {
 
 // TILT — sled downhill through the flag gates
 class SteerRun extends Microgame {
-  static meta = { id: 'steer', prompt: 'SLED!', hint: 'move', duration: 5.0, minDuration: 4.0,
+  static meta = { id: 'steer', env: 'snow', prompt: 'SLED!', hint: 'move', duration: 5.0, minDuration: 4.0,
     how: { tilt: 'TILT TO STEER\nTHROUGH THE FLAGS', touch: 'HOLD LEFT OR RIGHT\nTHROUGH THE FLAGS' } };
   init() {
     Input.enableTilt(); Input.zeroTilt();
@@ -3196,7 +3413,7 @@ class SteerRun extends Microgame {
 
 // BLOW — blow out every candle before the clock runs out
 class BlowCandles extends Microgame {
-  static meta = { id: 'candles', prompt: 'BLOW!', hint: 'blow', duration: 4.6, minDuration: 4.0, photo: true, photoCap: 'MAKE A WISH!',
+  static meta = { id: 'candles', env: 'room@266', prompt: 'BLOW!', hint: 'blow', duration: 4.6, minDuration: 4.0, photo: true, photoCap: 'MAKE A WISH!',
     how: { mic: 'BLOW INTO THE MIC\nPUT OUT EVERY CANDLE', touch: 'TAP FAST\nTO BLOW' } };
   init() {
     Input.enableMic(); Input.enableCam();
@@ -3234,14 +3451,14 @@ class BlowCandles extends Microgame {
 
 // BLOW — blow every seed off the dandelion
 class Dandelion extends Microgame {
-  static meta = { id: 'puff', prompt: 'BLOW!', hint: 'blow', duration: 4.8, minDuration: 4.2,
+  static meta = { id: 'puff', env: 'sunny@258', photo: true, photoCap: 'WHOOSH!', prompt: 'BLOW!', hint: 'blow', duration: 4.8, minDuration: 4.2,
     how: { mic: 'BLOW INTO THE MIC\nCLEAR EVERY SEED', touch: 'TAP FAST\nTO BLOW' } };
   init() {
     Input.enableMic();
     this.paused = Input.micPending; this.wait = 0;
     this.n = this.byD(6, 7, 8); this.seeds = [];
     for (let i = 0; i < this.n; i++) {
-      const a = (i / this.n) * 6.2832 + Math.random() * 0.4, r = 9 + Math.random() * 11;
+      const a = (i / this.n) * 6.2832 + Math.random() * 0.4, r = 13 + Math.random() * 11;
       this.seeds.push({ a, x: CX + Math.cos(a) * r, y: CY - 8 + Math.sin(a) * r, gone: false, vx: 0, vy: 0, t: 0, spin: 0 });
     }
     this.cleared = 0; this.cool = 0;
@@ -3270,23 +3487,33 @@ class Dandelion extends Microgame {
   draw(g) {
     g.clear();
     if (this.paused) { g.text('ALLOW MIC…', CX, CY - 6, 12, PAL.ink); g.text('(then blow)', CX, CY + 12, 7, PAL.mid); return; }
-    g.line(CX, CY - 8, CX, BOT - 6, PAL.mid, 2);            // stem
-    g.circle(CX, CY - 8, 3, PAL.ink);                       // head
+    // the stem, a couple of leaves at its foot, and the seed head
+    g.line(CX, CY - 8, CX + 2, BOT - 16, SCENE.stem, 3);
+    g.rect(CX - 12, BOT - 24, 12, 3, SCENE.stem); g.rect(CX + 3, BOT - 30, 11, 3, SCENE.stem);
+    // a happy shiba in the grass, waiting to see the seeds fly
+    g.sprite('face', W - 30, BOT - 34, { w: 34, h: 35, frame: this.cleared > this.n / 2 ? 0 : 3 });
+    g.circle(CX, CY - 8, 4, SCENE.stem);
     for (const s of this.seeds) {
       if (s.gone && s.t > 0.9) continue;
       ctx.globalAlpha = s.gone ? Math.max(0, 1 - s.t / 0.9) : 1;
-      g.circle(s.x, s.y, 2, PAL.ink);
-      if (!s.gone) g.line(CX, CY - 8, s.x, s.y, PAL.mid, 1);
+      if (!s.gone) g.line(CX, CY - 8, s.x, s.y, PAL.ink, 1);
+      // the seed's fluffy parachute: little white spokes round a dot
+      const sp = s.gone ? s.t * s.spin : 0;
+      for (let k = 0; k < 5; k++) {
+        const a = sp + k * 1.2566;
+        g.line(s.x, s.y, s.x + Math.cos(a) * 4, s.y + Math.sin(a) * 4, PAL.ink, 1);
+      }
+      g.circle(s.x, s.y, 1.5, PAL.ink);
       ctx.globalAlpha = 1;
     }
-    g.text(Input.micReady ? 'BLOW!' : 'TAP FAST!', CX, TOP + 24, 9, PAL.mid);
-    g.bar(30, BOT - 14, W - 60, 6, this.cleared / this.n);
+    g.text(Input.micReady ? 'BLOW!' : 'TAP FAST!', CX, TOP + 24, 10, PAL.ink);
+    g.bar(30, BOT - 10, W - 60, 5, this.cleared / this.n);
   }
 }
 
 // TAP — drop each biscuit on the stack; miss and it's over
 class StackBlocks extends Microgame {
-  static meta = { id: 'stack', prompt: 'STACK!', hint: 'tap', duration: 5.0, minDuration: 4.2,
+  static meta = { id: 'stack', env: 'room@270', prompt: 'STACK!', hint: 'tap', duration: 5.0, minDuration: 4.2,
     how: 'TAP TO DROP EACH\nBISCUIT ON THE STACK' };
   init() {
     this.need = this.byD(3, 4, 5); this.done = 0;
@@ -3333,7 +3560,7 @@ class StackBlocks extends Microgame {
 
 // SWIPE — bones to the dog, chocolate in the bin
 class SortTreats extends Microgame {
-  static meta = { id: 'sort', prompt: 'SORT!', hint: 'swipe', duration: 5.0, minDuration: 4.2,
+  static meta = { id: 'sort', env: 'wall@250', prompt: 'SORT!', hint: 'swipe', duration: 5.0, minDuration: 4.2,
     how: 'BONES TO THE DOG\nCHOCOLATE IN THE BIN' };
   init() {
     this.need = this.byD(2, 3, 4); this.done = 0;
@@ -3890,6 +4117,7 @@ const Engine = {
     this.round++;
     FX.parts.length = 0; FX.fl = 0;   // no effects bleed across rounds
     Engine.lastPhoto = null;          // a shot from a lost round must not show after a later win
+    this.shot = null; this.shotBest = 0; this.shotAt = -1; this.shotFlash = 0;
     this.isBoss = !!forceBoss || (!forceClass && this.round % this.BOSS_EVERY === 0);
     const C = forceClass || this.pick(this.isBoss ? BOSSES : POOL);
     this.lastId = C.meta.id;
@@ -3997,6 +4225,7 @@ const Engine = {
       if (this.game.paused) { this.game.update(dt, Input); return; }  // frozen; let it poll its unpause
       this.game.t += dt;
       this.game.update(dt, Input);
+      this.trackShot();
       const out = this.timer <= 0;
       this.timer_ = this.timer;   // round clock left, for RUN's speed bonus
       if (out && !this.game.finished) {
@@ -4005,10 +4234,16 @@ const Engine = {
       if (this.game.finished) {
         if (this.game.won) {
           this.score++; this.combo++; this.result = 'WIN'; Sfx.win(); buzz(20); Mascot.set('cheer');
-          // photo games already took theirs (with their stamp); every other
-          // game gets a candid one — the concentration face is the joke
-          this.snap = Input.snapPhoto();
-          if (this.snap) { this.album.push(this.snap); if (this.album.length > 4) this.album.shift(); }
+          // the action shot: the best moment caught while playing, stamped
+          this.snap = null;
+          if (this.game.meta.photo && this.shootsNow()) {
+            const shot = this.shot || Input.snapPhoto();
+            if (shot) {
+              if (this.game.stampPhoto) this.game.stampPhoto(shot);
+              this.snap = Engine.lastPhoto = shot;
+              this.album.push(shot); if (this.album.length > 4) this.album.shift();
+            }
+          }
           FX.flash(PAL.accent, 0.45);
           FX.burst(Mascot.x, Mascot.y - 8, PAL.accent, 12 + Math.min(12, this.combo * 2), 80);
           if (this.combo >= 3) FX.shake(3);   // a little extra on a streak
@@ -4031,12 +4266,10 @@ const Engine = {
     if (s === 'RESULT') {
       if (this.mode === 'run' && Input.justDown && this.timer < 1.4) this.timer = 0;   // skip the tally
       if (this.timer > 0) return;
-      // if the just-won game captured a photo, show it before moving on
-      // a photo game poses for its picture: live preview, 3-2-1, snap
-      if (this.result === 'WIN' && this.game && this.game.meta.photo && Input.camReady) {
+      // if the just-won game caught an action shot, show it before moving on
+      if (this.result === 'WIN' && this.game && this.game.meta.photo && Engine.lastPhoto) {
         this.photoCap = this.game.meta.photoCap || 'NICE MOVES!';
-        this.state = 'PHOTO'; this.photoPhase = 'pose'; this.timer = 1.8; this.photoBeat = 4;
-        Engine.lastPhoto = null;
+        this.state = 'PHOTO'; this.timer = 2.2; this.photoReveal = 0;
         return;
       }
       this.advance();
@@ -4049,13 +4282,6 @@ const Engine = {
     }
 
     if (s === 'PHOTO') {
-      if (this.photoPhase === 'pose') {
-        // 3 · 2 · 1 with a tick each, then the shutter; a tap snaps it now
-        const n = Math.ceil(this.timer / 0.6);
-        if (n !== this.photoBeat && n > 0) { this.photoBeat = n; Sfx.tick(); }
-        if (this.timer <= 0 || Input.justDown) this.takePhoto();
-        return;
-      }
       this.photoReveal = Math.min(1, (this.photoReveal || 0) + dt * 1.2);
       if (this.timer <= 0 || Input.justDown) {
         Engine.lastPhoto = null;
@@ -4064,18 +4290,24 @@ const Engine = {
     }
   },
 
-  takePhoto() {
-    const shot = Input.snapPhoto();
-    if (shot) {
-      if (this.game.stampPhoto) this.game.stampPhoto(shot);
-      Engine.lastPhoto = shot;
-      // the posed shot replaces this win's candid in the album
-      if (this.snap && this.album[this.album.length - 1] === this.snap) this.album[this.album.length - 1] = shot;
-      else { this.album.push(shot); if (this.album.length > 4) this.album.shift(); }
-      this.snap = shot;
+  // WarioWare Snapped!-style: no posing. While a photo game is played the
+  // camera keeps the frame with the most action in it — the biggest wave,
+  // shake, lean or dance move, the hardest blow, or for FREEZE the stillest
+  // moment — and that is the picture. Grabs are throttled and only taken when
+  // the moment beats the best so far; the shelf view blinks on each one.
+  shootsNow() {
+    const gm = this.game;
+    return Input.camReady && !('usesCam' in gm && !gm.usesCam);
+  },
+  trackShot() {
+    const gm = this.game, m = gm.meta;
+    if (!m.photo || !this.shootsNow() || gm.t < 0.25 || gm.finished) return;
+    const by = m.hint === 'blow' ? 'blow' : m.hint === 'still' ? 'still' : 'motion';
+    const v = by === 'blow' ? Input.blow : by === 'still' ? 1 - Input.motion : Input.motion;
+    if (v > this.shotBest + 0.03 && this.time - this.shotAt > 0.15) {
+      const shot = Input.snapPhoto();
+      if (shot) { this.shot = shot; this.shotBest = v; this.shotAt = this.time; this.shotFlash = 0.12; }
     }
-    this.photoPhase = 'show'; this.timer = 1.8; this.photoReveal = 0;
-    Sfx.blip(1700, 0.05, 'square', 0.06); buzz(30); FX.flash(PAL.ink, 0.8);
   },
 
   // ── BUTTONS ────────────────────────────────────────────────────────────────
@@ -4224,16 +4456,17 @@ const Engine = {
       // DEBUG: what the camera is actually reading, for tuning thresholds on a
       // real phone — a real lens reads nothing like a webcam test pattern
       const hint = this.game.meta.hint;
+      const dx = Input.camReady ? 12 + Math.round(32 * Input.camAspect()) : 2;   // clear of the live view
       if (DEBUG && ['move', 'still', 'cover'].includes(hint)) {
         const cam = Input.camReady ? 'cam' : Input.camDenied ? 'NOCAM' : '…';
         const tl = Input.tiltReady ? ' T' + Input.tiltX.toFixed(2) + '/' + Input.tiltY.toFixed(2) : ' notilt';
         g.text(cam + ' m' + Input.motion.toFixed(2) + ' x' + Input.motionX.toFixed(2) +
                ' y' + Input.motionY.toFixed(2) + ' b' + Input.bright.toFixed(2) + tl,
-               2, H - 8, 6, PAL.mid, 'left');
+               dx, H - 8, 6, PAL.mid, 'left');
       } else if (DEBUG && (hint === 'shake' || hint === 'blow')) {
         g.text('shake' + Input.shake.toFixed(2) + (Input.gyroReady ? ' gyro' : ' NOGYRO') +
                ' blow' + Input.blow.toFixed(2) + (Input.micReady ? (Input.blowOk ? ' PUFF' : ' mic') : ' NOMIC'),
-               2, H - 8, 6, PAL.mid, 'left');
+               dx, H - 8, 6, PAL.mid, 'left');
       }
     }
     FX.post();
@@ -4247,12 +4480,16 @@ const Engine = {
   drawCamView() {
     if (this.state !== 'PROMPT' && this.state !== 'PLAYING') return;
     const gm = this.game; if (!gm || !Input.camReady) return;
-    const on = 'usesCam' in gm ? gm.usesCam : gm.meta.cam;
+    const on = 'usesCam' in gm ? gm.usesCam : (gm.meta.cam || gm.meta.photo);
     if (!on) return;
     const a = Input.camAspect(), h = 32, w = Math.round(h * a), x = 6, y = BOT + 3;
     g.rect(x - 1, y - 1, w + 2, h + 2, PAL.ink);
     if (!Input.drawLive(ctx, x, y, w, h)) g.rect(x, y, w, h, PAL.mid);
     if (Math.floor(this.time * 2) % 2) g.circle(x + 4, y + 4, 2, PAL.bad);
+    if (this.shotFlash > 0) {                       // shutter: a shot was just caught
+      this.shotFlash -= STEP;
+      ctx.globalAlpha = Math.min(1, this.shotFlash * 8); g.rect(x, y, w, h, PAL.ink); ctx.globalAlpha = 1;
+    }
   },
 
   // speaker in the middle of the HUD band, with sound waves or a cross. Drawn
@@ -4350,7 +4587,9 @@ const Engine = {
     }
 
     if (s === 'PLAYING') {
+      g.env = this.game.meta.env || null;
       this.game.draw(g);
+      g.env = null;
       this.drawHud();
       return;
     }
@@ -4377,20 +4616,12 @@ const Engine = {
 
     if (s === 'PHOTO') {
       g.clear();
-      const photo = Engine.lastPhoto, pose = this.photoPhase === 'pose';
+      const photo = Engine.lastPhoto;
       // the polaroid takes the camera's shape: portrait on a phone
       const asp = photo ? photo.width / photo.height : Input.camAspect();
       const pw = asp < 1 ? Math.round(120 * asp) : 120, ph = asp < 1 ? 120 : Math.round(120 / asp);
       const px = CX - pw / 2, py = CY - ph / 2 - 6;
       g.rect(px - 6, py - 6, pw + 12, ph + 30, PAL.ink);
-      if (pose) {
-        if (!Input.drawLive(ctx, px, py, pw, ph)) g.rect(px, py, pw, ph, PAL.mid);
-        const n = Math.max(1, Math.ceil(this.timer / 0.6));
-        g.text(String(n), CX, py - 14, 16, PAL.accent);
-        g.text('BACK UP & SMILE!', CX, py + ph + 14, 9, PAL.bg);
-        this.drawHud();
-        return;
-      }
       if (photo) {
         // draw pixelated + tinted to the game's palette for a retro look
         ctx.save();
