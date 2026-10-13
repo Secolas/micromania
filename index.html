@@ -993,6 +993,7 @@ const PhotoFX = {
      'wall@Y'   the same room without the picture, for games that use the wall
      'sunny@Y'  a bright day: blue sky, the sun, a flowery meadow from Y
      'beach@Y'  a beach from above: sea down to the waterline at Y, then sand
+     'park@Y'   the sunny day with a row of trees and a bench, grass from Y
    Each is painted once into a 180x320 canvas and blitted after that, so it
    costs nothing per frame; only the sky's clouds are drawn live.
 ─────────────────────────────────────────────────────────────────────────────── */
@@ -1007,6 +1008,8 @@ const SCENE = {
   meadow: '#4a9a4f', meadowHi: '#62b466', stem: '#3d7a35',
   // the beach, for FETCH
   sea0: '#2a74ad', sea1: '#3a8cc9', wetSand: '#b99460', sand: '#dcc08a', sandLo: '#c8a86e',
+  // the park, for THROW
+  leaf: '#2f7a3a', leafHi: '#3f9449', trunk: '#6b4a2e',
 };
 const Env = {
   cache: {},
@@ -1016,7 +1019,7 @@ const Env = {
     ctx.fillStyle = PAL.bg; ctx.fillRect(0, 0, W, H);
     ctx.drawImage(c, 0, 0, W, H);
     if (spec === 'sky') this.clouds();
-    if (spec.startsWith('sunny')) this.dayClouds();
+    if (spec.startsWith('sunny') || spec.startsWith('park')) this.dayClouds();
     if (spec.startsWith('beach')) this.surf(+spec.split('@')[1]);
   },
   // the waterline washing in and out, and the sun glinting off the sea
@@ -1111,7 +1114,7 @@ const Env = {
         R(0, fy, W, 1, SCENE.floorLo);
         for (let fx = (row % 2) * 22; fx < W; fx += 44) R(fx, fy - 7, 1, 7, SCENE.floorLo);
       }
-    } else if (kind === 'sunny') {
+    } else if (kind === 'sunny' || kind === 'park') {
       const bands = 8, h = (y - TOP) / bands;
       for (let i = 0; i < bands; i++) R(0, TOP + i * h, W, h + 1, mix(SCENE.day0, SCENE.day1, i / (bands - 1)));
       // the sun, rays and all, in the top corner
@@ -1124,6 +1127,16 @@ const Env = {
       }
       x.beginPath(); x.arc(sx, sy, 12, 0, 6.2832); x.fill();
       for (let i = 0; i < W; i++) { const hh = 7 + Math.sin(i / 19) * 4 + Math.sin(i / 6) * 1.5; R(i, y - hh, 1, hh, SCENE.dayHill); }
+      if (kind === 'park') {
+        // a row of round park trees along the far side, and a bench
+        for (const [tx, s] of [[14, 15], [44, 11], [96, 13], [128, 10], [166, 14]]) {
+          R(tx - 2, y - s - 6, 4, s + 6, SCENE.trunk);
+          x.fillStyle = SCENE.leaf; x.beginPath(); x.arc(tx, y - s - 10, s, 0, 6.2832); x.fill();
+          x.fillStyle = SCENE.leafHi; x.beginPath(); x.arc(tx - s * 0.3, y - s - 13, s * 0.5, 0, 6.2832); x.fill();
+        }
+        R(64, y - 9, 22, 2, SCENE.trunk); R(64, y - 5, 22, 2, SCENE.trunk);      // bench slats
+        R(66, y - 9, 2, 9, PAL.bg); R(82, y - 9, 2, 9, PAL.bg);                  // its legs
+      }
       R(0, y, W, BOT - y, SCENE.meadow);
       R(0, y, W, 2, SCENE.meadowHi);
       for (let i = 0; i < 18; i++) {                  // tufts and little flowers
@@ -1637,7 +1650,7 @@ class DontTap extends Microgame {
 
 // 11. THROW — tap when the running shiba is under the frisbee zone
 class StopBar extends Microgame {
-  static meta = { id: 'stop', env: 'field@177', prompt: 'THROW!', hint: 'tap', duration: 3.4,
+  static meta = { id: 'stop', env: 'park@177', prompt: 'THROW!', hint: 'tap', duration: 3.4,
     how: 'TAP TO THROW WHEN THE\nSHIBA IS IN THE ZONE' };
   init() {
     this.p = Math.random(); this.dir = Math.random() < 0.5 ? 1 : -1;
@@ -1665,6 +1678,7 @@ class StopBar extends Microgame {
     g.rect(zx, ground - 2, zw, 6, PAL.accent);
     ctx.globalAlpha = 0.25; g.rect(zx, TOP + 30, zw, ground - TOP - 30, PAL.accent); ctx.globalAlpha = 1;
     const fy = TOP + 40 + Math.sin(this.t * 4) * 3;
+    g.rect(zx + zw / 2 - 10, fy - 1, 20, 6, PAL.bg); g.rect(zx + zw / 2 - 7, fy - 3, 14, 3, PAL.bg);   // dark rim, reads on sky
     g.rect(zx + zw / 2 - 9, fy, 18, 4, PAL.accent); g.rect(zx + zw / 2 - 6, fy - 2, 12, 2, PAL.accent);
     // the shiba sprinting back and forth under it
     const sx = x + this.p * w;

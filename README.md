@@ -88,7 +88,8 @@ Set it with `how` in a game's meta.
 
 Games play in a place, not on black: a game names a backdrop with `env` in its
 meta — `lawn`, `sky`, `bath`, `snow`, `field@Y` (horizon/ground at Y), `room@Y`
-or `wall@Y` (floor at Y). They use a small set of dark, muted scenery colours
+or `wall@Y` (floor at Y), and three bright ones: `sunny@Y` (PUFF), `beach@Y`
+(FETCH) and `park@Y` (THROW). They use a small set of dark, muted scenery colours
 (`SCENE`) so the sprites and play colours stay on top; each is painted once and
 cached. Camera games keep the plain dark screen so the live view stays the focus.
 
