@@ -133,9 +133,12 @@ const ART = {
         duration      seconds at speed 1.0 (engine divides by current speed)
         minDuration   floor on the round length, for games speed can't shrink
         winOnTimeout  true = survive-the-clock game (default false)
-        photo         true = a win shows the camera still in Engine.lastPhoto
+        photo         true = a win poses for a photo (live preview, 3-2-1); a
+                      game's stampPhoto(canvas) can draw on it (PhotoFX)
         photoCap      caption printed under that photo (default 'NICE MOVES!')
-        how           how to play, shown under the prompt ("TAP THE BUG"; '\n'
+        cam           true = played with the camera: the shelf shows the live
+                      view while it runs (a game can veto it with a usesCam getter)
+        how           how to play, shown under the prompt ("TAP THE DOG"; '\n'
                       for a second line). For a sensor game, one line per way of
                       playing it, best first — { tilt, cam, mic, motion, touch }
                       — and the first the player actually has is shown.
@@ -153,7 +156,7 @@ const ART = {
    Five colours only (PAL). Keep new art inside that palette.
 ============================================================================= */
 
-const DEBUG = true;
+const DEBUG = false;
 
 // ── CONFIG ───────────────────────────────────────────────────────────────────
 const W = 180, H = 320;        // virtual pixels
@@ -262,6 +265,33 @@ const Sfx = {
     o.connect(gn).connect(this.ac.destination);
     o.start(); o.stop(this.ac.currentTime + dur);
   },
+  // a tone that slides between two pitches — yips, boops, squeaks
+  slide(f0, f1, dur = 0.1, type = 'square', vol = 0.05) {
+    if (!this.ac || this.muted) return;
+    const o = this.ac.createOscillator(), gn = this.ac.createGain(), t = this.ac.currentTime;
+    o.type = type; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + dur);
+    gn.gain.setValueAtTime(vol, t); gn.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(gn).connect(this.ac.destination); o.start(t); o.stop(t + dur);
+  },
+  // a burst of filtered noise — crunches, splashes, whooshes
+  noise(dur = 0.08, vol = 0.06, hp = 800) {
+    if (!this.ac || this.muted) return;
+    const n = Math.floor(this.ac.sampleRate * dur), buf = this.ac.createBuffer(1, n, this.ac.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / n);
+    const src = this.ac.createBufferSource(), f = this.ac.createBiquadFilter(), gn = this.ac.createGain();
+    src.buffer = buf; f.type = 'highpass'; f.frequency.value = hp; gn.gain.value = vol;
+    src.connect(f).connect(gn).connect(this.ac.destination); src.start();
+  },
+  bark()   { this.slide(720, 380, 0.09, 'square', 0.06); setTimeout(() => this.slide(640, 340, 0.08, 'square', 0.05), 110); },
+  growl()  { this.slide(150, 105, 0.28, 'sawtooth', 0.05); },
+  boop()   { this.slide(320, 960, 0.08, 'sine', 0.09); },
+  squeak() { this.slide(1300, 1800, 0.05, 'sine', 0.035); },
+  crunch() { this.noise(0.06, 0.07, 1600); setTimeout(() => this.noise(0.05, 0.05, 2600), 45); },
+  chomp()  { this.noise(0.05, 0.07, 500); setTimeout(() => this.noise(0.05, 0.07, 500), 95); },
+  splash() { this.noise(0.2, 0.05, 350); },
+  whoosh() { this.noise(0.14, 0.04, 2200); },
+  thud()   { this.slide(140, 60, 0.12, 'sine', 0.12); },
   tap()  { this.blip(660, 0.05); },
   win()  { this.blip(880, 0.08); setTimeout(() => this.blip(1320, 0.10), 70); },
   fail() { this.blip(180, 0.20, 'sawtooth'); },
@@ -394,6 +424,11 @@ const Input = {
     const cc = document.createElement('canvas');
     cc.width = this.camW; cc.height = this.camH;
     this._cam = stream; this._camVideo = v;
+    // widest the lens goes, where the browser lets us set it (Android Chrome)
+    try {
+      const tr = stream.getVideoTracks()[0], caps = tr.getCapabilities && tr.getCapabilities();
+      if (caps && caps.zoom) tr.applyConstraints({ advanced: [{ zoom: caps.zoom.min }] }).catch(() => {});
+    } catch (e) {}
     this._camCanvas = cc; this._camCtx = cc.getContext('2d', { willReadFrequently: true });
     this.camReady = true; this.camPending = false;
   },
@@ -460,22 +495,33 @@ const Input = {
     this._prevFrame = cur.slice(0);
   },
 
-  // Grab a still from the camera for the photo payoff, in the colours the
-  // camera saw. It is cover-cropped rather than scaled to fit: squeezing a
-  // phone's portrait selfie frame into the 4:3 polaroid came out wide.
-  snapPhoto(fw = 120, fh = 90) {
+  // Grab a still from the camera, in the colours the camera saw. The whole
+  // frame, never cropped: a phone's selfie feed is portrait, and cropping it
+  // to a 4:3 landscape polaroid kept only a band across the middle — a face
+  // held close for BLOW came out as nothing but nose. long = longest side.
+  snapPhoto(long = 120) {
     if (!this.camReady || !this._camVideo) return null;
+    const v = this._camVideo, sw = v.videoWidth, sh = v.videoHeight;
+    if (!sw || !sh) return null;
+    const k = long / Math.max(sw, sh);
+    const c = document.createElement('canvas');
+    c.width = Math.round(sw * k); c.height = Math.round(sh * k);
+    this.drawLive(c.getContext('2d'), 0, 0, c.width, c.height);
+    return c;   // a canvas, so a game can stamp it (see stampPhoto)
+  },
+  // width / height of the camera picture (4:3 until the feed reports)
+  camAspect() {
     const v = this._camVideo;
-    const sw = v.videoWidth || fw, sh = v.videoHeight || fh;
-    // largest centred crop that already has the polaroid's shape
-    const k = Math.max(fw / sw, fh / sh);
-    const cw = fw / k, ch = fh / k;
-    const c = document.createElement('canvas'); c.width = fw; c.height = fh;
-    const cx = c.getContext('2d');
-    cx.save(); cx.scale(-1, 1);
-    cx.drawImage(v, (sw - cw) / 2, (sh - ch) / 2, cw, ch, -fw, 0, fw, fh);   // mirrored
-    cx.restore();
-    return c;   // a canvas, so a game could filter it further
+    return v && v.videoWidth && v.videoHeight ? v.videoWidth / v.videoHeight : 4 / 3;
+  },
+  // the live camera, mirrored like a mirror, into a rect of its own aspect
+  drawLive(c, x, y, w, h) {
+    const v = this._camVideo;
+    if (!this.camReady || !v || v.readyState < 2) return false;
+    c.save(); c.translate(x + w, y); c.scale(-1, 1);
+    c.drawImage(v, 0, 0, w, h);
+    c.restore();
+    return true;
   },
 
   enableMic() {
@@ -718,6 +764,77 @@ const g = {
     this.rect(x, y, w, h, bg);
     this.rect(x, y, Math.max(0, Math.min(1, pct)) * w, h, c);
   },
+  // A dog bone centred on x, y, w wide (half as tall) — the game's treat, drawn
+  // in rects so it stays pixel art at any size.
+  bone(x, y, w, c = PAL.accent) {
+    const k = w / 8, ox = x - 3 * k, oy = y - 2 * k;
+    const r = (a, b, rw, rh) => ctx.fillRect(ox + a * k, oy + b * k, rw * k, rh * k);
+    ctx.fillStyle = c;
+    r(0, 1, 6, 2); r(-1, 0, 2, 2); r(-1, 2, 2, 2); r(5, 0, 2, 2); r(5, 2, 2, 2);
+  },
+  // A chocolate bar, w wide: red wrapper torn back from a few squares. Bad for
+  // dogs, which is the joke wherever it turns up.
+  choc(x, y, w) {
+    const h = w * 0.55, x0 = x - w / 2, y0 = y - h / 2;
+    this.rect(x0, y0, w, h, PAL.bad);
+    const cw = w * 0.42, sq = cw / 2;
+    this.rect(x0, y0, cw, h, PAL.mid);
+    for (let i = 0; i < 2; i++) for (let j = 0; j < 2; j++) this.rect(x0 + 1 + i * sq, y0 + 1 + j * h / 2, sq - 2, h / 2 - 2, PAL.bg);
+    for (let i = 0; i < 2; i++) for (let j = 0; j < 2; j++) this.rect(x0 + 2 + i * sq, y0 + 2 + j * h / 2, sq - 4, h / 2 - 4, PAL.mid);
+    this.rect(x0 + cw, y0, Math.max(1, w * 0.06), h, PAL.ink);   // wrapper edge
+  },
+  // a paw print, s across
+  paw(x, y, s, c = PAL.ink) {
+    this.circle(x, y + s * 0.16, s * 0.3, c);
+    this.circle(x - s * 0.34, y - s * 0.06, s * 0.12, c); this.circle(x + s * 0.34, y - s * 0.06, s * 0.12, c);
+    this.circle(x - s * 0.13, y - s * 0.3, s * 0.12, c);  this.circle(x + s * 0.13, y - s * 0.3, s * 0.12, c);
+  },
+  // a doghouse centred on x, its floor at y, s wide
+  doghouse(x, y, s) {
+    this.rect(x - s / 2, y - s * 0.55, s, s * 0.55, PAL.bad);
+    ctx.fillStyle = PAL.mid; ctx.beginPath();
+    ctx.moveTo(x - s * 0.62, y - s * 0.5); ctx.lineTo(x, y - s * 0.98); ctx.lineTo(x + s * 0.62, y - s * 0.5); ctx.closePath(); ctx.fill();
+    this.rect(x - s * 0.17, y - s * 0.34, s * 0.34, s * 0.34, PAL.bg);
+    this.circle(x, y - s * 0.34, s * 0.17, PAL.bg);
+  },
+  // a tennis ball: yellow felt with the white seam curving round it
+  tennis(x, y, r, c = PAL.accent) {
+    this.circle(x, y, r, c);
+    ctx.strokeStyle = PAL.ink; ctx.lineWidth = Math.max(1, r / 5);
+    ctx.beginPath(); ctx.arc(x - r * 1.15, y, r * 0.95, -0.85, 0.85); ctx.stroke();
+    ctx.beginPath(); ctx.arc(x + r * 1.15, y, r * 0.95, Math.PI - 0.85, Math.PI + 0.85); ctx.stroke();
+  },
+  // a falling flower pot, w wide, centred on x, y
+  pot(x, y, w) {
+    const h = 9;
+    this.rect(x - w / 2 - 1, y - h / 2, w + 2, 3, PAL.bad);                 // rim
+    ctx.fillStyle = PAL.bad; ctx.beginPath();                               // tapering body
+    ctx.moveTo(x - w / 2, y - h / 2 + 3); ctx.lineTo(x + w / 2, y - h / 2 + 3);
+    ctx.lineTo(x + w * 0.32, y + h / 2); ctx.lineTo(x - w * 0.32, y + h / 2); ctx.closePath(); ctx.fill();
+    this.rect(x - w / 2 + 1, y - h / 2 - 1, w - 2, 1, PAL.mid);             // soil
+    this.rect(x, y - h / 2 - 6, 1, 5, PAL.mid);                             // stem
+    this.circle(x + 0.5, y - h / 2 - 7, 2.5, PAL.accent);                   // flower
+  },
+  // a car seen from above, w long, nose pointing the way it drives (dir ±1)
+  car(x, y, w, dir) {
+    const h = 12, x0 = x - w / 2, y0 = y - h / 2;
+    this.rect(x0 + 2, y0 - 1, 4, 2, PAL.bg); this.rect(x0 + w - 6, y0 - 1, 4, 2, PAL.bg);   // wheels
+    this.rect(x0 + 2, y0 + h - 1, 4, 2, PAL.bg); this.rect(x0 + w - 6, y0 + h - 1, 4, 2, PAL.bg);
+    this.rect(x0 + 1, y0, w - 2, h, PAL.bad); this.rect(x0, y0 + 1, w, h - 2, PAL.bad);     // body
+    const f = dir > 0 ? x0 + w * 0.58 : x0 + w * 0.2;                                        // windscreen
+    this.rect(f, y0 + 2, w * 0.2, h - 4, PAL.ink);
+    this.rect(dir > 0 ? x0 + w * 0.12 : x0 + w * 0.7, y0 + 3, w * 0.14, h - 6, PAL.mid);     // rear window
+    const nose = dir > 0 ? x0 + w - 2 : x0;
+    this.rect(nose, y0 + 1, 2, 2, PAL.accent); this.rect(nose, y0 + h - 3, 2, 2, PAL.accent); // headlights
+  },
+  // a stretch of picket fence from x0 to x1, centred on y
+  fence(x0, x1, y) {
+    if (x1 - x0 < 1) return;
+    this.rect(x0, y - 2, x1 - x0, 2, PAL.mid); this.rect(x0, y + 2, x1 - x0, 2, PAL.mid);   // rails
+    for (let x = x0 + 1; x < x1 - 2; x += 6) {
+      this.rect(x, y - 4, 4, 9, PAL.ink); this.rect(x + 1, y - 5, 2, 1, PAL.ink);          // pickets
+    }
+  },
   // Draws a PixelLab sprite, or a labelled placeholder if the art isn't in yet.
   sprite(name, x, y, o = {}) {
     const a = Assets.get(name);
@@ -815,6 +932,18 @@ const PhotoFX = {
     }
   },
 
+  // Soap bubbles drifting across the shot, for BLOW.
+  bubbles(c) {
+    const x = c.getContext('2d'), w = c.width, h = c.height;
+    const ring = (bx, by, r) => {
+      x.strokeStyle = PAL.ink; x.lineWidth = Math.max(1, r / 6);
+      x.beginPath(); x.arc(bx, by, r, 0, 6.2832); x.stroke();
+      x.beginPath(); x.arc(bx, by, r * 0.65, -2.4, -1.8); x.stroke();      // shine
+    };
+    ring(w * 0.22, h * 0.24, w * 0.13); ring(w * 0.8, h * 0.3, w * 0.09);
+    ring(w * 0.7, h * 0.78, w * 0.15); ring(w * 0.14, h * 0.72, w * 0.06); ring(w * 0.5, h * 0.1, w * 0.05);
+  },
+
   // A plinth and a laurel, for FREEZE. The person is left in their own colours
   // — the marble is the props, not a grey wash over somebody's face.
   statue(c) {
@@ -860,29 +989,40 @@ class Microgame {
   lose()    { if (!this.finished) { this.won = false; this.finished = true; } }
   // helper: linear pick by difficulty
   byD(a, b, c) { return this.d <= 1 ? a : this.d === 2 ? b : c; }
+  // A fake-out: the same scene under a DON'T prompt, won by keeping your hands
+  // off. Never the first time a game is met, so its real rule is learned first.
+  fakeOut(chance, prompt, how) {
+    const m = this.constructor.meta;
+    if (!Engine.seen.has(m.id) || Math.random() >= chance) return false;
+    this.meta = { ...m, prompt, how, hint: 'wait', winOnTimeout: true, photo: false };
+    return true;
+  }
 }
 
 /* =============================================================================
    MICROGAMES — add new ones here, then register in POOL / BOSSES at the bottom
 ============================================================================= */
 
-// 1. TAP — hit the moving bug
+// 1. TAP — tap the bouncing shiba (sometimes a DON'T TAP! fake-out)
 class TapBug extends Microgame {
   static meta = { id: 'tap', prompt: 'TAP!', hint: 'tap', duration: 3.2,
-    how: 'TAP THE BUG' };
+    how: 'TAP THE DOG' };
   init() {
     this.miss = 0;
     this.bug = { x: 24 + Math.random() * (W - 48), y: TOP + 26 + Math.random() * (BOT - TOP - 52), r: 9 };
     const sp = this.byD(18, 34, 52);
     const a = Math.random() * 6.28;
     this.vx = Math.cos(a) * sp; this.vy = Math.sin(a) * sp;
+    this.fake = this.fakeOut(0.15, "DON'T TAP!", "IT'S A TRAP!\nDON'T TOUCH IT");
   }
   update(dt, input) {
     this.bug.x += this.vx * dt; this.bug.y += this.vy * dt;
     if (this.bug.x < 12 || this.bug.x > W - 12) this.vx *= -1;
     if (this.bug.y < TOP + 12 || this.bug.y > BOT - 12) this.vy *= -1;
     if (input.justDown) {
-      if (Math.hypot(input.x - this.bug.x, input.y - this.bug.y) < this.bug.r + 9) { FX.hit(this.bug.x, this.bug.y, PAL.accent); this.succeed(); }
+      const hit = Math.hypot(input.x - this.bug.x, input.y - this.bug.y) < this.bug.r + 9;
+      if (this.fake) { if (hit) { Sfx.growl(); this.lose(); } return; }
+      if (hit) { FX.hit(this.bug.x, this.bug.y, PAL.accent); Sfx.bark(); this.succeed(); }
       else this.miss = 0.15;
     }
   }
@@ -895,10 +1035,10 @@ class TapBug extends Microgame {
   }
 }
 
-// 2. DRAG — catch every coin in the basket
+// 2. DRAG — catch every falling treat
 class CatchCoin extends Microgame {
   static meta = { id: 'catch', prompt: 'CATCH!', hint: 'drag', duration: 4.0,
-    how: 'DRAG THE BASKET\nCATCH EVERY COIN' };
+    how: 'DRAG THE SHIBA\nCATCH EVERY TREAT' };
   init() {
     this.bx = CX;
     this.need = this.byD(1, 2, 3);
@@ -938,7 +1078,7 @@ class CatchCoin extends Microgame {
       if (c.y >= this.floor) {                    // resolve at the floor, no tunnelling
         c.done = true;
         if (Math.abs(c.x - this.bx) < this.catchTol) {
-          this.got++; Sfx.tick(); FX.hit(c.x, this.floor, PAL.accent);
+          this.got++; Sfx.crunch(); FX.hit(c.x, this.floor, PAL.accent);
           if (this.got >= this.need) this.succeed();
         } else { this.lose(); }
       }
@@ -950,7 +1090,7 @@ class CatchCoin extends Microgame {
     for (const c of this.coins) {
       if (c.done) continue;
       if (c.delay > 0) { g.rect(c.x - 1, this.startY - 6, 2, 3, PAL.mid); continue; }  // drop marker
-      g.sprite('coin', c.x, c.y, { w: 9, h: 9, color: PAL.accent });
+      g.bone(c.x, c.y, 13);
     }
     g.sprite('catcher', this.bx, this.dogY, { w: this.dogW, h: this.dogH, color: PAL.ink,
              frame: Math.floor(this.t * 8) % 5 });
@@ -958,23 +1098,52 @@ class CatchCoin extends Microgame {
   }
 }
 
-// 3. RUB — scrub the panel clean
+// 3. RUB — scrub the mud off a muddy shiba
 class RubClean extends Microgame {
   static meta = { id: 'rub', prompt: 'RUB!', hint: 'rub', duration: 3.6,
-    how: 'RUB THE SCREEN\nBACK AND FORTH' };
-  init() { this.dirt = 1; this.rate = this.byD(0.010, 0.0075, 0.006); }
+    how: 'RUB OFF\nALL THE MUD' };
+  init() {
+    // mud splats over the shiba; each one fades as you scrub over it
+    this.mud = [];
+    const n = this.byD(6, 8, 10);
+    for (let i = 0; i < n; i++) {
+      const a = Math.random() * 6.2832, d = Math.sqrt(Math.random()) * 38;
+      this.mud.push({ x: CX + Math.cos(a) * d * 1.1, y: CY + 4 + Math.sin(a) * d, r: 8 + Math.random() * 5, dirt: 1 });
+    }
+    this.rate = this.byD(0.05, 0.04, 0.034);
+    this.bubbles = []; this.squeak = 0;
+  }
   update(dt, input) {
-    if (input.down) this.dirt -= input.moveDist * this.rate;
-    if (this.dirt <= 0) { this.dirt = 0; this.succeed(); }
+    for (const b of this.bubbles) { b.t += dt; b.y -= 14 * dt; }
+    this.bubbles = this.bubbles.filter(b => b.t < 0.6);
+    this.squeak -= dt;
+    if (input.down && input.moveDist > 0) {
+      let scrubbed = false;
+      for (const m of this.mud) {
+        if (m.dirt > 0 && Math.hypot(input.x - m.x, input.y - m.y) < m.r + 10) { m.dirt -= input.moveDist * this.rate; scrubbed = true; }
+      }
+      if (scrubbed && Math.random() < 0.5) this.bubbles.push({ x: input.x + (Math.random() - 0.5) * 14, y: input.y, r: 2 + Math.random() * 3, t: 0 });
+      if (scrubbed && this.squeak <= 0) { Sfx.squeak(); this.squeak = 0.12; }
+    }
+    if (this.mud.every(m => m.dirt <= 0) && !this.finished) { Sfx.bark(); this.succeed(); }
   }
   draw(g) {
     g.clear();
-    const bw = 100, bh = 100;
-    g.rect(CX - bw / 2, CY - bh / 2, bw, bh, PAL.accent);
-    g.text('CLEAN', CX, CY + 3, 10, PAL.bg);
-    const s = this.dirt * bw;
-    g.rect(CX - s / 2, CY - s / 2, s, s, PAL.mid);
-    if (Input.down) g.circle(Input.x, Input.y, 5, PAL.ink);
+    const left = this.mud.filter(m => m.dirt > 0).length;
+    g.sprite('shiba', CX, CY + 4, { w: 110, h: 116, frame: left === 0 ? 1 : 0 });
+    for (const m of this.mud) {
+      if (m.dirt <= 0) continue;
+      ctx.globalAlpha = Math.min(1, m.dirt + 0.15);
+      g.circle(m.x, m.y, m.r, PAL.mid);
+      g.circle(m.x + m.r * 0.5, m.y - m.r * 0.6, m.r * 0.45, PAL.mid);   // splat lobes
+      g.circle(m.x - m.r * 0.6, m.y + m.r * 0.4, m.r * 0.35, PAL.mid);
+      ctx.globalAlpha = 1;
+    }
+    for (const b of this.bubbles) {
+      ctx.globalAlpha = 1 - b.t / 0.6; ctx.strokeStyle = PAL.ink; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, 6.2832); ctx.stroke(); ctx.globalAlpha = 1;
+    }
+    g.text('MUD LEFT ' + left, CX, TOP + 22, 9, left ? PAL.ink : PAL.accent);
   }
 }
 
@@ -1101,27 +1270,63 @@ class SwipeArrow extends Microgame {
   }
 }
 
-// 7. MASH — tap fast
-class MashButton extends Microgame {
-  static meta = { id: 'mash', prompt: 'MASH!', hint: 'mash', duration: 3.4,
-    how: 'TAP AS FAST\nAS YOU CAN' };
-  init() { this.count = 0; this.need = this.byD(6, 10, 14); }
+// 7. PAT — pat the sad shiba until it's cheering (tap fast)
+class PatShiba extends Microgame {
+  static meta = { id: 'pat', prompt: 'PAT!', hint: 'mash', duration: 3.6,
+    how: 'TAP THE SHIBA\nTO CHEER IT UP' };
+  init() {
+    this.count = 0; this.need = this.byD(6, 10, 14); this.squish = 0; this.pops = []; this.snap = 0;
+    // sometimes it's a grumpy one that doesn't want patting
+    this.fake = this.fakeOut(0.15, "DON'T PAT!", "IT'S GRUMPY!\nDON'T TOUCH IT");
+  }
   update(dt, input) {
-    if (input.justDown) { this.count++; Sfx.tap(); buzz(8); FX.burst(CX, CY, PAL.accent, 4, 40); FX.shake(1.2); if (this.count >= this.need) this.succeed(); }
+    this.squish = Math.max(0, this.squish - dt);
+    if (this.snap > 0) this.snap -= dt;
+    for (const p of this.pops) { p.t += dt; p.y -= 34 * dt; }
+    this.pops = this.pops.filter(p => p.t < 0.7);
+    // a pat has to land on the dog, but the dog is big
+    const onDog = input.justDown && Math.abs(input.x - CX) < 56 && Math.abs(input.y - (CY + 4)) < 60;
+    if (this.fake) { if (onDog) { this.snap = 0.3; Sfx.growl(); FX.shake(3); this.lose(); } return; }
+    if (onDog && !this.finished) {
+      this.count++; this.squish = 0.15;
+      Sfx.blip(480 + this.count * 45, 0.06, 'triangle', 0.07); buzz(8);
+      this.pops.push({ x: input.x, y: input.y - 8, t: 0, n: this.count });
+      if (this.count >= this.need) { FX.burst(CX, CY - 24, PAL.accent, 16, 70); Sfx.bark(); this.succeed(); }
+    }
+  }
+  // the mascot sheet's moods: teary (14) → sad (12, 10) → happy (0) → cheering
+  // (1-7), with eyes shut (8) for a beat on every pat, enjoying it
+  frame() {
+    if (this.fake) return this.snap > 0 ? 13 : 12;   // grumpy, and it does not like you
+    if (this.won) return 1 + Math.floor(this.t * 14) % 7;
+    if (this.squish > 0) return 8;
+    const p = this.count / this.need;
+    return p < 0.2 ? 14 : p < 0.4 ? 12 : p < 0.6 ? 10 : p < 0.85 ? 0 : 1 + Math.floor(this.t * 14) % 7;
+  }
+  heart(x, y, c) {
+    g.rect(x - 4, y - 3, 3, 2, c); g.rect(x + 1, y - 3, 3, 2, c);
+    g.rect(x - 5, y - 1, 10, 2, c); g.rect(x - 4, y + 1, 8, 2, c); g.rect(x - 2, y + 3, 4, 2, c);
   }
   draw(g) {
     g.clear();
-    const r = Input.down ? 30 : 34;
-    g.circle(CX, CY, r, Input.down ? PAL.accent : PAL.ink);
-    g.text(this.need - this.count, CX, CY + 6, 16, PAL.bg);
-    g.bar(30, BOT - 16, W - 60, 8, this.count / this.need);
+    const sq = this.squish > 0 ? 1 : 0;
+    g.sprite('shiba', CX, CY + 4 + sq * 5, { w: 105 + sq * 8, h: 111 - sq * 10, frame: this.frame() });
+    for (const p of this.pops) {
+      ctx.globalAlpha = 1 - p.t / 0.7;
+      this.heart(p.x, p.y, PAL.bad);
+      g.text(String(p.n), p.x + 8, p.y + 4, 12, PAL.accent, 'left');
+      ctx.globalAlpha = 1;
+    }
+    if (this.fake) { g.text('GRRR…', CX, TOP + 24, 10, PAL.bad); return; }
+    g.text('PATS ' + this.count + ' / ' + this.need, CX, TOP + 24, 10, PAL.ink);
+    g.bar(30, BOT - 16, W - 60, 8, this.count / this.need, PAL.bad);
   }
 }
 
-// 8. HOLD — release inside the marked zone
+// 8. CHARGE — hold to charge a jump, release at the couch's height
 class HoldRelease extends Microgame {
-  static meta = { id: 'hold', prompt: 'HOLD!', hint: 'hold', duration: 4.2,
-    how: 'HOLD, THEN LET GO\nIN THE ZONE' };
+  static meta = { id: 'hold', prompt: 'CHARGE!', hint: 'hold', duration: 4.2,
+    how: 'HOLD TO CHARGE A JUMP\nLET GO AT THE COUCH' };
   init() {
     this.p = 0; this.dir = 1;
     this.speed = this.byD(0.55, 0.8, 1.1);
@@ -1136,24 +1341,37 @@ class HoldRelease extends Microgame {
       if (this.p > 1) { this.p = 1; this.dir = -1; }
       if (this.p < 0) { this.p = 0; this.dir = 1; }
     } else if (this.armed) {
-      if (Math.abs(this.p - this.zoneAt) < this.zone / 2) this.succeed(); else this.lose();
+      if (Math.abs(this.p - this.zoneAt) < this.zone / 2) { Sfx.whoosh(); this.succeed(); } else { Sfx.thud(); this.lose(); }
     }
   }
   draw(g) {
     g.clear();
-    const x = 24, w = W - 48, y = CY - 60, h = 120;
+    // the jump meter on the left: how high the shiba will go
+    const x = 14, w = 12, y = CY - 70, h = 140, floor = y + h;
     g.rect(x, y, w, h, PAL.mid);
     g.rect(x, y + (1 - this.zoneAt - this.zone / 2) * h, w, this.zone * h, PAL.accent);
     const py = y + (1 - this.p) * h;
-    g.rect(x - 4, py - 2, w + 8, 4, PAL.ink);
-    g.text(this.armed ? 'RELEASE' : 'PRESS', CX, BOT - 2, 7, PAL.mid);
+    g.rect(x - 3, py - 2, w + 6, 4, PAL.ink);
+    // the couch, its seat at the height the zone marks
+    const seat = y + (1 - this.zoneAt) * h, cx0 = 92, cw = 74, th = Math.max(8, this.zone * h);
+    g.rect(cx0, seat - th / 2, cw, th, PAL.bad);                    // cushion
+    g.rect(cx0 + cw - 10, seat - th / 2 - 26, 10, 26 + th, PAL.bad); // armrest/back
+    g.rect(cx0, seat + th / 2, cw, floor - seat - th / 2, PAL.mid);  // base down to the floor
+    g.rect(cx0 + 2, seat - th / 2, cw - 14, 2, PAL.ink);             // cushion highlight
+    // the aim line: where the jump tops out right now
+    ctx.globalAlpha = 0.5; g.rect(x + w + 4, py - 1, 64, 2, PAL.ink); ctx.globalAlpha = 1;
+    // the shiba crouched on the floor, winding up while you hold
+    const fr = this.armed ? (Math.floor(this.t * 10) % 2) : 0;
+    g.rect(0, floor, W, 2, PAL.mid);
+    g.sprite('runjump', 52, floor - 22, { w: 56, h: 56, frame: fr });
+    g.text(this.armed ? 'LET GO AT THE COUCH!' : 'HOLD TO CHARGE', CX, BOT - 6, 8, this.armed ? PAL.accent : PAL.mid);
   }
 }
 
-// 9. DODGE — survive the falling blocks (boss-capable)
+// 9. DODGE — survive the falling flower pots (boss-capable)
 class Dodge extends Microgame {
   static meta = { id: 'dodge', prompt: 'DODGE!', hint: 'drag', duration: 5.0, winOnTimeout: true,
-    how: 'DRAG TO DODGE\nTHE FALLING BLOCKS' };
+    how: 'DRAG TO DODGE\nTHE FALLING POTS' };
   init() {
     this.px = CX; this.py = BOT - 26;
     this.blocks = [];
@@ -1168,55 +1386,71 @@ class Dodge extends Microgame {
     this.spawn -= dt;
     if (this.spawn <= 0) {
       this.spawn = this.every;
-      // keep each new block clear of any still-high one so a gap always exists
+      // keep each new pot clear of any still-high one so a gap always exists
       let x = 14 + Math.random() * (W - 28);
       for (let k = 0; k < 20; k++) {
         if (this.blocks.every(b => b.y > TOP + 50 || Math.abs(b.x - x) > 52)) break;
         x = 14 + Math.random() * (W - 28);
       }
-      this.blocks.push({ x, y: TOP - 8, w: 10 + Math.random() * 12 });
+      this.blocks.push({ x, y: TOP - 8, w: 12 + Math.random() * 10 });
     }
     for (const b of this.blocks) {
       b.y += this.fall * dt;
-      // hitbox is the body core (~7px), not the drawn 18px sprite, so ears/tail
-      // clipping a block doesn't feel unfair
-      if (Math.abs(b.y - this.py) < 9 && Math.abs(b.x - this.px) < b.w / 2 + 7) { buzz(60); this.lose(); }
+      // hitbox is the body core (~7px), not the drawn sprite, so ears/tail
+      // clipping a pot doesn't feel unfair
+      if (Math.abs(b.y - this.py) < 9 && Math.abs(b.x - this.px) < b.w / 2 + 7) { buzz(60); Sfx.crunch(); this.lose(); }
     }
     this.blocks = this.blocks.filter(b => b.y < BOT + 12);
   }
   draw(g) {
     g.clear();
-    for (const b of this.blocks) g.cRect(b.x, b.y, b.w, 8, PAL.bad);
+    // window ledges up top, where the pots are falling from
+    for (let x = 4; x < W; x += 44) { g.rect(x, TOP + 2, 34, 3, PAL.mid); g.rect(x + 3, TOP, 28, 2, PAL.mid); }
+    for (const b of this.blocks) {
+      // a shadow on the ground warns where each one will land
+      ctx.globalAlpha = Math.min(0.5, Math.max(0, (b.y - TOP) / (BOT - TOP))); g.rect(b.x - b.w / 2, BOT - 5, b.w, 2, PAL.mid); ctx.globalAlpha = 1;
+      g.pot(b.x, b.y, b.w);
+    }
     g.sprite('hero', this.px, this.py - 4, { w: 24, h: 30, frame: Math.floor(this.t * 14) % 9 });
     g.rect(0, BOT - 4, W, 4, PAL.mid);
   }
 }
 
-// 10. WAIT — do nothing. The classic trap.
+// 10. SHH — don't wake the sleeping shiba. The classic do-nothing trap.
 class DontTap extends Microgame {
-  static meta = { id: 'dont', prompt: "DON'T!", hint: 'wait', duration: 3.0, winOnTimeout: true,
-    how: "DO NOTHING.\nDON'T TOUCH!" };
-  init() { this.pulse = 0; }
+  static meta = { id: 'dont', prompt: 'SHH!', hint: 'wait', duration: 3.0, winOnTimeout: true,
+    how: "IT'S SLEEPING.\nDON'T WAKE IT!" };
+  init() { this.woke = 0; }
   update(dt, input) {
-    this.pulse += dt * 6;
-    if (input.justDown) { buzz(60); this.lose(); }
+    if (input.justDown) { this.woke = 1; Sfx.bark(); buzz(60); FX.shake(3); this.lose(); }
   }
   draw(g) {
     g.clear();
-    const r = 30 + Math.sin(this.pulse) * 4;
-    g.circle(CX, CY, r, PAL.bad);
-    g.text('TAP ME', CX, CY + 4, 10, PAL.ink);
-    g.text('(no)', CX, CY + 52, 8, PAL.mid);
+    // a cushion, a sleeping shiba, and the Zzz drifting up off it
+    g.rect(CX - 52, CY + 44, 104, 14, PAL.bad);
+    g.rect(CX - 46, CY + 40, 92, 6, PAL.bad);
+    // the calm eyes-shut face, head tipped onto the cushion, breathing slowly
+    const breath = Math.sin(this.t * 3) * 2;
+    ctx.save(); ctx.translate(CX - 4, CY + 10 - breath * 0.5); ctx.rotate(this.woke ? 0 : -0.35);
+    g.sprite('face', 0, 0, { w: 78, h: 80 + breath, frame: this.woke ? 0 : 5 });
+    ctx.restore();
+    for (let i = 0; i < 3; i++) {
+      const k = (this.t * 0.6 + i / 3) % 1;
+      ctx.globalAlpha = 1 - k;
+      g.text('Z', CX + 30 + k * 26 + i * 4, CY - 30 - k * 46, 9 + i * 3, PAL.ink);
+      ctx.globalAlpha = 1;
+    }
+    g.text('shhh…', CX, BOT - 8, 8, PAL.mid);
   }
 }
 
-// 11. TAP TIMING — stop the sweeping marker inside the band
+// 11. THROW — tap when the running shiba is under the frisbee zone
 class StopBar extends Microgame {
-  static meta = { id: 'stop', prompt: 'STOP!', hint: 'tap', duration: 3.4,
-    how: 'TAP WHEN THE MARKER\nIS IN THE BAND' };
+  static meta = { id: 'stop', prompt: 'THROW!', hint: 'tap', duration: 3.4,
+    how: 'TAP TO THROW WHEN THE\nSHIBA IS IN THE ZONE' };
   init() {
     this.p = Math.random(); this.dir = Math.random() < 0.5 ? 1 : -1;
-    // >= 2.4 units of travel guarantees the marker crosses the band from any
+    // >= 2.4 units of travel guarantees the runner crosses the zone from any
     // starting point, however short the round has become.
     this.speed = Math.max(this.byD(0.75, 1.05, 1.45), 2.4 / this.timeLimit);
     this.band = this.byD(0.26, 0.18, 0.12);
@@ -1227,22 +1461,30 @@ class StopBar extends Microgame {
     if (this.p > 1) { this.p = 1; this.dir = -1; }
     if (this.p < 0) { this.p = 0; this.dir = 1; }
     if (input.justDown) {
-      if (Math.abs(this.p - this.at) < this.band / 2) this.succeed(); else this.lose();
+      Sfx.whoosh();
+      if (Math.abs(this.p - this.at) < this.band / 2) { Sfx.bark(); this.succeed(); } else this.lose();
     }
   }
   draw(g) {
     g.clear();
-    const x = 20, w = W - 40, y = CY - 14, h = 28;
-    g.rect(x, y, w, h, PAL.mid);
-    g.rect(x + (this.at - this.band / 2) * w, y, this.band * w, h, PAL.accent);
-    g.rect(x + this.p * w - 2, y - 6, 4, h + 12, PAL.ink);
+    const x = 20, w = W - 40, ground = CY + 30;
+    g.rect(0, ground, W, 2, PAL.mid);
+    // the catch zone on the ground, with the frisbee hanging over it
+    const zx = x + (this.at - this.band / 2) * w, zw = this.band * w;
+    g.rect(zx, ground - 2, zw, 6, PAL.accent);
+    ctx.globalAlpha = 0.25; g.rect(zx, TOP + 30, zw, ground - TOP - 30, PAL.accent); ctx.globalAlpha = 1;
+    const fy = TOP + 40 + Math.sin(this.t * 4) * 3;
+    g.rect(zx + zw / 2 - 9, fy, 18, 4, PAL.accent); g.rect(zx + zw / 2 - 6, fy - 2, 12, 2, PAL.accent);
+    // the shiba sprinting back and forth under it
+    const sx = x + this.p * w;
+    g.sprite(this.dir > 0 ? 'swiperight' : 'swipeleft', sx, ground - 18, { w: 64, h: 64, frame: Math.floor(this.t * 16) % 9 });
   }
 }
 
-// 12. TRACKING — keep your finger on the runaway dot
+// 12. LASER — keep your finger on the laser dot the shiba is chasing
 class FollowDot extends Microgame {
-  static meta = { id: 'follow', prompt: 'FOLLOW!', hint: 'drag', duration: 4.6, winOnTimeout: true,
-    how: 'KEEP YOUR FINGER\nON THE DOT' };
+  static meta = { id: 'follow', prompt: 'LASER!', hint: 'drag', duration: 4.6, winOnTimeout: true,
+    how: 'KEEP YOUR FINGER\nON THE LASER DOT' };
   init() {
     this.x = CX; this.y = CY;
     const sp = this.byD(34, 52, 74);
@@ -1250,11 +1492,16 @@ class FollowDot extends Microgame {
     this.vx = Math.cos(a) * sp; this.vy = Math.sin(a) * sp;
     this.r = this.byD(20, 17, 14);
     this.off = 0; this.grace = 0.7;     // time to get your finger there
+    this.dx = CX; this.dy = BOT - 20; this.face = 1;   // the shiba chasing the dot
   }
   update(dt, input) {
     this.x += this.vx * dt; this.y += this.vy * dt;
     if (this.x < 16 || this.x > W - 16) this.vx *= -1;
     if (this.y < TOP + 16 || this.y > BOT - 16) this.vy *= -1;
+    // the shiba is always a step behind the dot, as they are
+    const k = Math.min(1, dt * 2.6);
+    if (Math.abs(this.x - this.dx) > 2) this.face = this.x > this.dx ? 1 : -1;
+    this.dx += (this.x - this.dx) * k; this.dy += (this.y + 20 - this.dy) * k;
     this.grace -= dt;
     if (this.grace > 0) return;
     const on = input.down && Math.hypot(input.x - this.x, input.y - this.y) < this.r;
@@ -1263,9 +1510,11 @@ class FollowDot extends Microgame {
   }
   draw(g) {
     g.clear();
+    g.sprite(this.face > 0 ? 'swiperight' : 'swipeleft', this.dx, this.dy, { w: 56, h: 56, frame: Math.floor(this.t * 16) % 9 });
     const held = this.off === 0 && this.grace <= 0;
-    g.circle(this.x, this.y, this.r, held ? PAL.accent : PAL.mid);
-    g.circle(this.x, this.y, 4, PAL.ink);
+    // where your finger has to stay, and the laser dot itself
+    ctx.globalAlpha = held ? 0.35 : 0.2; g.circle(this.x, this.y, this.r, held ? PAL.accent : PAL.mid); ctx.globalAlpha = 1;
+    g.circle(this.x, this.y, 6, PAL.bad); g.circle(this.x, this.y, 3, PAL.ink);
     if (this.off > 0 && this.grace <= 0) g.bar(30, BOT - 14, W - 60, 5, 1 - this.off / 0.42, PAL.bad, PAL.mid);
   }
 }
@@ -1331,26 +1580,31 @@ class TapOrder extends Microgame {
   }
 }
 
-// 14. DISCRIMINATION — one of these is not like the others
+// 14. ODD ONE — one of these shibas is not like the others
 class OddOneOut extends Microgame {
   static meta = { id: 'odd', prompt: 'ODD ONE!', hint: 'tap', duration: 3.8,
-    how: "TAP THE ONE\nTHAT'S DIFFERENT" };
+    how: 'TAP THE SHIBA\nTHAT LOOKS DIFFERENT' };
   init() {
     const cols = this.byD(2, 3, 3), rows = this.byD(2, 2, 3);
-    this.cells = []; this.r = this.byD(18, 14, 12);
+    this.cells = []; this.r = this.byD(22, 18, 15);
     const gw = (W - 40) / cols, gh = (BOT - TOP - 50) / rows;
     for (let ry = 0; ry < rows; ry++) for (let cx = 0; cx < cols; cx++) {
       this.cells.push({ x: 20 + gw * (cx + 0.5), y: TOP + 30 + gh * (ry + 0.5) });
     }
     this.odd = Math.floor(Math.random() * this.cells.length);
-    this.square = Math.random() < 0.5;   // which shape is the majority
+    // face frames, the gap between them shrinking with difficulty:
+    // a calm face among laughing ones, a wink among smiles, eyes shut among calm
+    // (face frames: 0 laugh, 1 wink, 3 smile, 4 calm, 5 eyes shut)
+    const pair = this.byD([4, 0], [3, 1], [4, 5]);
+    this.same = pair[0]; this.diff = pair[1];
+    if (this.d === 1 && Math.random() < 0.5) { this.same = pair[1]; this.diff = pair[0]; }
   }
   update(dt, input) {
     if (!input.justDown) return;
     for (let k = 0; k < this.cells.length; k++) {
       const c = this.cells[k];
       if (Math.abs(input.x - c.x) < this.r + 4 && Math.abs(input.y - c.y) < this.r + 4) {
-        if (k === this.odd) this.succeed(); else this.lose();
+        if (k === this.odd) { Sfx.bark(); this.succeed(); } else this.lose();
         return;
       }
     }
@@ -1358,9 +1612,8 @@ class OddOneOut extends Microgame {
   draw(g) {
     g.clear();
     this.cells.forEach((c, k) => {
-      const sq = (k === this.odd) ? !this.square : this.square;
-      if (sq) g.cRect(c.x, c.y, this.r * 1.8, this.r * 1.8, PAL.ink);
-      else g.circle(c.x, c.y, this.r, PAL.ink);
+      const s = this.r * 2.3, bob = Math.sin(this.t * 5 + k) * 1.5;
+      g.sprite('face', c.x, c.y + bob, { w: s, h: s * 32 / 31, frame: k === this.odd ? this.diff : this.same });
     });
   }
 }
@@ -1381,7 +1634,7 @@ class FeedDog extends Microgame {
       if (!this.held && Math.hypot(input.x - this.tx, input.y - this.ty) < 22) this.held = true;
       if (this.held) { this.tx = input.x; this.ty = input.y; }
     } else { this.held = false; }
-    if (Math.hypot(this.tx - this.dx, this.ty - (this.dy + 6)) < 16) this.succeed();
+    if (Math.hypot(this.tx - this.dx, this.ty - (this.dy + 6)) < 16 && !this.finished) { Sfx.chomp(); this.succeed(); }
   }
   draw(g) {
     g.clear();
@@ -1393,10 +1646,10 @@ class FeedDog extends Microgame {
   }
 }
 
-// 16. REACTION — whack each one before it drops
+// 16. BOOP — boop each snoot before it ducks back down
 class WhackMole extends Microgame {
-  static meta = { id: 'whack', prompt: 'WHACK!', hint: 'mash', duration: 4.4,
-    how: 'TAP EACH DOG\nAS IT POPS UP' };
+  static meta = { id: 'whack', prompt: 'BOOP!', hint: 'mash', duration: 4.4,
+    how: 'BOOP EACH SNOOT\nAS IT POPS UP' };
   init() {
     this.need = this.byD(2, 3, 4); this.hit = 0; this.r = 18;
     this.sw = 46;                          // drawn sprite size
@@ -1404,19 +1657,23 @@ class WhackMole extends Microgame {
     for (let ry = 0; ry < 2; ry++) for (let cx = 0; cx < 3; cx++) {
       this.holes.push({ x: 30 + cx * 60, y: TOP + 70 + ry * 100 });
     }
-    // each mole's window is derived from the real round length, so it always fits
+    // each pop-up's window is derived from the real round length, so it always fits
     const budget = Math.max(1.1, this.timeLimit - 0.35);
     this.up = budget / this.need * 0.92;
     this.left = this.up;
     this.cur = Math.floor(Math.random() * this.holes.length);
+    this.hearts = [];
   }
   update(dt, input) {
+    for (const h of this.hearts) { h.t += dt; h.y -= 30 * dt; }
+    this.hearts = this.hearts.filter(h => h.t < 0.6);
     this.left -= dt;
     if (this.left <= 0) { this.lose(); return; }
     if (input.justDown) {
       const h = this.holes[this.cur];
       if (Math.hypot(input.x - h.x, input.y - (h.y - 4)) < this.r + 8) {
-        this.hit++; Sfx.tick(); buzz(12); FX.hit(h.x, h.y, PAL.accent);
+        this.hit++; Sfx.boop(); buzz(12); FX.hit(h.x, h.y - 10, PAL.accent);
+        this.hearts.push({ x: h.x, y: h.y - 24, t: 0 });
         if (this.hit >= this.need) { this.succeed(); return; }
         let nx = this.cur;
         while (nx === this.cur) nx = Math.floor(Math.random() * this.holes.length);
@@ -1428,9 +1685,9 @@ class WhackMole extends Microgame {
      popped frames sit the dog on a raised mound low in the cell (widest row 42)
      while the empty frame is a flat hole higher up (widest row 29). Stepping
      through the frames therefore made the hole change shape and jump position
-     as the mole came up. So the hole is now always frame 8, drawn identically
-     in every cell, and the mole is frame 0 clipped to above the rim and slid
-     up through it — which also rises smoothly instead of in nine steps.
+     as it came up. So the hole is now always frame 8, drawn identically in
+     every cell, and the dog is frame 0 clipped to above the rim and slid up
+     through it — which also rises smoothly instead of in nine steps.
      Rows below are in the 48px sprite's own pixels. */
   drawMole(g, x, y, pop) {
     const RIM = 30;    // the hole's near lip; the dog is cut off here
@@ -1450,6 +1707,12 @@ class WhackMole extends Microgame {
     const h = this.holes[this.cur];
     const pop = Math.min(1, (this.up - this.left) * 6);
     this.drawMole(g, h.x, h.y, pop);
+    for (const ht of this.hearts) {
+      ctx.globalAlpha = 1 - ht.t / 0.6;
+      g.rect(ht.x - 4, ht.y - 3, 3, 2, PAL.bad); g.rect(ht.x + 1, ht.y - 3, 3, 2, PAL.bad);
+      g.rect(ht.x - 5, ht.y - 1, 10, 2, PAL.bad); g.rect(ht.x - 4, ht.y + 1, 8, 2, PAL.bad); g.rect(ht.x - 2, ht.y + 3, 4, 2, PAL.bad);
+      ctx.globalAlpha = 1;
+    }
     for (let i = 0; i < this.need; i++) g.rect(CX - this.need * 4 + i * 8, TOP + 6, 5, 5, i < this.hit ? PAL.accent : PAL.mid);
   }
 }
@@ -1495,71 +1758,71 @@ class PumpBalloon extends Microgame {
   }
 }
 
-// 18. PRECISION SWIPE — cut the marked rope, only that one
+// 18. CUT — cut the rope with the bone so it drops to the shiba
 class CutRope extends Microgame {
   static meta = { id: 'cut', prompt: 'CUT!', hint: 'swipe', duration: 4.0,
-    how: 'SWIPE ACROSS\nTHE MARKED ROPE' };
+    how: 'SWIPE ACROSS THE ROPE\nHOLDING THE BONE' };
   init() {
     this.n = this.byD(2, 3, 4);
     this.ropes = [];
     const gap = (W - 40) / (this.n - 1 || 1);
-    for (let i = 0; i < this.n; i++) this.ropes.push({ x: 20 + gap * i + (this.n === 1 ? gap / 2 : 0) });
+    for (let i = 0; i < this.n; i++) this.ropes.push({ x: 20 + gap * i + (this.n === 1 ? gap / 2 : 0), len: 0.75 + Math.random() * 0.25 });
     this.target = Math.floor(Math.random() * this.n);
-    this.y0 = TOP + 40; this.y1 = BOT - 46;
+    this.y0 = TOP + 30; this.y1 = BOT - 70;
     this.cut = -1;            // which rope got cut (-1 = none yet)
-    this.cutAt = 0;          // y where the swipe crossed
-    this.anim = 0;           // seconds since the cut, drives the split + fall
+    this.cutAt = 0;           // y where the swipe crossed
+    this.anim = 0;            // seconds since the cut, drives the split + fall
   }
+  end(r) { return this.y0 + (this.y1 - this.y0) * r.len; }
   update(dt, input) {
     if (this.cut >= 0) {                    // playing the split animation
       this.anim += dt;
-      if (this.anim > 0.35) { if (this.cut === this.target) this.succeed(); else this.lose(); }
+      if (this.anim > 0.45) { if (this.cut === this.target) this.succeed(); else this.lose(); }
       return;
     }
     const sw = input.swipe;
-    if (!sw) return;
+    if (!sw || sw.x0 == null) return;
     const midY = (sw.y0 + sw.y1) / 2;
-    if (midY < this.y0 - 12 || midY > this.y1 + 12) return;      // swiped off the ropes
     for (let i = 0; i < this.n; i++) {
-      const rx = this.ropes[i].x;
-      if ((sw.x0 - rx) * (sw.x1 - rx) < 0) {                     // the swipe crossed this rope
-        this.cut = i;
-        this.cutAt = Math.max(this.y0 + 8, Math.min(this.y1 - 8, midY));
-        this.anim = 0;
+      const r = this.ropes[i], rx = r.x;
+      if (midY < this.y0 - 8 || midY > this.end(r) + 4) continue;   // missed this rope's length
+      if ((sw.x0 - rx) * (sw.x1 - rx) < 0) {                        // the swipe crossed this rope
+        this.cut = i; this.anim = 0;
+        this.cutAt = Math.max(this.y0 + 6, Math.min(this.end(r) - 6, midY));
         FX.hit(rx, this.cutAt, i === this.target ? PAL.accent : PAL.bad);
-        if (i === this.target) { Sfx.win(); } else { buzz(70); FX.shake(3); }
+        Sfx.whoosh();
+        if (i === this.target) setTimeout(() => Sfx.chomp(), 300); else { buzz(70); FX.shake(3); }
         return;
       }
     }
   }
   draw(g) {
     g.clear();
+    g.rect(0, this.y0 - 4, W, 4, PAL.ink);       // the beam they hang from
+    // the shiba waiting under the bone, mouth open
+    const tx = this.ropes[this.target].x;
+    g.sprite('face', tx, BOT - 24, { w: 38, h: 39, frame: 0 });
     this.ropes.forEach((r, i) => {
-      const on = i === this.target;
-      const col = on ? PAL.accent : PAL.mid;
+      const e = this.end(r), bone = i === this.target;
+      let itemY = e + 6;
       if (i === this.cut) {
-        // rope split into two pieces at the cut point
-        const k = this.anim / 0.35;
-        const recoil = k * 10;
-        g.rect(r.x - 1, this.y0, 3, (this.cutAt - recoil) - this.y0, col);   // top piece springs up
-        const botTop = this.cutAt + recoil + k * 40;                          // bottom piece + weight fall away
-        g.rect(r.x - 1, botTop, 3, Math.max(0, this.y1 - botTop), col);
-        if (on) g.cRect(r.x, Math.min(BOT + 20, this.y1 + k * 60), 9, 9, PAL.bad);   // weight drops
+        const k = this.anim / 0.45, recoil = k * 12;
+        g.rect(r.x - 1, this.y0, 2, Math.max(0, this.cutAt - recoil - this.y0), PAL.mid);   // top piece springs up
+        itemY = e + 6 + k * k * (BOT - e);                                                  // the rest drops
+        g.rect(r.x - 1, this.cutAt + k * k * (BOT - e), 2, Math.max(0, e - this.cutAt), PAL.mid);
       } else {
-        g.rect(r.x - 1, this.y0, 3, this.y1 - this.y0, col);
-        if (on) { g.cRect(r.x, this.y0 - 6, 11, 11, PAL.accent); g.cRect(r.x, this.y1, 9, 9, PAL.bad); }
+        g.rect(r.x - 1, this.y0, 2, e - this.y0, PAL.mid);
       }
+      if (bone) g.bone(r.x, itemY, 26); else g.choc(r.x, itemY, 26);
     });
-    // anchor beam the ropes hang from
-    g.rect(0, this.y0 - 4, W, 4, PAL.ink);
-    if (this.cut < 0) g.text('SWIPE ACROSS THE GOLD ROPE', CX, BOT - 8, 7, PAL.mid);
+    if (this.cut < 0) g.text('CUT THE BONE DOWN!', CX, TOP + 20, 8, PAL.mid);
   }
 }
 
-// 19. BOSS — thread the gaps
+// 19. BOSS — squeeze through the gaps in the fences
 class Squeeze extends Microgame {
   static meta = { id: 'squeeze', prompt: 'SQUEEZE!', hint: 'drag', duration: 5.0, winOnTimeout: true,
-    how: 'DRAG THROUGH\nTHE GAPS' };
+    how: 'DRAG THROUGH\nTHE GAPS IN THE FENCE' };
   init() {
     this.px = CX; this.py = BOT - 26;
     this.gap = this.byD(66, 54, 44);   // widened to clear the 18px-wide dog
@@ -1580,7 +1843,8 @@ class Squeeze extends Microgame {
       const was = w.y;
       w.y += this.sp * dt;
       if (was < this.py && w.y >= this.py) {          // crossing the player's row
-        if (Math.abs(this.px - w.gx) > this.gap / 2 - 8) { buzz(80); this.lose(); return; }
+        if (Math.abs(this.px - w.gx) > this.gap / 2 - 8) { buzz(80); Sfx.thud(); this.lose(); return; }
+        Sfx.whoosh();
       }
     }
     this.walls = this.walls.filter(w => w.y < BOT + 10);
@@ -1588,22 +1852,23 @@ class Squeeze extends Microgame {
   draw(g) {
     g.clear();
     for (const w of this.walls) {
-      g.rect(0, w.y - 4, w.gx - this.gap / 2, 8, PAL.bad);
-      g.rect(w.gx + this.gap / 2, w.y - 4, W - (w.gx + this.gap / 2), 8, PAL.bad);
+      g.fence(0, w.gx - this.gap / 2, w.y);
+      g.fence(w.gx + this.gap / 2, W, w.y);
+      // gate posts either side of the gap
+      g.rect(w.gx - this.gap / 2 - 2, w.y - 7, 3, 13, PAL.bad); g.rect(w.gx + this.gap / 2 - 1, w.y - 7, 3, 13, PAL.bad);
     }
     g.sprite('hero', this.px, this.py - 4, { w: 24, h: 30, frame: Math.floor(this.t * 14) % 9 });
     g.rect(0, BOT - 3, W, 3, PAL.mid);
   }
 }
 
-// 20. BLOW — puff to fill the sail / spin the pinwheel (mic, or tap-fallback)
+// 20. BLOW — blow a big bubble (mic, or tap-fallback)
 class BlowSail extends Microgame {
-  static meta = { id: 'blow', prompt: 'BLOW!', hint: 'blow', duration: 4.2, photo: true, photoCap: 'MAKE A WISH!',
-    how: { mic: 'BLOW INTO\nTHE MIC', touch: 'TAP FAST\nTO BLOW' } };
+  static meta = { id: 'blow', prompt: 'BLOW!', hint: 'blow', duration: 4.2, photo: true, photoCap: 'BIG BUBBLE!',
+    how: { mic: 'BLOW INTO THE MIC\nBLOW A BIG BUBBLE', touch: 'TAP FAST\nTO BLOW A BUBBLE' } };
   init() {
     this.fill = 0;
     this.need = this.byD(0.9, 1.3, 1.7);
-    this.spin = 0;
     // If the mic permission is still pending, pause the round rather than start
     // it unfairly. Cap the wait so a slow/ignored prompt falls back to tapping.
     Input.enableMic();
@@ -1621,15 +1886,11 @@ class BlowSail extends Microgame {
       if (!Input.micPending || this.wait > 1.2) this.paused = false;
       return;
     }
-    const b = input.blow > 0.28 ? input.blow : 0;   // only a real blow fills the sail
+    const b = input.blow > 0.28 ? input.blow : 0;   // only a real blow grows the bubble
     this.fill += b * dt * 1.9;
-    this.spin += b * dt * 16;
-    if (this.fill >= this.need && !this.finished) {
-      const shot = Input.snapPhoto();
-      if (shot) { PhotoFX.cake(shot); Engine.lastPhoto = shot; }
-      this.succeed();
-    }
+    if (this.fill >= this.need && !this.finished) { Sfx.boop(); this.succeed(); }
   }
+  stampPhoto(c) { PhotoFX.bubbles(c); }
   draw(g) {
     g.clear();
     if (this.paused) {
@@ -1637,25 +1898,27 @@ class BlowSail extends Microgame {
       g.text('(tap Allow to blow)', CX, CY + 12, 7, PAL.mid);
       return;
     }
-    // little boat
-    g.rect(CX - 26, BOT - 40, 52, 12, PAL.mid);
-    g.rect(CX - 1, CY - 30, 2, 74, PAL.ink);
-    const bulge = 6 + (this.fill / this.need) * 34;
-    ctx.fillStyle = PAL.accent;
-    ctx.beginPath();
-    ctx.moveTo(CX + 1, CY - 28);
-    ctx.quadraticCurveTo(CX + 1 + bulge, CY, CX + 1, CY + 30);
-    ctx.closePath(); ctx.fill();
-    if (Input.micReady) g.text('BLOW!', CX, TOP + 30, 8, PAL.mid);
-    else g.text('TAP FAST TO BLOW', CX, TOP + 30, 7, PAL.mid);
-    g.bar(30, BOT - 16, W - 60, 6, this.fill / this.need);
+    const k = Math.min(1, this.fill / this.need);
+    // the wand, and the bubble swelling off its ring
+    const wx = CX - 30, wy = BOT - 40;
+    g.line(wx - 26, wy + 26, wx - 6, wy + 6, PAL.mid, 3);
+    ctx.strokeStyle = PAL.mid; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(wx, wy, 8, 0, 6.2832); ctx.stroke();
+    const r = 8 + k * 46, bx = wx + r * 0.75, by = wy - r * 0.75;
+    ctx.globalAlpha = 0.18; g.circle(bx, by, r, PAL.ink); ctx.globalAlpha = 1;
+    ctx.strokeStyle = PAL.ink; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(bx, by, r, 0, 6.2832); ctx.stroke();
+    ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(bx, by, r * 0.7, -2.4, -1.7); ctx.stroke();   // the shine
+    // a shiba watching it grow, more delighted the bigger it gets
+    g.sprite('face', W - 30, BOT - 30, { w: 38, h: 39, frame: k > 0.6 ? 0 : 3 });
+    if (Input.micReady) g.text('BLOW!', CX, TOP + 24, 9, PAL.mid);
+    else g.text('TAP FAST TO BLOW', CX, TOP + 24, 7, PAL.mid);
+    g.bar(30, BOT - 12, W - 60, 5, k);
   }
 }
 
-// 21. TRACE — drag along the dotted path from start to end without straying
+// 21. WALK — drag the shiba along the path home without straying
 class TracePath extends Microgame {
-  static meta = { id: 'trace', prompt: 'TRACE!', hint: 'trace', duration: 4.8,
-    how: 'DRAG ALONG\nTHE DOTTED PATH' };
+  static meta = { id: 'trace', prompt: 'WALK!', hint: 'trace', duration: 4.8,
+    how: 'DRAG THE SHIBA\nALONG THE PATH HOME' };
   init() {
     // a polyline of 3-4 nodes; you must drag through each in order
     const n = this.byD(3, 4, 4);
@@ -1665,10 +1928,11 @@ class TracePath extends Microgame {
     this.nodes.push({ x, y });
     for (let i = 1; i < n; i++) {
       x += (W - 56) / (n - 1);
-      y = TOP + 30 + Math.random() * (BOT - TOP - 70);
+      y = TOP + 40 + Math.random() * (BOT - TOP - 80);
       this.nodes.push({ x, y });
     }
     this.i = 0; this.started = false; this.stray = 0;
+    this.dogX = this.nodes[0].x; this.dogY = this.nodes[0].y;
   }
   segDist(px, py, a, b) {
     const dx = b.x - a.x, dy = b.y - a.y;
@@ -1684,37 +1948,39 @@ class TracePath extends Microgame {
       if (Math.hypot(input.x - this.nodes[0].x, input.y - this.nodes[0].y) < this.tol) this.started = true;
       else return;
     }
+    this.dogX = input.x; this.dogY = input.y;
     // advance through nodes as the finger reaches them
     if (this.i < this.nodes.length - 1) {
       const next = this.nodes[this.i + 1];
       const d = this.segDist(input.x, input.y, this.nodes[this.i], next);
-      if (d > this.tol) { this.lose(); return; }         // strayed off the line
-      if (Math.hypot(input.x - next.x, input.y - next.y) < this.tol) this.i++;
+      if (d > this.tol) { this.lose(); return; }         // strayed off the path
+      if (Math.hypot(input.x - next.x, input.y - next.y) < this.tol) { this.i++; Sfx.tick(); }
     }
-    if (this.i >= this.nodes.length - 1) this.succeed();
+    if (this.i >= this.nodes.length - 1) { Sfx.bark(); this.succeed(); }
   }
   draw(g) {
     g.clear();
+    // the path, as paw prints on the walk so far and dashes on the way ahead
     for (let k = 0; k < this.nodes.length - 1; k++) {
       const a = this.nodes[k], b = this.nodes[k + 1];
-      const done = k < this.i;
-      ctx.strokeStyle = done ? PAL.accent : PAL.mid;
-      ctx.lineWidth = 2; ctx.setLineDash([3, 4]);
-      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
-      ctx.setLineDash([]);
+      const len = Math.hypot(b.x - a.x, b.y - a.y), steps = Math.floor(len / 9);
+      for (let j = 0; j <= steps; j++) {
+        const px = a.x + (b.x - a.x) * j / steps, py = a.y + (b.y - a.y) * j / steps;
+        if (k < this.i) g.paw(px, py, 5, PAL.accent); else g.rect(px - 1, py - 1, 3, 3, PAL.mid);
+      }
     }
-    this.nodes.forEach((p, k) => g.circle(p.x, p.y, 4, k <= this.i ? PAL.accent : PAL.ink));
+    const last = this.nodes[this.nodes.length - 1];
+    g.doghouse(last.x, last.y + 10, 30);
     g.circle(this.nodes[0].x, this.nodes[0].y, this.tol, PAL.mid);
     if (!this.started) g.text('START', this.nodes[0].x, this.nodes[0].y - this.tol - 4, 7, PAL.mid);
-    const last = this.nodes[this.nodes.length - 1];
-    g.cRect(last.x, last.y, 10, 10, PAL.bad);
+    g.sprite('swipedown', this.dogX, this.dogY - 8, { w: 58, h: 58, frame: this.started ? Math.floor(this.t * 14) % 9 : 0 });
   }
 }
 
 // 22. COUNT — tap exactly the number asked for, no more
 class GrabCount extends Microgame {
   static meta = { id: 'count', prompt: 'GRAB 3!', hint: 'count', duration: 4.2,
-    how: 'TAP EXACTLY\nTHAT MANY' };
+    how: 'TAP EXACTLY\nTHAT MANY TREATS' };
   init() {
     const total = this.byD(5, 7, 9);
     this.need = 2 + Math.floor(Math.random() * (this.byD(2, 3, 4)));
@@ -1744,66 +2010,59 @@ class GrabCount extends Microgame {
   }
   draw(g) {
     g.clear();
-    for (const it of this.items) if (!it.taken) g.sprite('coin', it.x, it.y, { w: 12, h: 12, color: PAL.accent });
+    for (const it of this.items) if (!it.taken) g.bone(it.x, it.y, 18);
     g.text(this.got + ' / ' + this.need, CX, TOP + 26, 9, this.got > this.need ? PAL.bad : PAL.ink);
   }
 }
 
-// 23. FLICK — pull back and release to launch the ball into the target
+// 23. FETCH — swipe up to throw the ball to the running shiba
 class FlickShot extends Microgame {
-  static meta = { id: 'flick', prompt: 'SHOOT!', hint: 'flick', duration: 4.6,
-    how: 'PULL BACK, LET GO\nTO SHOOT' };
+  static meta = { id: 'flick', prompt: 'FETCH!', hint: 'flick', duration: 4.6,
+    how: 'SWIPE UP TO THROW\nTHE BALL TO THE SHIBA' };
   init() {
-    this.K = 6;                              // pull -> velocity multiplier
-    this.ox = CX; this.oy = BOT - 70;        // origin with room to pull downward
-    this.ball = { x: this.ox, y: this.oy, vx: 0, vy: 0, flying: false };
-    this.aim = false; this.launched = false;
-    // target sits in the upper field, reachable by a pull within the lower area
-    this.target = { x: 30 + Math.random() * (W - 60), y: TOP + 26 + Math.random() * 40, r: this.byD(17, 14, 11) };
-    this.tvx = this.byD(0, 22, 38) * (Math.random() < 0.5 ? 1 : -1);
+    this.ox = CX; this.oy = BOT - 26;
+    this.ball = { x: this.ox, y: this.oy, vx: 0, vy: 0, flying: false, z: 0 };
+    // the shiba runs back and forth across the far end of the yard
+    this.dy = TOP + 48 + Math.random() * 30;
+    this.dx = 30 + Math.random() * (W - 60);
+    this.dvx = this.byD(30, 48, 66) * (Math.random() < 0.5 ? 1 : -1);
+    this.catchR = this.byD(26, 22, 18);
   }
   update(dt, input) {
-    this.target.x += this.tvx * dt;
-    if (this.target.x < 20 || this.target.x > W - 20) this.tvx *= -1;
-
-    if (!this.launched) {
-      if (input.down) {
-        this.aim = true;
-        // pull anywhere, but cap the pull distance so launch speed is bounded
-        let px = input.x - this.ox, py = input.y - this.oy;
-        const maxPull = 66, d = Math.hypot(px, py);
-        if (d > maxPull) { px = px / d * maxPull; py = py / d * maxPull; }
-        this.ball.x = Math.max(6, Math.min(W - 6, this.ox + px));
-        // never let the aiming ball sit below the field, or the launch instantly
-        // trips the out-of-bounds miss
-        this.ball.y = Math.min(BOT - 2, this.oy + py);
-      } else if (this.aim) {
-        const pullx = this.ox - this.ball.x, pully = this.oy - this.ball.y;
-        this.ball.vx = pullx * this.K; this.ball.vy = pully * this.K;
-        this.ball.flying = true; this.launched = true; Sfx.tap(); buzz(15);
+    this.dx += this.dvx * dt;
+    if (this.dx < 22 || this.dx > W - 22) { this.dvx *= -1; this.dx = Math.max(22, Math.min(W - 22, this.dx)); }
+    if (!this.ball.flying) {
+      const sw = input.swipe;
+      if (sw && sw.dir === 'up') {
+        // throw along the swipe; keyboard swipes carry no points, so straight up
+        let ax = sw.x0 != null ? sw.x1 - sw.x0 : 0, ay = sw.y0 != null ? sw.y1 - sw.y0 : -1;
+        const d = Math.hypot(ax, ay) || 1;
+        this.ball.vx = ax / d * 280; this.ball.vy = ay / d * 280;
+        this.ball.flying = true; Sfx.whoosh(); buzz(15);
       }
-    } else if (this.ball.flying) {
-      this.ball.x += this.ball.vx * dt; this.ball.y += this.ball.vy * dt;
-      this.ball.vy += 60 * dt;
-      if (Math.hypot(this.ball.x - this.target.x, this.ball.y - this.target.y) < this.target.r + 4) {
-        FX.hit(this.target.x, this.target.y, PAL.accent); this.succeed();
-      }
-      if (this.ball.y > BOT + 14 || this.ball.x < -14 || this.ball.x > W + 14) this.lose();
+      return;
     }
+    const b = this.ball;
+    b.x += b.vx * dt; b.y += b.vy * dt; b.z += dt;
+    if (Math.hypot(b.x - this.dx, b.y - this.dy) < this.catchR) { Sfx.bark(); FX.hit(this.dx, this.dy, PAL.accent); this.succeed(); return; }
+    if (b.y < TOP - 10 || b.x < -10 || b.x > W + 10) { Sfx.fail(); this.lose(); }
   }
   draw(g) {
     g.clear();
-    g.circle(this.target.x, this.target.y, this.target.r, PAL.mid);
-    g.circle(this.target.x, this.target.y, this.target.r * 0.45, PAL.bad);
-    g.circle(this.ox, this.oy, 3, PAL.mid);
-    if (this.aim && !this.launched) {
-      g.line(this.ox, this.oy, this.ball.x, this.ball.y, PAL.mid, 1);
-      let px = this.ball.x, py = this.ball.y;
-      let vx = (this.ox - this.ball.x) * this.K, vy = (this.oy - this.ball.y) * this.K;
-      for (let i = 0; i < 12; i++) { px += vx * 0.05; py += vy * 0.05; vy += 60 * 0.05; if (py > BOT) break; g.rect(px - 1, py - 1, 2, 2, PAL.mid); }
+    // the yard: grass tufts and the line you throw from
+    for (let i = 0; i < 14; i++) { const x = (i * 37) % W + 6, y = TOP + 30 + ((i * 53) % (BOT - TOP - 60)); g.rect(x, y, 1, 3, PAL.mid); g.rect(x + 2, y + 1, 1, 2, PAL.mid); }
+    g.rect(20, this.oy + 12, W - 40, 1, PAL.mid);
+    g.sprite(this.dvx > 0 ? 'swiperight' : 'swipeleft', this.dx, this.dy, { w: 58, h: 58, frame: Math.floor(this.t * 16) % 9 });
+    // the ball shrinks a little as it flies away from you
+    const r = this.ball.flying ? Math.max(3.5, 6 - this.ball.z * 3) : 6;
+    g.tennis(this.ball.x, this.ball.y, r);
+    if (!this.ball.flying) {
+      const a = Math.sin(this.t * 6) * 3;
+      g.line(this.ox, this.oy - 12 - a, this.ox, this.oy - 22 - a, PAL.accent, 2);
+      g.line(this.ox, this.oy - 22 - a, this.ox - 4, this.oy - 18 - a, PAL.accent, 2);
+      g.line(this.ox, this.oy - 22 - a, this.ox + 4, this.oy - 18 - a, PAL.accent, 2);
+      g.text('SWIPE UP TO THROW', CX, BOT - 2, 7, PAL.mid);
     }
-    g.circle(this.ball.x, this.ball.y, 5, PAL.accent);
-    if (!this.launched && !this.aim) g.text('DRAG BACK', CX, BOT - 2, 7, PAL.mid);
   }
 }
 
@@ -1812,13 +2071,12 @@ class Flappy extends Microgame {
   static meta = { id: 'flappy', prompt: 'FLAP!', hint: 'mash', duration: 4.4, winOnTimeout: true, minDuration: 2.8,
     how: 'TAP TO FLAP\nTHROUGH THE GAPS' };
   init() {
-    this.d = 1;                                // stays gentle — hardest verb on touch
     this.y = CY; this.vy = 0;
     this.grav = 170; this.flap = -84;          // floatier: a plane, not a bird
     this.planeW = 30; this.planeH = 26;        // drawn size
     this.hitW = 16; this.hitH = 12;            // collision box: fuselage only, not wings
     this.need = this.byD(1, 2, 2); this.passed = 0;
-    this.gap = this.byD(104, 96, 96);          // wide enough to fly the plane through
+    this.gap = this.byD(104, 96, 88);          // wide enough to fly the plane through
     this.pipeW = 14; this.bx = 40;
     const budget = Math.max(2.2, this.timeLimit - 0.3);  // floor so fast speeds stay fair
     const span = W - this.bx + 30;
@@ -1853,6 +2111,10 @@ class Flappy extends Microgame {
     for (const p of this.pipes) {
       g.rect(p.x - this.pipeW / 2, TOP, this.pipeW, p.cy - this.gap / 2 - TOP, PAL.bad);
       g.rect(p.x - this.pipeW / 2, p.cy + this.gap / 2, this.pipeW, BOT - (p.cy + this.gap / 2), PAL.bad);
+      g.rect(p.x - this.pipeW / 2 - 3, p.cy - this.gap / 2 - 6, this.pipeW + 6, 6, PAL.bad);   // caps
+      g.rect(p.x - this.pipeW / 2 - 3, p.cy + this.gap / 2, this.pipeW + 6, 6, PAL.bad);
+      g.rect(p.x - this.pipeW / 2 + 2, TOP, 2, p.cy - this.gap / 2 - TOP - 6, PAL.mid);          // shine
+      g.rect(p.x - this.pipeW / 2 + 2, p.cy + this.gap / 2 + 6, 2, BOT - (p.cy + this.gap / 2) - 6, PAL.mid);
     }
     g.sprite('plane', this.bx, this.y, { w: this.planeW, h: this.planeH, frame: Math.floor(this.t * 16) % 9 });
     for (let i = 0; i < this.need; i++) g.rect(CX - this.need * 4 + i * 8, TOP + 4, 5, 5, i < this.passed ? PAL.accent : PAL.mid);
@@ -1864,16 +2126,15 @@ class Crossy extends Microgame {
   static meta = { id: 'crossy', prompt: 'CROSS!', hint: 'tap', duration: 4.8, minDuration: 4.4,
     how: 'TAP TO HOP\nACROSS THE ROAD' };
   init() {
-    this.d = 1;                                // crossy stays gentle at all levels
-    this.lanes = this.byD(2, 3, 3);
+    this.lanes = this.byD(2, 3, 4);
     this.laneH = (BOT - TOP - 24) / (this.lanes + 1);
     this.px = CX; this.row = 0;
     this.py = BOT - 12;
     this.cars = [];
     for (let L = 0; L < this.lanes; L++) {
       const dir = L % 2 ? 1 : -1;
-      const sp = this.byD(22, 28, 34) * dir;   // slow enough that a gap always recurs in time
-      for (let k = 0; k < 1; k++) this.cars.push({ lane: L, x: Math.random() * W, sp, w: 18 });
+      const sp = this.byD(22, 30, 38) * dir;   // slow enough that a gap always recurs in time
+      this.cars.push({ lane: L, x: Math.random() * W, sp, w: 24 });
     }
     this.hopping = 0;
   }
@@ -1883,18 +2144,30 @@ class Crossy extends Microgame {
     this.py += ((this.row === 0 ? BOT - 12 : this.row > this.lanes ? this.laneY(this.lanes - 1) - this.laneH : this.laneY(this.row - 1)) - this.py) * Math.min(1, dt * 20);
     for (const c of this.cars) {
       c.x += c.sp * dt;
-      if (c.x < -14) c.x = W + 14; if (c.x > W + 14) c.x = -14;
+      if (c.x < -16) c.x = W + 16; if (c.x > W + 16) c.x = -16;
       // hit only if the player is standing in that car's lane
-      if (this.row - 1 === c.lane && Math.abs(c.x - this.px) < c.w / 2 + 4 && this.hopping <= 0) { buzz(80); this.lose(); return; }
+      if (this.row - 1 === c.lane && Math.abs(c.x - this.px) < c.w / 2 + 2 && this.hopping <= 0) { buzz(80); Sfx.thud(); this.lose(); return; }
     }
     if (this.hopping > 0) this.hopping -= dt;
-    if (this.row > this.lanes) this.succeed();   // reached the far side
+    if (this.row > this.lanes) { Sfx.bark(); this.succeed(); }   // reached the far side
   }
   draw(g) {
     g.clear();
-    for (let L = 0; L < this.lanes; L++) { const y = this.laneY(L); g.rect(0, y - this.laneH / 2, W, 1, PAL.mid); }
-    g.rect(0, TOP, W, 3, PAL.accent);            // safe far side
-    for (const c of this.cars) g.cRect(c.x, this.laneY(c.lane), c.w, 10, PAL.bad);
+    const top = this.laneY(this.lanes - 1) - this.laneH / 2, bottom = this.laneY(0) + this.laneH / 2;
+    // the road: kerbs top and bottom, dashed lines between the lanes
+    g.rect(0, top - 2, W, 2, PAL.ink); g.rect(0, bottom, W, 2, PAL.ink);
+    for (let L = 0; L < this.lanes - 1; L++) {
+      const y = this.laneY(L) - this.laneH / 2;
+      for (let x = 4; x < W; x += 16) g.rect(x, y, 8, 1, PAL.mid);
+    }
+    // pavement you start on, and the far side with a bone waiting
+    ctx.globalAlpha = 0.25;
+    g.rect(0, bottom + 2, W, BOT - bottom - 2, PAL.mid);
+    g.rect(0, TOP, W, Math.max(0, top - 2 - TOP), PAL.mid);
+    ctx.globalAlpha = 1;
+    for (let x = 0; x < W; x += 12) g.rect(x, bottom + 2, 1, BOT - bottom - 2, PAL.bg);   // paving slabs
+    g.bone(CX, (TOP + top) / 2, 20);
+    for (const c of this.cars) g.car(c.x, this.laneY(c.lane), c.w, Math.sign(c.sp));
     g.sprite('hero', this.px, this.py, { w: 19, h: 24, frame: Math.floor(this.t * 14) % 9 });
   }
 }
@@ -1942,22 +2215,21 @@ class Doodle extends Microgame {
   }
 }
 
-// 27. TILES — tap the black tiles as they fall, never miss one (Piano Tiles)
+// 27. PAWS — tap the paw prints as they fall, never miss one (Piano Tiles)
 class PianoTiles extends Microgame {
-  static meta = { id: 'tiles', prompt: 'TILES!', hint: 'tap', duration: 4.6,
-    how: "TAP EVERY TILE\nDON'T MISS ONE" };
+  static meta = { id: 'tiles', prompt: 'PAWS!', hint: 'tap', duration: 4.6,
+    how: "TAP EVERY PAW PRINT\nDON'T MISS ONE" };
   init() {
     this.cols = 4; this.colW = W / this.cols;
     this.need = this.byD(3, 4, 5); this.hit = 0;
     this.tileH = 34;
-    // Pace off the real time budget: tiles arrive evenly, the last reaching the
-    // bottom at ~85% of the round so every tile is tappable in time.
+    // Pace off the real time budget: prints arrive evenly, the last reaching the
+    // bottom at ~85% of the round so every one is tappable in time.
     const budget = Math.max(1.2, this.timeLimit - 0.3);
     const interval = budget * 0.85 / this.need;      // seconds between arrivals
     this.fall = (BOT - TOP) / (budget * 0.6);        // travel top→bottom in 60% of budget
     this.tiles = [];
     for (let i = 0; i < this.need; i++) {
-      // stagger start y so arrivals are `interval` apart
       const startY = TOP - this.tileH - i * interval * this.fall;
       this.tiles.push({ col: Math.floor(Math.random() * this.cols), y: startY, hit: false, missed: false });
     }
@@ -1969,10 +2241,10 @@ class PianoTiles extends Microgame {
     }
     if (input.justDown) {
       const col = Math.floor(input.x / this.colW);
-      // hit the lowest un-hit tile in that column that's within the play area
+      // hit the lowest un-hit print in that column that's within the play area
       let target = null;
       for (const t of this.tiles) if (!t.hit && t.col === col && t.y + this.tileH > TOP && t.y < BOT) { if (!target || t.y > target.y) target = t; }
-      if (target) { target.hit = true; this.hit++; Sfx.tick(); FX.hit(input.x, target.y + this.tileH / 2, PAL.accent); if (this.hit >= this.need) this.succeed(); }
+      if (target) { target.hit = true; this.hit++; Sfx.blip(520 + this.hit * 90, 0.06, 'triangle', 0.07); FX.hit(input.x, target.y + this.tileH / 2, PAL.accent); if (this.hit >= this.need) this.succeed(); }
       else { buzz(40); FX.shake(2); }             // tapping empty space is just a whiff, not a loss
     }
   }
@@ -1981,7 +2253,7 @@ class PianoTiles extends Microgame {
     for (let c = 1; c < this.cols; c++) g.rect(c * this.colW, TOP, 1, BOT - TOP, PAL.mid);
     for (const t of this.tiles) {
       if (t.hit) continue;
-      g.rect(t.col * this.colW + 2, t.y, this.colW - 4, this.tileH, PAL.ink);
+      g.paw(t.col * this.colW + this.colW / 2, t.y + this.tileH / 2, 30, PAL.ink);
     }
     g.rect(0, BOT, W, 1, PAL.accent);
     for (let i = 0; i < this.need; i++) g.rect(CX - this.need * 3 + i * 6, TOP + 4, 4, 4, i < this.hit ? PAL.accent : PAL.mid);
@@ -2112,7 +2384,7 @@ class KnockStack extends Microgame {
           b.toppled = true; this.knocked++;
           b.vx = this.ball.vx * 0.4 + 40; b.vy = -80;
           this.ball.vx *= 0.5; this.ball.vy = -60;       // ball bounces on
-          FX.hit(b.x, b.y, PAL.accent); Sfx.tick(); buzz(20);
+          FX.hit(b.x, b.y, PAL.accent); Sfx.thud(); buzz(20);
           // blocks above a toppled one lose support and tumble too
           for (const a of this.blocks) if (!a.toppled && a.x === b.x && a.y < b.y) {
             a.toppled = true; this.knocked++; a.vx = 20 + Math.random() * 30; a.vy = -50;
@@ -2139,6 +2411,8 @@ class KnockStack extends Microgame {
       if (b.toppled && (b.y > BOT + 20)) continue;
       g.cRect(b.x, b.y, b.w, b.h, b.toppled ? PAL.mid : PAL.bad);
       g.box(b.x - b.w / 2, b.y - b.h / 2, b.w, b.h, PAL.bg);
+      g.line(b.x - b.w / 2 + 2, b.y - b.h / 2 + 2, b.x + b.w / 2 - 2, b.y + b.h / 2 - 2, PAL.bg, 1);   // crate brace
+      g.line(b.x - b.w / 2 + 2, b.y + b.h / 2 - 2, b.x + b.w / 2 - 2, b.y - b.h / 2 + 2, PAL.bg, 1);
     }
     // slingshot fork
     g.line(this.ox - 5, this.oy + 12, this.ox - 5, BOT, PAL.mid, 2);
@@ -2157,7 +2431,7 @@ class KnockStack extends Microgame {
 
 // 30. MOVE — wave your body at the camera to fill the meter; snaps a photo on win
 class MoveCam extends Microgame {
-  static meta = { id: 'move', prompt: 'MOVE!', hint: 'move', duration: 5.0, minDuration: 4.0, photo: true,
+  static meta = { id: 'move', cam: true, prompt: 'MOVE!', hint: 'move', duration: 5.0, minDuration: 4.0, photo: true,
     how: { cam: 'MOVE YOUR BODY\nIN FRONT OF THE CAMERA', touch: 'TAP FAST' } };
   init() {
     this.fill = 0;
@@ -2175,9 +2449,6 @@ class MoveCam extends Microgame {
     }
     this.fill += input.motion * dt * 1.4;
     if (this.fill >= this.need && !this.finished) {
-      // snap the photo at the winning moment; the engine shows it after
-      const shot = Input.snapPhoto();
-      if (shot) Engine.lastPhoto = shot;
       this.flash = 1;
       this.succeed();
     }
@@ -2199,49 +2470,52 @@ class MoveCam extends Microgame {
   }
 }
 
-// 31. DRY — shake fast at the camera to dry off the wet shiba (Snapped! homage)
+// 31. DRY OFF — big separate shakes at the camera, like a wet dog (Snapped! homage)
 class DryShiba extends Microgame {
-  static meta = { id: 'dry', prompt: 'SHAKE!', hint: 'move', duration: 5.0, minDuration: 4.0, photo: true, photoCap: 'ALL FLUFFY!',
-    how: { cam: 'SHAKE YOUR HEAD\nAT THE CAMERA', touch: 'TAP FAST' } };
+  static meta = { id: 'dry', cam: true, prompt: 'DRY OFF!', hint: 'move', duration: 5.0, minDuration: 4.0, photo: true, photoCap: 'ALL FLUFFY!',
+    how: { cam: 'SHAKE HARD, STOP,\nSHAKE AGAIN!', touch: 'TAP, TAP, TAP\nTO SHAKE IT OFF' } };
   init() {
-    this.dry = 0; this.need = this.byD(1.0, 1.4, 1.8);
+    // Not MOVE's steady wiggle: a wet dog shakes in big bursts. Each burst is a
+    // spike of motion that has to settle back down before the next one counts.
+    this.bursts = 0; this.need = this.byD(3, 4, 5); this.ready = true;
     this.drops = [];
     Input.enableCam();
     this.paused = Input.camPending; this.wait = 0;
-    this.wob = 0;
+    this.wob = 0; this.pop = 0;
   }
   update(dt, input) {
     if (this.paused) { this.wait += dt; if (!Input.camPending || this.wait > 1.5) this.paused = false; return; }
     const m = input.motion;
-    this.dry += m * dt * 1.5;
     this.wob = m;
-    // fling water droplets when moving hard
-    if (m > 0.4 && Math.random() < m) this.drops.push({ x: CX + (Math.random() - 0.5) * 40, y: CY, vx: (Math.random() - 0.5) * 120, vy: -60 - Math.random() * 60, t: 0 });
+    if (this.pop > 0) this.pop -= dt;
+    if (m < 0.15) this.ready = true;
+    else if (m > 0.4 && this.ready) {
+      this.ready = false; this.bursts++; this.pop = 0.25;
+      Sfx.splash(); buzz(30); FX.shake(2);
+      for (let i = 0; i < 14; i++) this.drops.push({ x: CX + (Math.random() - 0.5) * 40, y: CY, vx: (Math.random() - 0.5) * 220, vy: -60 - Math.random() * 90, t: 0 });
+      if (this.bursts >= this.need && !this.finished) { this.succeed(); return; }
+    }
     for (const d of this.drops) { d.t += dt; d.x += d.vx * dt; d.y += d.vy * dt; d.vy += 200 * dt; }
     this.drops = this.drops.filter(d => d.t < 0.6);
-    if (this.dry >= this.need && !this.finished) {
-      const shot = Input.snapPhoto(); if (shot) Engine.lastPhoto = shot;
-      this.succeed();
-    }
   }
   draw(g) {
     g.clear();
     if (this.paused) { g.text('ALLOW CAMERA…', CX, CY - 6, 11, PAL.ink); g.text('(then shake to dry)', CX, CY + 12, 7, PAL.mid); return; }
-    // wet shiba drying out: frame tracks the dryness meter (wet -> fluffy).
-    // a little jitter on top sells the shake while you're moving.
-    const prog = Math.min(1, this.dry / this.need);
+    // wet shiba drying out: frame tracks the shakes (wet -> fluffy), and it
+    // jolts on each one
+    const prog = Math.min(1, this.bursts / this.need);
     const fr = Math.max(0, Math.min(8, Math.floor(prog * 8.99)));
-    const j = (Math.random() - 0.5) * this.wob * 8;
-    g.sprite('dryshake', CX + j, CY - 4, { w: 46, h: 37, frame: fr });
-    for (const d of this.drops) { const k = 1 - d.t / 0.6; ctx.globalAlpha = k; g.circle(d.x, d.y, 2, PAL.mid); ctx.globalAlpha = 1; }
-    g.text(Input.camReady ? 'SHAKE FAST!' : 'TAP FAST!', CX, TOP + 26, 9, PAL.mid);
-    g.bar(30, BOT - 18, W - 60, 8, this.dry / this.need);
+    const j = (Math.random() - 0.5) * (this.wob * 6 + this.pop * 30);
+    g.sprite('dryshake', CX + j, CY - 4, { w: 56, h: 45, frame: fr });
+    for (const d of this.drops) { const k = 1 - d.t / 0.6; ctx.globalAlpha = k; g.circle(d.x, d.y, 2, PAL.ink); ctx.globalAlpha = 1; }
+    g.text(this.ready ? (Input.camReady ? 'SHAKE!' : 'TAP!') : 'NOW STOP…', CX, TOP + 26, 10, this.ready ? PAL.accent : PAL.mid);
+    for (let i = 0; i < this.need; i++) g.rect(CX - this.need * 6 + i * 12, BOT - 20, 8, 8, i < this.bursts ? PAL.accent : PAL.mid);
   }
 }
 
 // 32. LEAN — move to the side the arrow points (motion on that half of frame)
 class LeanDodge extends Microgame {
-  static meta = { id: 'lean', prompt: 'LEAN!', hint: 'move', duration: 5.0, minDuration: 4.0, photo: true, photoCap: 'DODGED IT!',
+  static meta = { id: 'lean', cam: true, prompt: 'LEAN!', hint: 'move', duration: 5.0, minDuration: 4.0, photo: true, photoCap: 'DODGED IT!',
     how: { cam: 'LEAN YOUR HEAD\nWHERE THE ARROW POINTS', touch: 'TAP THE SIDE\nTHE ARROW POINTS' } };
   init() {
     this.need = this.byD(2, 2, 3); this.hit = 0;
@@ -2264,16 +2538,13 @@ class LeanDodge extends Microgame {
       this.hold += dt * 1.4;                       // fills a touch faster than real time
       if (this.hold >= this.holdNeed) {
         this.hit++; FX.hit(this.dir === 'L' ? 30 : W - 30, CY, PAL.accent); Sfx.tick(); buzz(15);
-        if (this.hit >= this.need) {
-          // it flies in from the side you leaned away from
-          const shot = Input.snapPhoto();
-          if (shot) { PhotoFX.dodge(shot, this.dir === 'L' ? 'R' : 'L'); Engine.lastPhoto = shot; }
-          this.succeed(); return;
-        }
+        if (this.hit >= this.need) { this.succeed(); return; }
         this.newDir();
       }
     } else { this.hold = Math.max(0, this.hold - dt * 0.4); }
   }
+  // the brick flies in from the side you leaned away from
+  stampPhoto(c) { PhotoFX.dodge(c, this.dir === 'L' ? 'R' : 'L'); }
   draw(g) {
     g.clear();
     if (this.paused) { g.text('ALLOW CAMERA…', CX, CY - 6, 11, PAL.ink); g.text('(then lean side to side)', CX, CY + 12, 7, PAL.mid); return; }
@@ -2320,7 +2591,7 @@ class LeanDodge extends Microgame {
 
 // 33. FREEZE — hold perfectly still until the clock runs out
 class FreezeStatue extends Microgame {
-  static meta = { id: 'freeze', prompt: 'FREEZE!', hint: 'still', duration: 4.6, minDuration: 3.8, winOnTimeout: true, photo: true, photoCap: 'PERFECT STATUE!',
+  static meta = { id: 'freeze', cam: true, prompt: 'FREEZE!', hint: 'still', duration: 4.6, minDuration: 3.8, winOnTimeout: true, photo: true, photoCap: 'PERFECT STATUE!',
     how: { cam: 'HOLD STILL IN FRONT\nOF THE CAMERA', touch: "DON'T TOUCH\nANYTHING" } };
   init() {
     Input.enableCam();
@@ -2376,15 +2647,7 @@ class FreezeStatue extends Microgame {
       this.hp = Math.min(1, this.hp + dt * 0.04);   // very slow refill — stillness is the only real recovery
     }
   }
-  // winOnTimeout: the engine calls this when the clock runs out, so the photo
-  // is snapped here rather than in update()
-  succeed() {
-    if (!this.finished) {
-      const shot = Input.snapPhoto();
-      if (shot) { PhotoFX.statue(shot); Engine.lastPhoto = shot; }
-    }
-    super.succeed();
-  }
+  stampPhoto(c) { PhotoFX.statue(c); }
   draw(g) {
     g.clear();
     if (this.paused) { g.text('ALLOW CAMERA…', CX, CY - 6, 11, PAL.ink); g.text('(then hold still)', CX, CY + 12, 7, PAL.mid); return; }
@@ -2417,7 +2680,7 @@ class FreezeStatue extends Microgame {
 
 // 34. SWAT — put your hand where the fly is; the camera tracks where you moved
 class SwatFly extends Microgame {
-  static meta = { id: 'swat', prompt: 'SWAT!', hint: 'move', duration: 5.0, minDuration: 4.2,
+  static meta = { id: 'swat', cam: true, prompt: 'SWAT!', hint: 'move', duration: 5.0, minDuration: 4.2,
     how: { tilt: 'TILT THE PHONE\nTO AIM AT THE FLY', cam: 'WAVE YOUR HAND\nAT THE FLY', touch: 'TAP THE FLY' } };
   init() {
     Input.enableCam();
@@ -2432,6 +2695,7 @@ class SwatFly extends Microgame {
     this.pop = 0;
     this.newFly();
   }
+  get usesCam() { return !Input.tiltReady; }
   newFly() {
     // kept off the edges (the motion centre rarely reaches a corner of the
     // frame) and away from where the hand already is, so it can't die on spawn
@@ -2531,7 +2795,7 @@ class SwatFly extends Microgame {
 
 // 35. HIDE — cover the lens with your hand until the searchlight gives up
 class HideLens extends Microgame {
-  static meta = { id: 'hide', prompt: 'HIDE!', hint: 'cover', duration: 4.6, minDuration: 3.8,
+  static meta = { id: 'hide', cam: true, prompt: 'HIDE!', hint: 'cover', duration: 4.6, minDuration: 3.8,
     how: { cam: 'COVER THE CAMERA\nWITH YOUR HAND', touch: 'HOLD YOUR FINGER\nON THE SCREEN' } };
   init() {
     Input.enableCam();
@@ -2584,7 +2848,7 @@ class HideLens extends Microgame {
 
 // 36. DANCE — move on the beat: hit the ring each time it lands
 class DanceBeat extends Microgame {
-  static meta = { id: 'dance', prompt: 'DANCE!', hint: 'move', duration: 5.0, minDuration: 4.4, photo: true, photoCap: 'DANCE MACHINE!',
+  static meta = { id: 'dance', cam: true, prompt: 'DANCE!', hint: 'move', duration: 5.0, minDuration: 4.4, photo: true, photoCap: 'DANCE MACHINE!',
     how: { cam: 'MOVE WHEN THE RING\nLANDS ON THE BEAT', touch: 'TAP ON THE BEAT' } };
   init() {
     Input.enableCam();
@@ -2610,10 +2874,7 @@ class DanceBeat extends Microgame {
       if (Math.abs(off) <= this.win && input.motion > this.thr) {
         b.hit = true; this.hits++; this.pop = 0.22;
         Sfx.tick(); buzz(15); FX.hit(CX, CY - 6, PAL.accent);
-        if (this.hits >= this.need) {
-          const shot = Input.snapPhoto(); if (shot) Engine.lastPhoto = shot;
-          this.succeed(); return;
-        }
+        if (this.hits >= this.need) { this.succeed(); return; }
       } else if (off > this.win) { b.miss = true; Sfx.blip(180, 0.06); }
     }
     // every beat resolved and one was dropped — no point running out the clock
@@ -2755,7 +3016,7 @@ class Juggle extends Microgame {
       if (best && bd < 24) {
         best.vy = -this.byD(150, 160, 170);
         best.vx = Math.max(-75, Math.min(75, best.vx + (best.x - t.x) * 3));
-        Sfx.tick(); buzz(12); FX.hit(best.x, best.y, PAL.accent);
+        Sfx.boop(); buzz(12); FX.hit(best.x, best.y, PAL.accent);
       }
     }
   }
@@ -2765,8 +3026,7 @@ class Juggle extends Microgame {
     for (const b of this.balls) {
       // falling fast and low reads as urgent, so it turns red on the way down
       const danger = b.vy > 0 && b.y > this.floor - 70;
-      g.circle(b.x, b.y, b.r, danger ? PAL.bad : PAL.accent);
-      g.circle(b.x + Math.cos(b.spin) * 3, b.y + Math.sin(b.spin) * 3, 2, PAL.bg);
+      g.tennis(b.x, b.y, b.r, danger ? PAL.bad : PAL.accent);
       // a shadow on the floor, so you can read how much room is left
       ctx.globalAlpha = 0.35;
       g.rect(b.x - 6, this.floor, 12, 1, PAL.mid);
@@ -2818,10 +3078,10 @@ class BalanceBall extends Microgame {
   }
 }
 
-// TILT — pour the drink to the line, then stop before it overflows
+// TILT — fill the shiba's water bowl to the line, then stop
 class PourCup extends Microgame {
   static meta = { id: 'pour', prompt: 'POUR!', hint: 'move', duration: 5.0, minDuration: 4.4,
-    how: { tilt: 'TILT THE PHONE\nSTOP AT THE LINE', touch: 'HOLD TO POUR\nSTOP AT THE LINE' } };
+    how: { tilt: 'TILT TO FILL THE BOWL\nSTOP AT THE LINE', touch: 'HOLD TO FILL THE BOWL\nSTOP AT THE LINE' } };
   init() {
     Input.enableTilt(); Input.zeroTilt();
     this.fill = 0;
@@ -2840,64 +3100,96 @@ class PourCup extends Microgame {
     const t = Input.tiltReady ? Math.abs(input.tiltX) : (input.down ? 0.7 : 0);
     if (t > 0.5) this.pouring = true; else if (t < 0.3) this.pouring = false;
     if (this.pouring) this.fill += Math.min(1, t) * dt * 0.42;
-    if (this.fill > 1) { buzz(100); FX.shake(3); this.lose(); return; }   // overflow
-    // once you have levelled off (not pouring) and the cup is in the band, hold
-    if (!this.pouring && this.fill >= this.lo && this.fill <= this.hi) { this.hold += dt; if (this.hold >= this.need) this.succeed(); }
+    if (this.fill > 1) { buzz(100); FX.shake(3); Sfx.splash(); this.lose(); return; }   // overflow
+    // once you have levelled off (not pouring) and the bowl is in the band, hold
+    if (!this.pouring && this.fill >= this.lo && this.fill <= this.hi) { this.hold += dt; if (this.hold >= this.need) { Sfx.chomp(); this.succeed(); } }
     else this.hold = 0;
   }
   draw(g) {
     g.clear();
     const inBand = this.fill >= this.lo && this.fill <= this.hi;
-    // the bottle, tipped by how much you are pouring
+    // the water jug, tipped by how much you are pouring, with the stream
     const t = Input.tiltReady ? Input.tiltX : (Input.down ? 0.6 : 0);
-    ctx.save(); ctx.translate(CX, TOP + 40); ctx.rotate(Math.max(-1, Math.min(1, t)) * 0.7);
-    g.rect(-8, -14, 16, 26, PAL.mid); g.rect(-3, -22, 6, 8, PAL.mid);
+    const tip = Math.max(-1, Math.min(1, t)) * 0.7;
+    ctx.save(); ctx.translate(CX - 4, TOP + 46); ctx.rotate(tip);
+    g.rect(-11, -16, 22, 30, PAL.mid); g.rect(-8, -22, 10, 7, PAL.mid); g.rect(10, -10, 5, 14, PAL.mid);   // jug, spout, handle
+    g.rect(-9, -4, 18, 16, PAL.ink);                                                                       // water inside
     ctx.restore();
-    // cup with the target band and the fill
-    const cw = 44, ch = 70, cx0 = CX - cw / 2, cy0 = BOT - ch - 6;
-    g.box(cx0, cy0, cw, ch, PAL.ink);
-    g.rect(cx0, cy0 + ch - this.fill * ch, cw, this.fill * ch, inBand ? PAL.accent : PAL.ink);
-    // target band lines
-    g.line(cx0 - 4, cy0 + ch - this.lo * ch, cx0 + cw + 4, cy0 + ch - this.lo * ch, PAL.accent, 1);
-    g.line(cx0 - 4, cy0 + ch - this.hi * ch, cx0 + cw + 4, cy0 + ch - this.hi * ch, PAL.accent, 1);
+    const cw = 52, ch = 66, cx0 = CX - cw / 2, cy0 = BOT - ch - 8;
+    if (this.pouring) { ctx.globalAlpha = 0.8; g.rect(CX - 2, TOP + 56, 3, cy0 + ch - this.fill * ch - TOP - 56, PAL.ink); ctx.globalAlpha = 1; }
+    // the dog's water bowl (tall, so the line is easy to see) and the shiba waiting by it
+    g.rect(cx0 - 4, cy0 - 3, cw + 8, 4, PAL.bad);                   // rim
+    g.rect(cx0, cy0, 3, ch, PAL.bad); g.rect(cx0 + cw - 3, cy0, 3, ch, PAL.bad); g.rect(cx0, cy0 + ch - 3, cw, 3, PAL.bad);
+    g.rect(cx0 + 3, cy0 + ch - 3 - this.fill * (ch - 6), cw - 6, this.fill * (ch - 6), inBand ? PAL.accent : PAL.ink);
+    g.line(cx0 - 6, cy0 + ch - this.lo * ch, cx0 + cw + 6, cy0 + ch - this.lo * ch, PAL.accent, 1);
+    g.line(cx0 - 6, cy0 + ch - this.hi * ch, cx0 + cw + 6, cy0 + ch - this.hi * ch, PAL.accent, 1);
+    g.sprite('face', cx0 + cw + 22, cy0 + ch - 18, { w: 34, h: 35, frame: inBand ? 0 : 4 });
     const msg = this.fill > 0.92 ? 'STOP!'
               : (inBand && !this.pouring) ? 'HOLD STEADY!'
               : inBand ? 'LEVEL OFF!'
               : (Input.tiltReady ? 'TIP TO POUR' : 'HOLD TO POUR');
-    g.text(msg, CX, TOP + 22, 8, this.fill > 0.92 ? PAL.bad : inBand ? PAL.accent : PAL.mid);
+    g.text(msg, CX, TOP + 18, 8, this.fill > 0.92 ? PAL.bad : inBand ? PAL.accent : PAL.mid);
   }
 }
 
-// TILT — steer the running shiba down the lane, dodging rocks
+// TILT — sled downhill through the flag gates
 class SteerRun extends Microgame {
-  static meta = { id: 'steer', prompt: 'STEER!', hint: 'move', duration: 5.0, minDuration: 4.0, winOnTimeout: true,
-    how: { tilt: 'TILT THE PHONE\nTO DODGE ROCKS', touch: 'HOLD LEFT OR RIGHT\nTO STEER' } };
+  static meta = { id: 'steer', prompt: 'SLED!', hint: 'move', duration: 5.0, minDuration: 4.0,
+    how: { tilt: 'TILT TO STEER\nTHROUGH THE FLAGS', touch: 'HOLD LEFT OR RIGHT\nTHROUGH THE FLAGS' } };
   init() {
     Input.enableTilt(); Input.zeroTilt();
-    this.px = CX; this.rocks = []; this.spawn = 0.5;
-    this.every = this.byD(0.72, 0.58, 0.46);
-    this.fall = this.byD(95, 118, 140);
-    this.runY = BOT - 22;
+    this.px = CX; this.runY = BOT - 30;
+    this.need = this.byD(3, 3, 4); this.passed = 0;
+    this.gap = this.byD(62, 52, 44);
+    // paced off the real round: every gate arrives, the last at ~85% of it
+    this.travel = 1.6;
+    this.fall = (this.runY - (TOP - 10)) / this.travel;
+    this.every = Math.max(0.5, (this.timeLimit * 0.85 - 0.2 - this.travel) / Math.max(1, this.need - 1));
+    this.gates = []; this.spawned = 0; this.spawn = 0.2; this.lastX = CX;
+    this.snow = Array.from({ length: 22 }, () => ({ x: Math.random() * W, y: TOP + Math.random() * (BOT - TOP) }));
+    this.spray = [];
   }
   update(dt, input) {
     const t = Input.tiltReady ? input.tiltX : (input.down ? (input.x - CX) / (W / 2) : 0);
-    this.px += Math.max(-1, Math.min(1, t)) * 95 * dt;
+    this.px += Math.max(-1, Math.min(1, t)) * 120 * dt;
     this.px = Math.max(12, Math.min(W - 12, this.px));
+    // the hill rushing past: snow specks stream up the screen
+    for (const s of this.snow) { s.y -= this.fall * 0.9 * dt; if (s.y < TOP) { s.y = BOT; s.x = Math.random() * W; } }
+    if (Math.abs(t) > 0.2 && Math.random() < 0.6) this.spray.push({ x: this.px - Math.sign(t) * 8, y: this.runY + 10, vx: -Math.sign(t) * 40, t: 0 });
+    for (const p of this.spray) { p.t += dt; p.x += p.vx * dt; p.y -= 30 * dt; }
+    this.spray = this.spray.filter(p => p.t < 0.3);
     this.spawn -= dt;
-    if (this.spawn <= 0) {
-      this.spawn = this.every;
-      let x = 14 + Math.random() * (W - 28);
-      for (let k = 0; k < 20; k++) { if (this.rocks.every(o => o.y > TOP + 60 || Math.abs(o.x - x) > 46)) break; x = 14 + Math.random() * (W - 28); }
-      this.rocks.push({ x, y: TOP - 8, w: 12 + Math.random() * 12 });
+    if (this.spawn <= 0 && this.spawned < this.need) {
+      this.spawn = this.every; this.spawned++;
+      // reachable from the last gate in the time between them
+      const reach = Math.min(70, 120 * this.every * 0.8);
+      const gx = Math.max(this.gap / 2 + 8, Math.min(W - this.gap / 2 - 8, this.lastX + (Math.random() * 2 - 1) * reach));
+      this.lastX = gx;
+      this.gates.push({ x: gx, y: TOP - 10, done: false });
     }
-    for (const o of this.rocks) { o.y += this.fall * dt; if (Math.abs(o.y - this.runY) < 9 && Math.abs(o.x - this.px) < o.w / 2 + 7) { buzz(60); this.lose(); return; } }
-    this.rocks = this.rocks.filter(o => o.y < BOT + 12);
+    for (const gt of this.gates) {
+      const was = gt.y; gt.y += this.fall * dt;
+      if (!gt.done && was < this.runY && gt.y >= this.runY) {
+        gt.done = true;
+        if (Math.abs(this.px - gt.x) <= this.gap / 2 - 4) { this.passed++; Sfx.tick(); FX.hit(this.px, this.runY, PAL.accent); if (this.passed >= this.need) { this.succeed(); return; } }
+        else { buzz(80); FX.shake(4); Sfx.thud(); this.lose(); return; }
+      }
+    }
+    this.gates = this.gates.filter(gt => gt.y < BOT + 20);
   }
   draw(g) {
     g.clear();
-    for (const o of this.rocks) g.cRect(o.x, o.y, o.w, 8, PAL.bad);
-    g.sprite('swiperight', this.px, this.runY - 4, { w: 52, h: 48, frame: Math.floor(this.t * 14) % 9 });
-    g.rect(0, BOT - 4, W, 4, PAL.mid);
+    for (const s of this.snow) g.rect(s.x, s.y, 2, 2, PAL.mid);
+    for (const gt of this.gates) {
+      const l = gt.x - this.gap / 2, r = gt.x + this.gap / 2;
+      g.rect(l - 1, gt.y - 14, 2, 18, PAL.ink); g.rect(r - 1, gt.y - 14, 2, 18, PAL.ink);   // poles
+      g.rect(l + 1, gt.y - 14, 9, 6, PAL.accent); g.rect(r - 10, gt.y - 14, 9, 6, PAL.bad); // flags
+    }
+    for (const p of this.spray) { ctx.globalAlpha = 1 - p.t / 0.3; g.rect(p.x, p.y, 2, 2, PAL.ink); ctx.globalAlpha = 1; }
+    // the sled under the shiba, leaning into the turn
+    g.rect(this.px - 10, this.runY + 6, 20, 5, PAL.bad); g.rect(this.px - 12, this.runY + 11, 24, 2, PAL.ink);
+    g.sprite('hero', this.px, this.runY - 2, { w: 22, h: 27, frame: 0 });
+    for (let i = 0; i < this.need; i++) g.rect(W - 8 - i * 8, TOP + 4, 5, 5, i < this.passed ? PAL.accent : PAL.mid);
     g.text(Input.tiltReady ? 'TILT TO STEER' : 'DRAG TO STEER', CX, TOP + 22, 8, PAL.mid);
   }
 }
@@ -2918,11 +3210,9 @@ class BlowCandles extends Microgame {
       // snuff the candles left-to-right so progress is visible
       for (let i = 0; i < this.n; i++) { if (this.lit[i] > 0) { this.lit[i] = Math.max(0, this.lit[i] - input.blow * dt * 1.6); break; } }
     }
-    if (this.lit.every(l => l <= 0) && !this.finished) {
-      const shot = Input.snapPhoto(); if (shot) { PhotoFX.cake(shot); Engine.lastPhoto = shot; }
-      this.succeed();
-    }
+    if (this.lit.every(l => l <= 0) && !this.finished) this.succeed();
   }
+  stampPhoto(c) { PhotoFX.cake(c); }
   draw(g) {
     g.clear();
     if (this.paused) { g.text('ALLOW MIC…', CX, CY - 6, 12, PAL.ink); g.text('(then blow)', CX, CY + 12, 7, PAL.mid); return; }
@@ -2994,10 +3284,10 @@ class Dandelion extends Microgame {
   }
 }
 
-// TAP — drop each block on the stack; miss the tower and it topples
+// TAP — drop each biscuit on the stack; miss and it's over
 class StackBlocks extends Microgame {
   static meta = { id: 'stack', prompt: 'STACK!', hint: 'tap', duration: 5.0, minDuration: 4.2,
-    how: 'TAP TO DROP\nEACH BLOCK ON TOP' };
+    how: 'TAP TO DROP EACH\nBISCUIT ON THE STACK' };
   init() {
     this.need = this.byD(3, 4, 5); this.done = 0;
     this.w = 46; this.h = 12;
@@ -3011,62 +3301,76 @@ class StackBlocks extends Microgame {
     if (this.bx > W - this.w / 2 - 4) { this.bx = W - this.w / 2 - 4; this.dir = -1; }
     for (const t of input.taps) {
       if (Math.abs(this.bx - this.baseX) <= this.tol) {
-        this.done++; Sfx.tick(); buzz(12); FX.hit(this.baseX, this.stackY - this.done * this.h, PAL.accent);
+        this.done++; Sfx.crunch(); buzz(12); FX.hit(this.baseX, this.stackY - this.done * this.h, PAL.accent);
         if (this.done >= this.need) { this.succeed(); return; }
         this.dir = Math.random() < 0.5 ? 1 : -1; this.bx = this.dir > 0 ? this.w / 2 + 4 : W - this.w / 2 - 4;
         this.sp += 12;
-      } else { buzz(90); FX.shake(4); this.lose(); return; }
+      } else { buzz(90); FX.shake(4); Sfx.thud(); this.lose(); return; }
       break;
     }
   }
+  // a dog biscuit: a fat rounded bar with docking holes
+  biscuit(x, y, w, h, c) {
+    g.rect(x - w / 2 + 2, y, w - 4, h, c); g.rect(x - w / 2, y + 2, w, h - 4, c);
+    for (let i = -1; i <= 1; i++) g.rect(x + i * w * 0.28 - 1, y + h / 2 - 1, 2, 2, PAL.bg);
+  }
   draw(g) {
     g.clear();
-    // a fixed base, dead centre, so the very first block has a clear target
-    g.rect(this.baseX - (this.w + 8) / 2, this.stackY, this.w + 8, 12, PAL.ink);
-    g.rect(this.baseX - 2, this.stackY + 12, 4, 8, PAL.mid);          // little pedestal
-    for (let i = 0; i < this.done; i++) g.rect(this.baseX - this.w / 2, this.stackY - (i + 1) * this.h, this.w, this.h - 1, PAL.mid);
-    // a centre guide so you can see exactly where to line the first drop up
+    // a plate, dead centre, so the very first biscuit has a clear target
+    g.rect(this.baseX - (this.w + 12) / 2, this.stackY, this.w + 12, 4, PAL.ink);
+    for (let i = 0; i < this.done; i++) this.biscuit(this.baseX, this.stackY - (i + 1) * this.h, this.w, this.h - 1, PAL.accent);
     if (this.done === 0) { ctx.globalAlpha = 0.35; g.line(this.baseX, this.stackY, this.baseX, TOP + 30, PAL.accent, 1); ctx.globalAlpha = 1; }
-    // the moving block you drop
+    // the biscuit you drop
     const y = this.stackY - (this.done + 1) * this.h - 26;
-    g.rect(this.bx - this.w / 2, y, this.w, this.h - 1, PAL.accent);
-    // drop guide line down to the stack
+    this.biscuit(this.bx, y, this.w, this.h - 1, PAL.ink);
     ctx.globalAlpha = 0.3; g.line(this.bx, y + this.h, this.bx, this.stackY - this.done * this.h, PAL.mid, 1); ctx.globalAlpha = 1;
+    // a hopeful shiba eyeing the tower
+    g.sprite('face', 22, this.stackY - 16, { w: 32, h: 33, frame: Math.floor(this.t * 6) % 3 });
     g.text('TAP TO DROP', CX, TOP + 22, 8, PAL.mid);
     for (let i = 0; i < this.need; i++) g.rect(W - 8 - i * 8, TOP + 4, 5, 5, i < this.done ? PAL.accent : PAL.mid);
   }
 }
 
-// SWIPE — send each treat to its matching bowl by colour
+// SWIPE — bones to the dog, chocolate in the bin
 class SortTreats extends Microgame {
   static meta = { id: 'sort', prompt: 'SORT!', hint: 'swipe', duration: 5.0, minDuration: 4.2,
-    how: 'SWIPE EACH TREAT\nTO ITS BOWL' };
+    how: 'BONES TO THE DOG\nCHOCOLATE IN THE BIN' };
   init() {
     this.need = this.byD(2, 3, 4); this.done = 0;
+    this.dogSide = Math.random() < 0.5 ? 'left' : 'right';   // which side the dog sits, this round
     this.newTreat();
   }
-  newTreat() { this.side = Math.random() < 0.5 ? 'left' : 'right'; this.tx = CX; this.pop = 0; }
+  // bones go to the dog; chocolate is bad for dogs, so it goes in the bin
+  newTreat() { this.bone = Math.random() < 0.55; this.pop = 0; }
+  want() { return this.bone ? this.dogSide : (this.dogSide === 'left' ? 'right' : 'left'); }
   update(dt, input) {
     if (this.pop > 0) this.pop -= dt;
     const sw = input.swipe;
     if (sw && (sw.dir === 'left' || sw.dir === 'right')) {
-      if (sw.dir === this.side) {
-        this.done++; Sfx.tick(); buzz(12); FX.hit(this.side === 'left' ? 24 : W - 24, CY, PAL.accent); this.pop = 0.15;
+      if (sw.dir === this.want()) {
+        this.done++; buzz(12); FX.hit(sw.dir === 'left' ? 28 : W - 28, CY + 20, PAL.accent); this.pop = 0.15;
+        if (this.bone) Sfx.chomp(); else Sfx.thud();
         if (this.done >= this.need) { this.succeed(); return; }
         this.newTreat();
-      } else { buzz(90); FX.shake(4); this.lose(); return; }
+      } else { buzz(90); FX.shake(4); if (this.bone) Sfx.growl(); else Sfx.fail(); this.lose(); return; }
     }
   }
   draw(g) {
     g.clear();
-    // two bowls, colour-coded, at the sides
-    g.text('YELLOW', 24, TOP + 30, 7, PAL.accent); g.rect(6, CY + 30, 36, 10, PAL.accent);
-    g.text('WHITE', W - 24, TOP + 30, 7, PAL.ink); g.rect(W - 42, CY + 30, 36, 10, PAL.ink);
-    // the treat in the middle, coloured to the side it belongs
-    const col = this.side === 'left' ? PAL.accent : PAL.ink;
-    g.sprite('coin', CX, CY - 4, { w: 16 + this.pop * 20, h: 16 + this.pop * 20, color: col });
-    g.circle(CX, CY - 4, 8, col);
-    g.text('SWIPE TO ITS BOWL', CX, TOP + 22, 8, PAL.mid);
+    const dx = this.dogSide === 'left' ? 30 : W - 30, bx = W - dx;
+    // the shiba behind its bowl
+    g.sprite('face', dx, CY + 4, { w: 44, h: 45, frame: Math.floor(this.t * 6) % 3 });
+    g.rect(dx - 20, CY + 28, 40, 8, PAL.bad); g.rect(dx - 16, CY + 36, 32, 4, PAL.bad);
+    g.text('DOG', dx, CY - 26, 8, PAL.accent);
+    // the bin
+    g.rect(bx - 15, CY + 2, 30, 38, PAL.mid); g.rect(bx - 18, CY - 2, 36, 5, PAL.ink); g.rect(bx - 4, CY - 6, 8, 4, PAL.ink);
+    for (let i = -1; i <= 1; i++) g.rect(bx + i * 8 - 1, CY + 9, 2, 26, PAL.bg);
+    g.text('BIN', bx, CY - 26, 8, PAL.ink);
+    // the treat in the middle
+    const s = 1 + this.pop * 1.5;
+    if (this.bone) g.bone(CX, CY - 40, 30 * s); else g.choc(CX, CY - 40, 26 * s);
+    g.text(this.bone ? 'BONE' : 'CHOCOLATE', CX, CY - 18, 7, this.bone ? PAL.accent : PAL.bad);
+    g.text('SWIPE IT!', CX, TOP + 22, 8, PAL.mid);
     for (let i = 0; i < this.need; i++) g.rect(CX - this.need * 4 + i * 8, BOT - 14, 5, 5, i < this.done ? PAL.accent : PAL.mid);
   }
 }
@@ -3076,7 +3380,7 @@ class SortTreats extends Microgame {
 // spins to face you (red) → hold perfectly still or you're caught. Reach the
 // goal before the clock runs out to win. Uses the full portrait set for the spin.
 class SquidDoll extends Microgame {
-  static meta = { id: 'squid', prompt: 'RUN & FREEZE!', hint: 'move', duration: 7.0, minDuration: 6.0, photo: true, photoCap: 'YOU MADE IT!',
+  static meta = { id: 'squid', cam: true, prompt: 'RUN & FREEZE!', hint: 'move', duration: 7.0, minDuration: 6.0, photo: true, photoCap: 'YOU MADE IT!',
     how: { cam: 'MOVE YOUR HEAD TO RUN\nFREEZE WHEN IT LOOKS', touch: 'HOLD ON GREEN\nLET GO ON RED' } };
   init() {
     Input.enableCam();
@@ -3125,10 +3429,6 @@ class SquidDoll extends Microgame {
         break;
     }
   }
-  succeed() {
-    if (!this.finished) { const shot = Input.snapPhoto(); if (shot) Engine.lastPhoto = shot; }
-    super.succeed();
-  }
   draw(g) {
     g.clear();
     if (this.paused) { g.text('ALLOW CAMERA…', CX, CY - 6, 11, PAL.ink); g.text('(then run & freeze)', CX, CY + 12, 7, PAL.mid); return; }
@@ -3149,7 +3449,7 @@ class SquidDoll extends Microgame {
 
 // ── REGISTRY ─────────────────────────────────────────────────────────────────
 const POOL = [
-  TapBug, CatchCoin, RubClean, PullTissue, SodaShake, SwipeArrow, MashButton, HoldRelease, DontTap,
+  TapBug, CatchCoin, RubClean, PullTissue, SodaShake, SwipeArrow, PatShiba, HoldRelease, DontTap,
   StopBar, FollowDot, TapOrder, OddOneOut, FeedDog, WhackMole, PumpBalloon, CutRope,
   BlowSail, TracePath, GrabCount, FlickShot,
   Flappy, Crossy, Doodle, PianoTiles, DinoRun, KnockStack, MoveCam, DryShiba, LeanDodge,
@@ -3199,8 +3499,357 @@ const Mascot = {
   }
 };
 
+/* ── RUN MODE ─────────────────────────────────────────────────────────────────
+   The roguelike layer, Balatro-style, over the same microgames. A run is worlds
+   of three stages; a stage gives you a few games to reach a score target. Each
+   win scores chips x mult (mult is your streak), treats bought in the shop
+   between stages bend that sum, and missing a target ends the run.
+   Inside a stage nothing changes: it is the same game-after-game rush, and all
+   the choosing happens between stages, so the pace never stops mid-stage.
+─────────────────────────────────────────────────────────────────────────────── */
+const Run = {
+  GAMES: 5,          // games per stage — CHONK adds one
+  SLOTS: 5,          // treat slots — CHONK takes one
+  // art is [sprite, frame, scale?] — scale for sheets with roomy frames, like
+  // the 120px runners; GOLDEN BONE draws its own bone
+  TREATS: [
+    { id: 'zoom',  name: 'ZOOMIES',     tag: 'ZOOM', art: ['swiperight', 0, 1.6], price: 5, lines: ['DRAG GAMES', '+20 CHIPS'] },
+    { id: 'star',  name: 'CAMERA STAR', tag: 'STAR', art: ['flydog', 3],     price: 6, lines: ['MOVE GAMES', 'x2 CHIPS'] },
+    { id: 'lung',  name: 'BIG LUNGS',   tag: 'LUNG', art: ['pumpdog', 6],    price: 5, lines: ['BLOW + SHAKE', '+4 MULT'] },
+    { id: 'hot',   name: 'HOT STREAK',  tag: 'HOT',  art: ['face', 0],       price: 6, lines: ['STREAK MULT', 'COUNTS x2'] },
+    { id: 'good',  name: 'GOOD BOY',    tag: 'GOOD', art: ['shiba', 3],      price: 5, lines: ['1ST FAIL EACH', 'STAGE IS FREE'] },
+    { id: 'fast',  name: 'SPEEDY',      tag: 'FAST', art: ['runjump', 2],    price: 4, lines: ['SPEED BONUS', 'x2'] },
+    { id: 'gold',  name: 'GOLDEN BONE', tag: 'GOLD', art: null,              price: 4, lines: ['+3 BONES', 'EVERY STAGE'] },
+    { id: 'chonk', name: 'CHONK',       tag: 'CHNK', art: ['shaketable', 0], price: 4, lines: ['+1 GAME/STAGE', '-1 SLOT'] },
+  ],
+  // which games a treat counts, by their control pictogram
+  DRAG: ['drag', 'trace', 'flick'], MOVE: ['move', 'still', 'cover'], LUNG: ['blow', 'shake'],
+
+  world: 1, stage: 0, bones: 0, treats: [], score: 0, left: 0, played: 0, streak: 0,
+  freeFail: false, last: null, payout: [], shop: [], reroll: 2,
+  info: null,          // the owned treat whose card is open, or null
+  msg: '', msgT: 0,    // a short shop message ("SLOTS FULL…")
+  // furthest stage ever reached, counted 0 = 1-1, 1 = 1-2, ...
+  best: (() => { try { return +localStorage.getItem('micromania.bestRun') || 0; } catch (e) { return 0; } })(),
+
+  has(id) { return this.treats.includes(id); },
+  treat(id) { return this.TREATS.find(t => t.id === id); },
+  games() { return this.GAMES + (this.has('chonk') ? 1 : 0); },
+  slots() { return this.SLOTS - (this.has('chonk') ? 1 : 0); },
+  bossStage() { return this.stage === 2; },
+  target() { return Math.round([150, 220, 320][this.stage] * Math.pow(1.6, this.world - 1) / 10) * 10; },
+  reached() { return (this.world - 1) * 3 + this.stage; },
+  label(i = this.reached()) { return (Math.floor(i / 3) + 1) + '-' + (i % 3 + 1); },
+
+  start() { this.world = 1; this.stage = 0; this.bones = 4; this.treats = []; },
+
+  beginStage() {
+    this.score = 0; this.left = this.games(); this.played = 0; this.streak = 0;
+    this.freeFail = this.has('good');
+    // a touch faster every stage, a step faster every world
+    Engine.speed = Math.min(2.6, 1 + (this.world - 1) * 0.2 + this.stage * 0.06);
+    Engine.state = 'STAGE'; Engine.timer = 1.8;
+  },
+
+  // the boss stage opens on a boss; every other game comes from the pool
+  nextGame() {
+    const boss = this.bossStage() && this.played === 0;
+    Engine.startRound(Engine.pick(boss ? BOSSES : POOL), boss ? 3 : Math.min(3, this.world), boss);
+  },
+
+  // Score a finished game. remain is the share of the round clock left over,
+  // which is the speed bonus. Every line that adds to the sum is kept in rows,
+  // so the tally can show which treats fired.
+  onResult(won, remain) {
+    const m = Engine.game.meta, rows = [];
+    this.played++;
+    if (!won) {
+      if (this.freeFail) { this.freeFail = false; rows.push(['GOOD BOY', 'FREE TRY', PAL.accent]); }
+      else {
+        this.left--;
+        if (this.streak) rows.push(['STREAK', 'LOST', PAL.bad]);
+        this.streak = 0;
+      }
+      this.last = { won, rows, points: 0, from: this.score };
+      return;
+    }
+    this.left--;
+    let chips = Engine.isBoss ? 80 : 30;
+    rows.push([Engine.isBoss ? 'BOSS' : 'WIN', '+' + chips, PAL.ink]);
+    let bonus = m.winOnTimeout ? 10 : Math.round(25 * remain);
+    if (this.has('fast')) bonus *= 2;
+    if (bonus) { chips += bonus; rows.push([this.has('fast') ? 'SPEEDY' : 'SPEED', '+' + bonus, this.has('fast') ? PAL.accent : PAL.ink]); }
+    if (this.has('zoom') && this.DRAG.includes(m.hint)) { chips += 20; rows.push(['ZOOMIES', '+20', PAL.accent]); }
+    if (this.has('star') && this.MOVE.includes(m.hint)) { chips *= 2; rows.push(['CAMERA STAR', 'x2 CHIPS', PAL.accent]); }
+    let mult = 1 + this.streak * (this.has('hot') ? 2 : 1);
+    if (this.streak) rows.push([this.has('hot') ? 'HOT STREAK' : 'STREAK', '+' + (mult - 1) + ' MULT', this.has('hot') ? PAL.accent : PAL.bad]);
+    if (this.has('lung') && this.LUNG.includes(m.hint)) { mult += 4; rows.push(['BIG LUNGS', '+4 MULT', PAL.accent]); }
+    this.streak++;
+    const points = chips * mult;
+    this.last = { won, rows, chips, mult, points, from: this.score };
+    this.score += points;
+  },
+
+  // after the tally (and any photo): stage cleared, run over, or next game
+  after() {
+    if (this.score >= this.target()) this.clear();
+    else if (this.left <= 0) this.over();
+    else this.nextGame();
+  },
+
+  clear() {
+    const rows = [[this.bossStage() ? 'BOSS STAGE' : 'STAGE CLEAR', this.bossStage() ? 5 : 3]];
+    if (this.left) rows.push(['GAMES LEFT x' + this.left, this.left]);
+    const interest = Math.min(5, Math.floor(this.bones / 5));
+    if (interest) rows.push(['INTEREST', interest]);
+    if (this.has('gold')) rows.push(['GOLDEN BONE', 3]);
+    this.payout = rows;
+    this.bones += rows.reduce((n, r) => n + r[1], 0);
+    this.saveBest(this.reached() + 1);
+    Engine.state = 'CLEAR'; Engine.timer = 2.4;
+    Sfx.win(); FX.flash(PAL.accent, 0.4);
+  },
+
+  over() {
+    this.saveBest(this.reached());
+    Engine.state = 'GAMEOVER'; Engine.timer = 0.8;
+  },
+
+  saveBest(i) {
+    if (i <= this.best) return;
+    this.best = i;
+    try { localStorage.setItem('micromania.bestRun', String(i)); } catch (e) {}
+  },
+
+  nextStage() {
+    this.stage++;
+    if (this.stage > 2) { this.stage = 0; this.world++; }
+    this.beginStage();
+  },
+
+  // ── SHOP ─────────────────────────────────────────────────────────────────
+  CARD(i) { return { x: 4 + i * 59, y: TOP + 86, w: 54, h: 104 }; },
+  REROLL: { x: 8, y: BOT - 28, w: 76, h: 22 },
+  NEXT: { x: W - 84, y: BOT - 28, w: 76, h: 22 },
+
+  openShop() { this.reroll = 2; this.stock(); Engine.state = 'SHOP'; Engine.timer = 0.3; },
+
+  stock() {
+    const pool = this.TREATS.filter(t => !this.has(t.id)).map(t => t.id);
+    for (let i = pool.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [pool[i], pool[j]] = [pool[j], pool[i]]; }
+    this.shop = pool.slice(0, 3);
+  },
+
+  canBuy(t) {
+    const slots = t.id === 'chonk' ? this.SLOTS - 1 : this.slots();
+    return this.bones >= t.price && this.treats.length < slots;
+  },
+
+  // ── YOUR TREATS: tap one to read it; in the shop, to sell it ─────────────
+  ownedY() { return Engine.state === 'SHOP' ? TOP + 44 : CY + 66; },
+  ownedHit(p) {
+    const y = this.ownedY();
+    for (let i = 0; i < this.treats.length; i++) if (Engine.hit({ x: 8 + i * 33, y, w: 30, h: 34 }, p)) return i;
+    return -1;
+  },
+  PANEL: { x: 18, y: CY - 78, w: 144, h: 152 },
+  SELL: { x: CX - 50, y: CY + 38, w: 100, h: 22 },
+  sellPrice(t) { return Math.max(1, Math.floor(t.price / 2)); },
+  say(m) { this.msg = m; this.msgT = 2; Sfx.fail(); FX.shake(2); },
+
+  // with a treat's card open, SELL sells it (shop only) and any other tap closes it
+  infoTap(p) {
+    if (Engine.state === 'SHOP' && Engine.hit(this.SELL, p)) {
+      const t = this.treat(this.info);
+      this.bones += this.sellPrice(t);
+      this.treats = this.treats.filter(id => id !== t.id);
+      Sfx.tap(); FX.burst(CX, this.SELL.y + 11, PAL.accent, 10, 60);
+    }
+    this.info = null;
+  },
+
+  shopUpdate(input) {
+    if (this.msgT > 0) this.msgT -= STEP;
+    if (Engine.timer > 0) return;
+    for (const tp of input.taps) {
+      if (this.info) { this.infoTap(tp); continue; }
+      const o = this.ownedHit(tp);
+      if (o >= 0) { this.info = this.treats[o]; Sfx.tap(); continue; }
+      for (let i = 0; i < 3; i++) if (Engine.hit(this.CARD(i), tp)) this.buy(i);
+      if (Engine.hit(this.REROLL, tp)) {
+        if (this.bones >= this.reroll && this.shop.length) { this.bones -= this.reroll; this.reroll++; this.stock(); Sfx.tap(); }
+        else { Sfx.fail(); FX.shake(2); }
+      }
+      if (Engine.hit(this.NEXT, tp)) { Sfx.tap(); this.nextStage(); return; }
+    }
+  },
+
+  buy(i) {
+    const id = this.shop[i]; if (!id) return;
+    const t = this.treat(id), c = this.CARD(i);
+    if (this.bones < t.price) { this.say('NOT ENOUGH BONES'); return; }
+    if (!this.canBuy(t)) { this.say('SLOTS FULL - TAP ONE TO SELL'); return; }
+    this.bones -= t.price; this.treats.push(id); this.shop[i] = null;
+    Sfx.win(); buzz(20); FX.burst(c.x + c.w / 2, c.y + c.h / 2, PAL.accent, 14, 70);
+  },
+
+  // ── DRAW ─────────────────────────────────────────────────────────────────
+  bone(x, y, c = PAL.ink, k = 1) {
+    const r = (a, b, w, h) => g.rect(x + a * k, y + b * k, w * k, h * k, c);
+    r(0, 1, 6, 2); r(-1, 0, 2, 2); r(-1, 2, 2, 2); r(5, 0, 2, 2); r(5, 2, 2, 2);
+  },
+
+  // a treat's picture centred on x, y at about size s
+  drawArt(t, x, y, s) {
+    if (!t.art) { const k = Math.max(2, Math.round(s / 13)); this.bone(x - 3 * k, y - 2 * k, PAL.accent, k); return; }
+    const sz = s * (t.art[2] || 1);
+    if (t.id === 'zoom') for (let i = 0; i < 3; i++)   // speed lines trailing the runner
+      g.rect(x - s * 0.5 - i * s * 0.04, y - s * 0.12 + i * s * 0.12, s * 0.2, Math.max(1, s / 26), PAL.mid);
+    g.sprite(t.art[0], x, y, { w: sz, h: sz, frame: t.art[1] });
+  },
+
+  // a treat as a card: big in the shop, small in your row
+  drawTreat(t, x, y, w, h, small) {
+    g.rect(x, y, w, h, small ? PAL.mid : PAL.ink);
+    g.rect(x + 2, y + 2, w - 4, h - 4, PAL.bg);
+    const ay = small ? y + 13 : y + 42, as = small ? 20 : 40;
+    this.drawArt(t, x + w / 2, ay, as);
+    if (small) { g.text(t.tag, x + w / 2, y + h - 4, 6, PAL.ink); return; }
+    g.text(t.name, x + w / 2, y + 12, 6, PAL.ink);
+    t.lines.forEach((l, i) => g.text(l, x + w / 2, y + h - 30 + i * 8, 6, PAL.mid));
+  },
+
+  drawOwned(y) {
+    const n = Math.max(this.slots(), this.treats.length);
+    for (let i = 0; i < n; i++) {
+      const x = 8 + i * 33;
+      if (this.treats[i]) this.drawTreat(this.treat(this.treats[i]), x, y, 30, 34, true);
+      else { g.box(x, y, 30, 34, PAL.mid); g.text('+', x + 15, y + 21, 10, PAL.mid); }
+    }
+  },
+
+  drawHud() {
+    g.text(this.label(), 4, 13, 9, PAL.ink, 'left');
+    this.bone(W - 34, 6);
+    g.text(String(this.bones), W - 6, 13, 9, PAL.ink, 'right');
+    g.rect(0, TOP - 1, W, 1, PAL.mid);
+    // games left and stage progress only mean something while a stage is on
+    if (Engine.state === 'CLEAR' || Engine.state === 'SHOP') return;
+    const n = this.games();
+    for (let i = 0; i < n; i++) g.rect(28 + i * 6, 6, 4, 6, i < this.left ? PAL.accent : PAL.mid);
+    g.rect(0, TOP - 2, W * Math.min(1, this.score / this.target()), 2, PAL.accent);
+  },
+
+  drawStage() {
+    const boss = this.bossStage();
+    g.text('WORLD ' + this.world, CX, CY - 56, 11, PAL.mid);
+    g.text(boss ? 'BOSS STAGE' : 'STAGE ' + (this.stage + 1) + ' / 3', CX, CY - 32, 16, boss ? PAL.bad : PAL.ink);
+    g.text('TARGET', CX, CY - 4, 9, PAL.mid);
+    g.text(String(this.target()), CX, CY + 24, 26, PAL.accent);
+    g.text(this.games() + ' GAMES TO SCORE IT', CX, CY + 46, 8, PAL.ink);
+    if (this.treats.length) {
+      g.text('YOUR TREATS  ·  TAP TO SEE', CX, CY + 61, 6, PAL.mid);
+      this.drawOwned(CY + 66);
+    }
+    this.drawInfo();
+  },
+
+  // an owned treat's card, opened over whatever screen it was tapped on
+  drawInfo() {
+    if (!this.info) return;
+    const t = this.treat(this.info), P = this.PANEL;
+    ctx.globalAlpha = 0.75; g.rect(0, TOP, W, BOT - TOP, PAL.bg); ctx.globalAlpha = 1;
+    g.rect(P.x, P.y, P.w, P.h, PAL.accent);
+    g.rect(P.x + 2, P.y + 2, P.w - 4, P.h - 4, PAL.bg);
+    g.text(t.name, CX, P.y + 18, 10, PAL.accent);
+    this.drawArt(t, CX, P.y + 56, 52);
+    t.lines.forEach((l, i) => g.text(l, CX, P.y + 96 + i * 11, 8, PAL.ink));
+    if (Engine.state === 'SHOP') {
+      const S = this.SELL;
+      g.rect(S.x, S.y, S.w, S.h, PAL.bad);
+      g.text('SELL  +' + this.sellPrice(t), CX, S.y + 15, 9, PAL.ink);
+    }
+    g.text('TAP ELSEWHERE TO CLOSE', CX, P.y + P.h - 5, 6, PAL.mid);
+  },
+
+  drawTally() {
+    const L = this.last;
+    g.text(L.won ? 'GOOD!' : 'FAIL!', CX, TOP + 36, 22, L.won ? PAL.accent : PAL.bad);
+    if (L.won && Engine.snap) Engine.drawPolaroid(Engine.snap, W - 24, TOP + 28, 34, 0.08);
+    g.text(Engine.game.meta.prompt, CX, TOP + 50, 7, PAL.mid);
+    L.rows.forEach(([a, v, c], i) => {
+      g.text(a, 14, TOP + 70 + i * 12, 8, PAL.mid, 'left');
+      g.text(v, W - 14, TOP + 70 + i * 12, 8, c, 'right');
+    });
+    if (L.won) {
+      const y = TOP + 140;
+      g.rect(14, y, 64, 18, PAL.ink); g.text(String(L.chips), 46, y + 13, 11, PAL.bg);
+      g.text('x', CX, y + 13, 11, PAL.ink);
+      g.rect(W - 78, y, 64, 18, PAL.bad); g.text(String(L.mult), W - 46, y + 13, 11, PAL.ink);
+      g.text('= ' + L.points, CX, y + 42, 16, PAL.accent);
+    }
+    // the stage bar fills from where it was to where it is now
+    const y = TOP + 200, goal = this.target();
+    const k = Math.min(1, (1.8 - Engine.timer) / 0.6);
+    const shown = Math.round(L.from + (this.score - L.from) * Math.max(0, k));
+    g.text('SCORE', 8, y, 7, PAL.mid, 'left');
+    g.text(shown + ' / ' + goal, W - 8, y, 8, PAL.ink, 'right');
+    g.rect(8, y + 4, W - 16, 5, PAL.mid);
+    g.rect(8, y + 4, (W - 16) * Math.min(1, shown / goal), 5, PAL.accent);
+    const msg = this.score >= goal ? ['TARGET HIT!', PAL.accent]
+              : this.left <= 0 ? ['OUT OF GAMES', PAL.bad]
+              : [this.left + (this.left === 1 ? ' GAME' : ' GAMES') + ' LEFT', PAL.ink];
+    g.text(msg[0], CX, y + 28, 10, msg[1]);
+  },
+
+  drawClear() {
+    g.text(this.stage === 2 ? 'WORLD ' + this.world : 'STAGE', CX, CY - 64, 18, PAL.accent);
+    g.text('CLEAR!', CX, CY - 42, 18, PAL.accent);
+    this.payout.forEach(([a, v], i) => {
+      g.text(a, 20, CY - 12 + i * 13, 8, PAL.mid, 'left');
+      g.text('+' + v, W - 20, CY - 12 + i * 13, 8, PAL.ink, 'right');
+    });
+    const y = CY - 12 + this.payout.length * 13 + 10;
+    this.bone(CX - 22, y - 7, PAL.accent);
+    g.text(String(this.bones), CX - 10, y, 12, PAL.accent, 'left');
+    if (Math.floor(Engine.time * 2) % 2) g.text('TAP FOR THE SHOP', CX, BOT - 10, 8, PAL.mid);
+  },
+
+  drawShop() {
+    g.text('TREAT SHOP', CX, TOP + 24, 14, PAL.accent);
+    g.text('YOUR TREATS', 8, TOP + 40, 7, PAL.mid, 'left');
+    if (this.treats.length) g.text('TAP TO SEE / SELL', W - 8, TOP + 40, 6, PAL.mid, 'right');
+    this.drawOwned(TOP + 44);
+    for (let i = 0; i < 3; i++) {
+      const c = this.CARD(i), id = this.shop[i];
+      if (!id) { g.box(c.x, c.y, c.w, c.h, PAL.mid); g.text(this.shop.length ? 'SOLD' : 'EMPTY', c.x + c.w / 2, c.y + c.h / 2, 8, PAL.mid); continue; }
+      const t = this.treat(id), ok = this.canBuy(t);
+      this.drawTreat(t, c.x, c.y, c.w, c.h, false);
+      this.bone(c.x + c.w / 2 - 10, c.y + c.h - 11, ok ? PAL.accent : PAL.mid);
+      g.text(String(t.price), c.x + c.w / 2 + 2, c.y + c.h - 5, 8, ok ? PAL.accent : PAL.mid, 'left');
+    }
+    if (this.msgT > 0) g.text(this.msg, CX, this.CARD(0).y + 118, 7, PAL.bad);
+    else g.text('TAP A TREAT TO BUY IT', CX, this.CARD(0).y + 118, 7, PAL.mid);
+    const R = this.REROLL, N = this.NEXT;
+    g.box(R.x, R.y, R.w, R.h, PAL.mid); g.text('REROLL ' + this.reroll, R.x + R.w / 2, R.y + 15, 8, PAL.ink);
+    g.rect(N.x, N.y, N.w, N.h, PAL.accent); g.text('NEXT >', N.x + N.w / 2, N.y + 15, 9, PAL.bg);
+    this.drawInfo();
+  },
+
+  drawOver() {
+    Engine.drawAlbum(TOP + 44);
+    g.text('RUN', CX, CY - 30, 24, PAL.bad);
+    g.text('OVER', CX, CY - 4, 24, PAL.bad);
+    g.text('REACHED ' + this.label(), CX, CY + 26, 10, PAL.ink);
+    g.text(this.score + ' / ' + this.target(), CX, CY + 42, 8, PAL.mid);
+    g.text('BEST ' + this.label(this.best), CX, CY + 56, 8, PAL.mid);
+    Engine.drawShareButton();
+  }
+};
+
 /* =============================================================================
    ENGINE — states: TITLE > PROMPT > PLAYING > RESULT > (SPEEDUP) > ... GAMEOVER
+   RUN mode adds STAGE (intro) > games > CLEAR > SHOP between stages
 ============================================================================= */
 const Engine = {
   state: 'TITLE', timer: 0, time: 0,
@@ -3214,6 +3863,10 @@ const Engine = {
   // camera/mic/motion: null = not asked yet (show the sensors screen before
   // the first run), true = allowed, false = the player picked touch only
   sensors: null,
+  mode: 'classic',   // 'classic' = endless lives run, 'run' = the roguelike (see Run)
+  // a still of the player taken the moment they win any game, shown on the
+  // result screen; the last few of a run make the game-over strip
+  snap: null, album: [],
   BOSS_EVERY: 8, SPEEDUP_EVERY: 4,
 
   reset() {
@@ -3233,11 +3886,11 @@ const Engine = {
     return 3;
   },
 
-  startRound(forceClass, forceDiff) {
+  startRound(forceClass, forceDiff, forceBoss) {
     this.round++;
     FX.parts.length = 0; FX.fl = 0;   // no effects bleed across rounds
     Engine.lastPhoto = null;          // a shot from a lost round must not show after a later win
-    this.isBoss = !forceClass && this.round % this.BOSS_EVERY === 0;
+    this.isBoss = !!forceBoss || (!forceClass && this.round % this.BOSS_EVERY === 0);
     const C = forceClass || this.pick(this.isBoss ? BOSSES : POOL);
     this.lastId = C.meta.id;
     const diff = forceDiff || (this.isBoss ? 3 : this.difficulty());
@@ -3305,7 +3958,31 @@ const Engine = {
         if (n > 0) { Sfx.tick(); buzz(15); FX.shake(1.5); }
         else { Sfx.blip(990, 0.14); buzz(40); FX.flash(PAL.accent, 0.4); FX.shake(3); }
       }
-      if (this.timer <= 0) this.startRound();
+      if (this.timer <= 0) { if (this.mode === 'run') Run.beginStage(); else this.startRound(); }
+      return;
+    }
+
+    // RUN mode's between-stage screens; each can be tapped past
+    if (s === 'STAGE') {
+      Mascot.set('watch');
+      // a treat's card holds the intro until it is closed
+      if (Run.info) { this.timer += dt; for (const tp of Input.taps) Run.infoTap(tp); return; }
+      for (const tp of Input.taps) {
+        const o = Run.ownedHit(tp);
+        if (o >= 0) { Run.info = Run.treats[o]; Sfx.tap(); return; }
+        if (this.timer < 1.4) this.timer = 0;   // any other tap skips the intro
+      }
+      if (this.timer <= 0) Run.nextGame();
+      return;
+    }
+    if (s === 'CLEAR') {
+      Mascot.set('cheer');
+      if (this.timer <= 0 || (Input.justDown && this.timer < 1.9)) Run.openShop();
+      return;
+    }
+    if (s === 'SHOP') {
+      Mascot.set('watch');
+      Run.shopUpdate(Input);
       return;
     }
 
@@ -3321,35 +3998,45 @@ const Engine = {
       this.game.t += dt;
       this.game.update(dt, Input);
       const out = this.timer <= 0;
+      this.timer_ = this.timer;   // round clock left, for RUN's speed bonus
       if (out && !this.game.finished) {
         if (this.game.meta.winOnTimeout) this.game.succeed(); else this.game.lose();
       }
       if (this.game.finished) {
         if (this.game.won) {
           this.score++; this.combo++; this.result = 'WIN'; Sfx.win(); buzz(20); Mascot.set('cheer');
+          // photo games already took theirs (with their stamp); every other
+          // game gets a candid one — the concentration face is the joke
+          this.snap = Input.snapPhoto();
+          if (this.snap) { this.album.push(this.snap); if (this.album.length > 4) this.album.shift(); }
           FX.flash(PAL.accent, 0.45);
           FX.burst(Mascot.x, Mascot.y - 8, PAL.accent, 12 + Math.min(12, this.combo * 2), 80);
           if (this.combo >= 3) FX.shake(3);   // a little extra on a streak
         } else {
-          if (!this.testClass) this.lives--;
+          if (!this.testClass && this.mode === 'classic') this.lives--;
+          this.snap = null;
           this.combo = 0; this.result = 'FAIL'; Sfx.fail(); buzz(120); Mascot.set('sad');
           FX.flash(PAL.bad, 0.55); FX.shake(5);
         }
-        if (this.score > this.best && !this.testClass) {
+        if (this.score > this.best && !this.testClass && this.mode === 'classic') {
           this.best = this.score;
           try { localStorage.setItem('micromania.best', String(this.best)); } catch (e) {}
         }
         this.state = 'RESULT'; this.timer = 0.9;
+        if (this.mode === 'run') { Run.onResult(this.game.won, Math.max(0, this.timer_ / this.duration)); this.timer = 1.8; }
       }
       return;
     }
 
     if (s === 'RESULT') {
+      if (this.mode === 'run' && Input.justDown && this.timer < 1.4) this.timer = 0;   // skip the tally
       if (this.timer > 0) return;
       // if the just-won game captured a photo, show it before moving on
-      if (this.result === 'WIN' && this.game && this.game.meta.photo && Engine.lastPhoto) {
+      // a photo game poses for its picture: live preview, 3-2-1, snap
+      if (this.result === 'WIN' && this.game && this.game.meta.photo && Input.camReady) {
         this.photoCap = this.game.meta.photoCap || 'NICE MOVES!';
-        this.state = 'PHOTO'; this.timer = 2.6; this.photoReveal = 0;
+        this.state = 'PHOTO'; this.photoPhase = 'pose'; this.timer = 1.8; this.photoBeat = 4;
+        Engine.lastPhoto = null;
         return;
       }
       this.advance();
@@ -3362,6 +4049,13 @@ const Engine = {
     }
 
     if (s === 'PHOTO') {
+      if (this.photoPhase === 'pose') {
+        // 3 · 2 · 1 with a tick each, then the shutter; a tap snaps it now
+        const n = Math.ceil(this.timer / 0.6);
+        if (n !== this.photoBeat && n > 0) { this.photoBeat = n; Sfx.tick(); }
+        if (this.timer <= 0 || Input.justDown) this.takePhoto();
+        return;
+      }
       this.photoReveal = Math.min(1, (this.photoReveal || 0) + dt * 1.2);
       if (this.timer <= 0 || Input.justDown) {
         Engine.lastPhoto = null;
@@ -3370,12 +4064,29 @@ const Engine = {
     }
   },
 
+  takePhoto() {
+    const shot = Input.snapPhoto();
+    if (shot) {
+      if (this.game.stampPhoto) this.game.stampPhoto(shot);
+      Engine.lastPhoto = shot;
+      // the posed shot replaces this win's candid in the album
+      if (this.snap && this.album[this.album.length - 1] === this.snap) this.album[this.album.length - 1] = shot;
+      else { this.album.push(shot); if (this.album.length > 4) this.album.shift(); }
+      this.snap = shot;
+    }
+    this.photoPhase = 'show'; this.timer = 1.8; this.photoReveal = 0;
+    Sfx.blip(1700, 0.05, 'square', 0.06); buzz(30); FX.flash(PAL.ink, 0.8);
+  },
+
   // ── BUTTONS ────────────────────────────────────────────────────────────────
   // Called straight from the pointer events, so the permission prompts they
   // raise are inside a user gesture. press() returns true to eat the press.
   MUTE: { x: CX - 12, y: 0, w: 24, h: TOP },
   PERM_ALLOW: { x: CX - 50, y: CY + 22, w: 100, h: 24 },
   PERM_SKIP:  { x: CX - 50, y: CY + 54, w: 100, h: 24 },
+  BTN_RUN:     { x: CX - 50, y: CY + 36, w: 100, h: 26 },
+  BTN_CLASSIC: { x: CX - 50, y: CY + 70, w: 100, h: 22 },
+  BTN_SHARE:   { x: CX - 50, y: CY + 66, w: 100, h: 22 },
   hit(b, p) { return p.x >= b.x && p.x < b.x + b.w && p.y >= b.y && p.y < b.y + b.h; },
 
   press(p) {
@@ -3385,11 +4096,77 @@ const Engine = {
 
   release(p) {
     const s = this.state;
-    if ((s === 'TITLE' || s === 'GAMEOVER') && this.timer <= 0) {
-      Sfx.unlock();
+    if (s === 'TITLE' && this.timer <= 0) {
+      const mode = this.hit(this.BTN_RUN, p) ? 'run' : this.hit(this.BTN_CLASSIC, p) ? 'classic' : null;
+      if (!mode) return;
+      this.mode = mode;
+      Sfx.unlock(); Sfx.tap();
       if (this.sensors === null) { this.state = 'PERMS'; this.timer = 0.3; this.permWait = false; }
       else this.startRun();
+    } else if (s === 'GAMEOVER' && this.timer <= 0) {
+      // share runs inside this tap: the share sheet only opens from a gesture
+      if (this.hit(this.BTN_SHARE, p)) { Sfx.tap(); this.share(); return; }
+      this.state = 'TITLE'; this.timer = 0.2;   // back to pick a mode
     }
+  },
+
+  // ── SHARE ──────────────────────────────────────────────────────────────────
+  // A picture of the run: the photo strip, the result and where to play.
+  // Built at full size, not from the 180x320 screen, so it holds up in a chat.
+  shareCard() {
+    const c = document.createElement('canvas'); c.width = 720; c.height = 960;
+    const x = c.getContext('2d'); x.imageSmoothingEnabled = false;
+    const text = (str, tx, ty, size, col) => {
+      x.fillStyle = col; x.font = 'bold ' + size + 'px ui-monospace, monospace';
+      x.textAlign = 'center'; x.fillText(str, tx, ty);
+    };
+    const polaroid = (img, px, py, size, tilt) => {
+      const a = img.width / img.height, w = a < 1 ? size * a : size, h = a < 1 ? size : size / a, b = size / 16;
+      x.save(); x.translate(px, py); x.rotate(tilt);
+      x.fillStyle = PAL.ink; x.fillRect(-w / 2 - b, -h / 2 - b, w + b * 2, h + b * 4);
+      x.drawImage(img, -w / 2, -h / 2, w, h);
+      x.restore();
+    };
+    x.fillStyle = PAL.bg; x.fillRect(0, 0, 720, 960);
+    text('MICRO', 360, 120, 96, PAL.ink);
+    text('MANIA', 360, 212, 96, PAL.accent);
+    const n = this.album.length;
+    if (n === 0) {
+      const a = Assets.get('shiba');
+      if (a) x.drawImage(a.img, a.fw, 0, a.fw, a.fh, 210, 300, 300, 317);   // the cheering shiba
+    } else if (n <= 2) {
+      this.album.forEach((img, i) => polaroid(img, 360 + (i - (n - 1) / 2) * 330, 470, 300, i % 2 ? 0.05 : -0.05));
+    } else {
+      this.album.forEach((img, i) => polaroid(img, 205 + (i % 2) * 310, 375 + Math.floor(i / 2) * 240, 190, i % 2 ? 0.06 : -0.06));
+    }
+    const result = this.mode === 'run' ? 'REACHED ' + Run.label() : 'SCORE ' + this.score;
+    text(result, 360, 860, 60, PAL.ink);
+    text(location.host || 'MICROMANIA', 360, 920, 26, TEXT_MID);
+    return c;
+  },
+
+  share() {
+    const c = this.shareCard(), url = c.toDataURL('image/png');
+    const words = this.mode === 'run' ? 'I reached ' + Run.label() + ' in MICROMANIA RUN mode!' : 'I scored ' + this.score + ' in MICROMANIA!';
+    try {
+      // the phone's own share sheet, with the picture attached
+      const bin = atob(url.split(',')[1]), buf = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+      const file = new File([buf], 'micromania.png', { type: 'image/png' });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        navigator.share({ files: [file], title: 'MICROMANIA', text: words + ' ' + location.href }).catch(() => {});
+        return;
+      }
+    } catch (e) {}
+    // no share sheet (most desktops): save the picture instead
+    const a = document.createElement('a'); a.href = url; a.download = 'micromania.png';
+    document.body.appendChild(a); a.click(); a.remove();
+  },
+
+  drawShareButton() {
+    const B = this.BTN_SHARE;
+    g.rect(B.x, B.y, B.w, B.h, PAL.accent); g.text('SHARE', CX, B.y + 15, 10, PAL.bg);
+    if (Math.floor(this.time * 2) % 2) g.text('TAP ELSEWHERE TO CONTINUE', CX, CY + 104, 7, PAL.mid);
   },
 
   // The sensors screen eats its presses (see press), so its buttons are
@@ -3412,6 +4189,8 @@ const Engine = {
   startRun() {
     if (this.sensors) { Input.enableAV(); Input.enableMotion(); Input.enableTilt(); }
     this.reset();
+    this.album = []; this.snap = null;
+    if (this.mode === 'run') Run.start();
     this.state = 'READY';
     this.timer = 3.2;          // 3 · 2 · 1 · GO, then the first prompt
     this.readyLast = 4;
@@ -3423,6 +4202,7 @@ const Engine = {
   advance() {
     // test mode: replay the same game forever, never lose lives or advance
     if (this.testClass) { this.lives = 4; this.startRound(this.testClass, this.testDiff); return; }
+    if (this.mode === 'run') { Run.after(); return; }
     if (this.lives <= 0) { this.state = 'GAMEOVER'; this.timer = 0.8; return; }
     if (this.round % this.SPEEDUP_EVERY === 0) {
       this.speed = Math.min(2.6, this.speed + 0.12);
@@ -3458,6 +4238,21 @@ const Engine = {
     }
     FX.post();
     this.drawMute();
+    this.drawCamView();
+  },
+
+  // In a camera game the shelf shows what the camera sees, mirrored like a
+  // mirror, with a blinking REC dot — so the player knows it is watching and
+  // can see themselves move, instead of guessing whether it is working.
+  drawCamView() {
+    if (this.state !== 'PROMPT' && this.state !== 'PLAYING') return;
+    const gm = this.game; if (!gm || !Input.camReady) return;
+    const on = 'usesCam' in gm ? gm.usesCam : gm.meta.cam;
+    if (!on) return;
+    const a = Input.camAspect(), h = 32, w = Math.round(h * a), x = 6, y = BOT + 3;
+    g.rect(x - 1, y - 1, w + 2, h + 2, PAL.ink);
+    if (!Input.drawLive(ctx, x, y, w, h)) g.rect(x, y, w, h, PAL.mid);
+    if (Math.floor(this.time * 2) % 2) g.circle(x + 4, y + 4, 2, PAL.bad);
   },
 
   // speaker in the middle of the HUD band, with sound waves or a cross. Drawn
@@ -3482,8 +4277,13 @@ const Engine = {
       g.text('MANIA', CX, CY - 8, 26, PAL.accent);
       g.rect(CX - 40, CY + 4, 80, 1, PAL.mid);
       g.text(POOL.length + BOSSES.length + ' microgames', CX, CY + 22, 8, PAL.mid);
-      if (Math.floor(this.time * 2) % 2) g.text('TAP TO START', CX, CY + 64, 10, PAL.ink);
-      if (this.best) g.text('BEST ' + this.best, CX, BOT, 8, PAL.mid);
+      const R = this.BTN_RUN, C = this.BTN_CLASSIC;
+      g.rect(R.x, R.y, R.w, R.h, PAL.accent); g.text('RUN', CX, R.y + 18, 13, PAL.bg);
+      g.box(C.x, C.y, C.w, C.h, PAL.mid); g.text('CLASSIC', CX, C.y + 15, 9, PAL.ink);
+      const best = [];
+      if (Run.best) best.push('RUN ' + Run.label(Run.best));
+      if (this.best) best.push('CLASSIC ' + this.best);
+      if (best.length) g.text('BEST  ' + best.join('  ·  '), CX, BOT - 6, 7, PAL.mid);
       return;
     }
 
@@ -3501,12 +4301,18 @@ const Engine = {
       return;
     }
 
+    if (s === 'GAMEOVER' && this.mode === 'run') { Run.drawOver(); return; }
+    if (s === 'STAGE') { this.drawHud(); Run.drawStage(); return; }
+    if (s === 'CLEAR') { this.drawHud(); Run.drawClear(); return; }
+    if (s === 'SHOP')  { this.drawHud(); Run.drawShop(); return; }
+
     if (s === 'GAMEOVER') {
+      this.drawAlbum(TOP + 44);
       g.text('GAME', CX, CY - 24, 24, PAL.bad);
       g.text('OVER', CX, CY + 2, 24, PAL.bad);
       g.text('SCORE ' + this.score, CX, CY + 36, 10, PAL.ink);
       g.text('BEST ' + this.best, CX, CY + 52, 8, PAL.mid);
-      if (Math.floor(this.time * 2) % 2) g.text('TAP TO RETRY', CX, CY + 84, 9, PAL.mid);
+      this.drawShareButton();
       return;
     }
 
@@ -3549,11 +4355,15 @@ const Engine = {
       return;
     }
 
+    if (s === 'RESULT' && this.mode === 'run') { this.drawHud(); Run.drawTally(); return; }
+
     if (s === 'RESULT') {
       const win = this.result === 'WIN';
       g.clear(win ? PAL.bg : PAL.bad);
       g.text(win ? 'GOOD!' : 'FAIL!', CX, CY - 6, 24, win ? PAL.accent : PAL.ink);
       if (win && this.combo > 1) g.text('x' + this.combo + ' STREAK', CX, CY + 18, 9, PAL.mid);
+      // photo games get the big polaroid next; the rest show their candid here
+      if (win && this.snap && !this.game.meta.photo) this.drawPolaroid(this.snap, CX, CY + 62, 64, -0.06);
       this.drawHud();
       return;
     }
@@ -3567,10 +4377,20 @@ const Engine = {
 
     if (s === 'PHOTO') {
       g.clear();
-      const photo = Engine.lastPhoto;
-      const pw = 120, ph = 90, px = CX - pw / 2, py = CY - ph / 2 - 6;
-      // polaroid frame
+      const photo = Engine.lastPhoto, pose = this.photoPhase === 'pose';
+      // the polaroid takes the camera's shape: portrait on a phone
+      const asp = photo ? photo.width / photo.height : Input.camAspect();
+      const pw = asp < 1 ? Math.round(120 * asp) : 120, ph = asp < 1 ? 120 : Math.round(120 / asp);
+      const px = CX - pw / 2, py = CY - ph / 2 - 6;
       g.rect(px - 6, py - 6, pw + 12, ph + 30, PAL.ink);
+      if (pose) {
+        if (!Input.drawLive(ctx, px, py, pw, ph)) g.rect(px, py, pw, ph, PAL.mid);
+        const n = Math.max(1, Math.ceil(this.timer / 0.6));
+        g.text(String(n), CX, py - 14, 16, PAL.accent);
+        g.text('BACK UP & SMILE!', CX, py + ph + 14, 9, PAL.bg);
+        this.drawHud();
+        return;
+      }
       if (photo) {
         // draw pixelated + tinted to the game's palette for a retro look
         ctx.save();
@@ -3593,7 +4413,25 @@ const Engine = {
     }
   },
 
+  // a small tilted polaroid of a camera still, centred on x, y
+  drawPolaroid(img, x, y, size, tilt = 0) {
+    const a = img.width / img.height;
+    const w = a < 1 ? size * a : size, h = a < 1 ? size : size / a;
+    const b = Math.max(2, Math.round(size / 18));
+    ctx.save(); ctx.translate(x, y); ctx.rotate(tilt);
+    g.rect(-w / 2 - b, -h / 2 - b, w + b * 2, h + b * 4, PAL.ink);
+    ctx.drawImage(img, -w / 2, -h / 2, w, h);
+    ctx.restore();
+  },
+
+  // the run's last few candids, laid out like photos on a table
+  drawAlbum(y) {
+    const n = this.album.length; if (!n) return;
+    this.album.forEach((img, i) => this.drawPolaroid(img, CX + (i - (n - 1) / 2) * 42, y, 36, i % 2 ? 0.07 : -0.07));
+  },
+
   drawHud() {
+    if (this.mode === 'run') { Run.drawHud(); return; }
     // lives as little shiba faces; spent lives shown as a faded marker
     for (let i = 0; i < 4; i++) {
       if (i < this.lives) g.sprite('face', 11 + i * 13, 9, { w: 13, h: 13, frame: 0 });
@@ -3678,6 +4516,7 @@ else {
       Input.enableMotion(); Input.enableTilt(); Input.enableMic(); Sfx.unlock();
       if (Engine.sensors === null) Engine.sensors = true;
       Engine.reset();
+      Engine.mode = 'classic';
       Engine.testClass = loop ? C : null;
       Engine.testDiff = testDiff;
       Engine.lives = 4;

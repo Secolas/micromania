@@ -28,17 +28,29 @@ middle of the top bar mutes sound, and the choice is remembered.
 | DANCE | movement in time with a beat | tap on the beat |
 | SQUID | move on green, freeze on red (red-light/green-light) | hold on green, release on red |
 
+While a camera game is on, the shelf at the bottom-left shows the **live
+camera** (mirrored, with a blinking REC dot), so players can see themselves and
+know it is watching. Flag a game with `cam: true` in its meta.
+
 SWAT prefers the **gyro** where the device has one — tilting the phone aims far
 more precisely than the camera's centre-of-motion can. Hold the swatter on the
 fly to squash it (or tap). Whatever the phone was doing when the round starts
 becomes centre, so any comfortable hold works.
 
-MOVE, DRY, LEAN, FREEZE, DANCE and BLOW snap a still off the camera on a win and
-show it as a polaroid before the next round — in the camera's own colours, and
-cover-cropped so a portrait selfie frame is never squeezed into the 4:3 print.
-Opt a game in with `photo: true` in its meta.
+MOVE, DRY, LEAN, FREEZE, DANCE, BLOW, CANDLES and SQUID end a win with a
+**photo pose**: the polaroid shows the live camera with BACK UP & SMILE! and a
+3-2-1 (tap to snap early), so a player who had the phone at their mouth for
+BLOW can lean back first. Stills are the camera's whole frame, never cropped —
+portrait on a phone — and the lens is set to its widest zoom where the browser
+allows. Opt a game in with `photo: true` in its meta.
 
-A game can stamp the still before handing it over. Filters live in `PhotoFX`,
+Every other game takes a **candid** on a win too — whatever face you were
+pulling when you won — shown as a small polaroid on the result screen. The last
+four of a run are laid out on the game-over screen, whose **SHARE** button
+builds a picture of them with the score and opens the phone's share sheet (or
+downloads it where there is none).
+
+A game can stamp the still with a `stampPhoto(canvas)` method. Filters live in `PhotoFX`,
 draw in the photo's own pixel space, and use the five palette colours so they
 read as pixel art on a photograph rather than a grade over someone's face:
 
@@ -72,15 +84,50 @@ actually has — a camera game on touch says "TAP FAST". The first time a game
 comes up in a session the card stays up an extra second so it can be read.
 Set it with `how` in a game's meta.
 
+## Fake-outs and sounds
+
+Once you have met PAT! or TAP!, about one time in seven it comes back as
+**DON'T PAT!** / **DON'T TAP!** — the same scene, won by keeping your hands off.
+A game opts in with `this.fakeOut(chance, prompt, how)` in `init()`.
+
+`Sfx` has a small kit beyond the blips — `bark`, `growl`, `boop`, `squeak`,
+`crunch`, `chomp`, `splash`, `whoosh`, `thud` — all synthesised, no samples.
+
+Props are drawn in code in the five palette colours (`g.bone`, `g.choc`,
+`g.paw`, `g.doghouse`, `g.tennis`, `g.pot`, `g.car`, `g.fence`), so new scenes
+don't need generated art.
+
 ## Develop
 
 Everything lives in `index.html` — engine, all games, and the sprites
 (base64-embedded). No build step, no dependencies.
 
-- `const DEBUG = true` near the top enables the in-game **DEV** test menu
-  (top-right). Flip to `false` to ship without it.
+- `const DEBUG = false` near the top; set it to `true` for the in-game **DEV**
+  test menu (top-right) and the live sensor readouts.
 - The DEV menu lists every game, with a difficulty selector and a LOOP mode
   that replays one game without losing lives — for testing and tuning.
+
+## RUN mode
+
+The title offers **RUN** (the roguelike) and **CLASSIC** (the original endless
+lives run). RUN is Balatro-style scoring over the same microgames:
+
+- A run is worlds of three stages. Each stage gives you **5 games** to reach a
+  **score target** (150 / 220 / 320 in world 1, x1.6 per world). Miss it and
+  the run is over. The third stage opens on a boss.
+- A win scores **chips x mult**: 30 chips (80 for a boss) plus a speed bonus
+  for finishing early, times a mult that grows with your streak. A fail scores
+  nothing and breaks the streak.
+- Clearing a stage pays **bones**: 3 (5 for a boss stage), +1 per unused game,
+  and interest of 1 per 5 saved (max 5).
+- Between stages the **treat shop** sells perks (5 slots) that bend the sum:
+  ZOOMIES, CAMERA STAR, BIG LUNGS, HOT STREAK, GOOD BOY, SPEEDY, GOLDEN BONE,
+  CHONK. Tap to buy; REROLL costs 2 and goes up each time. Tap one of
+  **your** treats (in the shop or on the stage intro) to read what it does;
+  in the shop its card has a SELL button for half its price, which is how a
+  full row makes room.
+- Inside a stage it is the same game-after-game rush; all the choosing happens
+  between stages. Everything lives in the `Run` object in `index.html`.
 
 ## Bosses
 
