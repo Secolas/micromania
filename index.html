@@ -135,7 +135,7 @@ const ART = {
         winOnTimeout  true = survive-the-clock game (default false)
         photo         true = a win shows the camera still in Engine.lastPhoto
         photoCap      caption printed under that photo (default 'NICE MOVES!')
-        how           how to play, shown under the prompt ("TAP THE BUG"; '\n'
+        how           how to play, shown under the prompt ("TAP THE DOG"; '\n'
                       for a second line). For a sensor game, one line per way of
                       playing it, best first — { tilt, cam, mic, motion, touch }
                       — and the first the player actually has is shown.
@@ -869,7 +869,7 @@ class Microgame {
 // 1. TAP — hit the moving bug
 class TapBug extends Microgame {
   static meta = { id: 'tap', prompt: 'TAP!', hint: 'tap', duration: 3.2,
-    how: 'TAP THE BUG' };
+    how: 'TAP THE DOG' };
   init() {
     this.miss = 0;
     this.bug = { x: 24 + Math.random() * (W - 48), y: TOP + 26 + Math.random() * (BOT - TOP - 52), r: 9 };
@@ -3226,6 +3226,8 @@ const Run = {
 
   world: 1, stage: 0, bones: 0, treats: [], score: 0, left: 0, played: 0, streak: 0,
   freeFail: false, last: null, payout: [], shop: [], reroll: 2,
+  info: null,          // the owned treat whose card is open, or null
+  msg: '', msgT: 0,    // a short shop message ("SLOTS FULL…")
   // furthest stage ever reached, counted 0 = 1-1, 1 = 1-2, ...
   best: (() => { try { return +localStorage.getItem('micromania.bestRun') || 0; } catch (e) { return 0; } })(),
 
@@ -3342,9 +3344,36 @@ const Run = {
     return this.bones >= t.price && this.treats.length < slots;
   },
 
+  // ── YOUR TREATS: tap one to read it; in the shop, to sell it ─────────────
+  ownedY() { return Engine.state === 'SHOP' ? TOP + 44 : CY + 66; },
+  ownedHit(p) {
+    const y = this.ownedY();
+    for (let i = 0; i < this.treats.length; i++) if (Engine.hit({ x: 8 + i * 33, y, w: 30, h: 34 }, p)) return i;
+    return -1;
+  },
+  PANEL: { x: 18, y: CY - 78, w: 144, h: 152 },
+  SELL: { x: CX - 50, y: CY + 38, w: 100, h: 22 },
+  sellPrice(t) { return Math.max(1, Math.floor(t.price / 2)); },
+  say(m) { this.msg = m; this.msgT = 2; Sfx.fail(); FX.shake(2); },
+
+  // with a treat's card open, SELL sells it (shop only) and any other tap closes it
+  infoTap(p) {
+    if (Engine.state === 'SHOP' && Engine.hit(this.SELL, p)) {
+      const t = this.treat(this.info);
+      this.bones += this.sellPrice(t);
+      this.treats = this.treats.filter(id => id !== t.id);
+      Sfx.tap(); FX.burst(CX, this.SELL.y + 11, PAL.accent, 10, 60);
+    }
+    this.info = null;
+  },
+
   shopUpdate(input) {
+    if (this.msgT > 0) this.msgT -= STEP;
     if (Engine.timer > 0) return;
     for (const tp of input.taps) {
+      if (this.info) { this.infoTap(tp); continue; }
+      const o = this.ownedHit(tp);
+      if (o >= 0) { this.info = this.treats[o]; Sfx.tap(); continue; }
       for (let i = 0; i < 3; i++) if (Engine.hit(this.CARD(i), tp)) this.buy(i);
       if (Engine.hit(this.REROLL, tp)) {
         if (this.bones >= this.reroll && this.shop.length) { this.bones -= this.reroll; this.reroll++; this.stock(); Sfx.tap(); }
@@ -3357,7 +3386,8 @@ const Run = {
   buy(i) {
     const id = this.shop[i]; if (!id) return;
     const t = this.treat(id), c = this.CARD(i);
-    if (!this.canBuy(t)) { Sfx.fail(); FX.shake(2); return; }
+    if (this.bones < t.price) { this.say('NOT ENOUGH BONES'); return; }
+    if (!this.canBuy(t)) { this.say('SLOTS FULL - TAP ONE TO SELL'); return; }
     this.bones -= t.price; this.treats.push(id); this.shop[i] = null;
     Sfx.win(); buzz(20); FX.burst(c.x + c.w / 2, c.y + c.h / 2, PAL.accent, 14, 70);
   },
@@ -3408,12 +3438,36 @@ const Run = {
     g.text('TARGET', CX, CY - 4, 9, PAL.mid);
     g.text(String(this.target()), CX, CY + 24, 26, PAL.accent);
     g.text(this.games() + ' GAMES TO SCORE IT', CX, CY + 46, 8, PAL.ink);
-    if (this.treats.length) this.drawOwned(CY + 62);
+    if (this.treats.length) {
+      g.text('YOUR TREATS  ·  TAP TO SEE', CX, CY + 61, 6, PAL.mid);
+      this.drawOwned(CY + 66);
+    }
+    this.drawInfo();
+  },
+
+  // an owned treat's card, opened over whatever screen it was tapped on
+  drawInfo() {
+    if (!this.info) return;
+    const t = this.treat(this.info), P = this.PANEL;
+    ctx.globalAlpha = 0.75; g.rect(0, TOP, W, BOT - TOP, PAL.bg); ctx.globalAlpha = 1;
+    g.rect(P.x, P.y, P.w, P.h, PAL.accent);
+    g.rect(P.x + 2, P.y + 2, P.w - 4, P.h - 4, PAL.bg);
+    g.text(t.name, CX, P.y + 18, 10, PAL.accent);
+    if (t.art) g.sprite(t.art[0], CX, P.y + 56, { w: 52, h: 52, frame: t.art[1] });
+    else this.bone(CX - 12, P.y + 48, PAL.accent, 4);
+    t.lines.forEach((l, i) => g.text(l, CX, P.y + 96 + i * 11, 8, PAL.ink));
+    if (Engine.state === 'SHOP') {
+      const S = this.SELL;
+      g.rect(S.x, S.y, S.w, S.h, PAL.bad);
+      g.text('SELL  +' + this.sellPrice(t), CX, S.y + 15, 9, PAL.ink);
+    }
+    g.text('TAP ELSEWHERE TO CLOSE', CX, P.y + P.h - 5, 6, PAL.mid);
   },
 
   drawTally() {
     const L = this.last;
     g.text(L.won ? 'GOOD!' : 'FAIL!', CX, TOP + 36, 22, L.won ? PAL.accent : PAL.bad);
+    if (L.won && Engine.snap) Engine.drawPolaroid(Engine.snap, W - 24, TOP + 28, 34, 0.08);
     g.text(Engine.game.meta.prompt, CX, TOP + 50, 7, PAL.mid);
     L.rows.forEach(([a, v, c], i) => {
       g.text(a, 14, TOP + 70 + i * 12, 8, PAL.mid, 'left');
@@ -3456,6 +3510,7 @@ const Run = {
   drawShop() {
     g.text('TREAT SHOP', CX, TOP + 24, 14, PAL.accent);
     g.text('YOUR TREATS', 8, TOP + 40, 7, PAL.mid, 'left');
+    if (this.treats.length) g.text('TAP TO SEE / SELL', W - 8, TOP + 40, 6, PAL.mid, 'right');
     this.drawOwned(TOP + 44);
     for (let i = 0; i < 3; i++) {
       const c = this.CARD(i), id = this.shop[i];
@@ -3465,13 +3520,16 @@ const Run = {
       this.bone(c.x + c.w / 2 - 10, c.y + c.h - 11, ok ? PAL.accent : PAL.mid);
       g.text(String(t.price), c.x + c.w / 2 + 2, c.y + c.h - 5, 8, ok ? PAL.accent : PAL.mid, 'left');
     }
-    g.text('TAP A TREAT TO BUY IT', CX, this.CARD(0).y + 118, 7, PAL.mid);
+    if (this.msgT > 0) g.text(this.msg, CX, this.CARD(0).y + 118, 7, PAL.bad);
+    else g.text('TAP A TREAT TO BUY IT', CX, this.CARD(0).y + 118, 7, PAL.mid);
     const R = this.REROLL, N = this.NEXT;
     g.box(R.x, R.y, R.w, R.h, PAL.mid); g.text('REROLL ' + this.reroll, R.x + R.w / 2, R.y + 15, 8, PAL.ink);
     g.rect(N.x, N.y, N.w, N.h, PAL.accent); g.text('NEXT >', N.x + N.w / 2, N.y + 15, 9, PAL.bg);
+    this.drawInfo();
   },
 
   drawOver() {
+    Engine.drawAlbum(TOP + 44);
     g.text('RUN', CX, CY - 30, 24, PAL.bad);
     g.text('OVER', CX, CY - 4, 24, PAL.bad);
     g.text('REACHED ' + this.label(), CX, CY + 26, 10, PAL.ink);
@@ -3498,6 +3556,9 @@ const Engine = {
   // the first run), true = allowed, false = the player picked touch only
   sensors: null,
   mode: 'classic',   // 'classic' = endless lives run, 'run' = the roguelike (see Run)
+  // a still of the player taken the moment they win any game, shown on the
+  // result screen; the last few of a run make the game-over strip
+  snap: null, album: [],
   BOSS_EVERY: 8, SPEEDUP_EVERY: 4,
 
   reset() {
@@ -3596,7 +3657,14 @@ const Engine = {
     // RUN mode's between-stage screens; each can be tapped past
     if (s === 'STAGE') {
       Mascot.set('watch');
-      if (this.timer <= 0 || (Input.justDown && this.timer < 1.4)) Run.nextGame();
+      // a treat's card holds the intro until it is closed
+      if (Run.info) { this.timer += dt; for (const tp of Input.taps) Run.infoTap(tp); return; }
+      for (const tp of Input.taps) {
+        const o = Run.ownedHit(tp);
+        if (o >= 0) { Run.info = Run.treats[o]; Sfx.tap(); return; }
+        if (this.timer < 1.4) this.timer = 0;   // any other tap skips the intro
+      }
+      if (this.timer <= 0) Run.nextGame();
       return;
     }
     if (s === 'CLEAR') {
@@ -3629,11 +3697,16 @@ const Engine = {
       if (this.game.finished) {
         if (this.game.won) {
           this.score++; this.combo++; this.result = 'WIN'; Sfx.win(); buzz(20); Mascot.set('cheer');
+          // photo games already took theirs (with their stamp); every other
+          // game gets a candid one — the concentration face is the joke
+          this.snap = Engine.lastPhoto || Input.snapPhoto();
+          if (this.snap) { this.album.push(this.snap); if (this.album.length > 4) this.album.shift(); }
           FX.flash(PAL.accent, 0.45);
           FX.burst(Mascot.x, Mascot.y - 8, PAL.accent, 12 + Math.min(12, this.combo * 2), 80);
           if (this.combo >= 3) FX.shake(3);   // a little extra on a streak
         } else {
           if (!this.testClass && this.mode === 'classic') this.lives--;
+          this.snap = null;
           this.combo = 0; this.result = 'FAIL'; Sfx.fail(); buzz(120); Mascot.set('sad');
           FX.flash(PAL.bad, 0.55); FX.shake(5);
         }
@@ -3723,6 +3796,7 @@ const Engine = {
   startRun() {
     if (this.sensors) { Input.enableAV(); Input.enableMotion(); Input.enableTilt(); }
     this.reset();
+    this.album = []; this.snap = null;
     if (this.mode === 'run') Run.start();
     this.state = 'READY';
     this.timer = 3.2;          // 3 · 2 · 1 · GO, then the first prompt
@@ -3825,6 +3899,7 @@ const Engine = {
     if (s === 'SHOP')  { this.drawHud(); Run.drawShop(); return; }
 
     if (s === 'GAMEOVER') {
+      this.drawAlbum(TOP + 44);
       g.text('GAME', CX, CY - 24, 24, PAL.bad);
       g.text('OVER', CX, CY + 2, 24, PAL.bad);
       g.text('SCORE ' + this.score, CX, CY + 36, 10, PAL.ink);
@@ -3879,6 +3954,8 @@ const Engine = {
       g.clear(win ? PAL.bg : PAL.bad);
       g.text(win ? 'GOOD!' : 'FAIL!', CX, CY - 6, 24, win ? PAL.accent : PAL.ink);
       if (win && this.combo > 1) g.text('x' + this.combo + ' STREAK', CX, CY + 18, 9, PAL.mid);
+      // photo games get the big polaroid next; the rest show their candid here
+      if (win && this.snap && !this.game.meta.photo) this.drawPolaroid(this.snap, CX, CY + 62, 64, -0.06);
       this.drawHud();
       return;
     }
@@ -3916,6 +3993,21 @@ const Engine = {
       if (Math.floor(this.time * 2) % 2) g.text('TAP', CX, BOT - 6, 8, PAL.mid);
       this.drawHud();
     }
+  },
+
+  // a small tilted polaroid of a camera still, centred on x, y
+  drawPolaroid(img, x, y, w, tilt = 0) {
+    const h = w * 0.75, b = Math.max(2, Math.round(w / 18));
+    ctx.save(); ctx.translate(x, y); ctx.rotate(tilt);
+    g.rect(-w / 2 - b, -h / 2 - b, w + b * 2, h + b * 4, PAL.ink);
+    ctx.drawImage(img, -w / 2, -h / 2, w, h);
+    ctx.restore();
+  },
+
+  // the run's last few candids, laid out like photos on a table
+  drawAlbum(y) {
+    const n = this.album.length; if (!n) return;
+    this.album.forEach((img, i) => this.drawPolaroid(img, CX + (i - (n - 1) / 2) * 42, y, 36, i % 2 ? 0.07 : -0.07));
   },
 
   drawHud() {

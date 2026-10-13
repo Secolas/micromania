@@ -38,6 +38,10 @@ show it as a polaroid before the next round — in the camera's own colours, and
 cover-cropped so a portrait selfie frame is never squeezed into the 4:3 print.
 Opt a game in with `photo: true` in its meta.
 
+Every other game takes a **candid** on a win too — whatever face you were
+pulling when you won — shown as a small polaroid on the result screen. The last
+four of a run are laid out on the game-over screen.
+
 A game can stamp the still before handing it over. Filters live in `PhotoFX`,
 draw in the photo's own pixel space, and use the five palette colours so they
 read as pixel art on a photograph rather than a grade over someone's face:
@@ -97,7 +101,10 @@ lives run). RUN is Balatro-style scoring over the same microgames:
   and interest of 1 per 5 saved (max 5).
 - Between stages the **treat shop** sells perks (5 slots) that bend the sum:
   ZOOMIES, CAMERA STAR, BIG LUNGS, HOT STREAK, GOOD BOY, SPEEDY, GOLDEN BONE,
-  CHONK. Tap to buy; REROLL costs 2 and goes up each time.
+  CHONK. Tap to buy; REROLL costs 2 and goes up each time. Tap one of
+  **your** treats (in the shop or on the stage intro) to read what it does;
+  in the shop its card has a SELL button for half its price, which is how a
+  full row makes room.
 - Inside a stage it is the same game-after-game rush; all the choosing happens
   between stages. Everything lives in the `Run` object in `index.html`.
 
