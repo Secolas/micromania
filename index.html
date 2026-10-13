@@ -1118,20 +1118,47 @@ class SwipeArrow extends Microgame {
   }
 }
 
-// 7. MASH — tap fast
-class MashButton extends Microgame {
-  static meta = { id: 'mash', prompt: 'MASH!', hint: 'mash', duration: 3.4,
-    how: 'TAP AS FAST\nAS YOU CAN' };
-  init() { this.count = 0; this.need = this.byD(6, 10, 14); }
+// 7. PAT — pat the sad shiba until it's cheering (tap fast)
+class PatShiba extends Microgame {
+  static meta = { id: 'pat', prompt: 'PAT!', hint: 'mash', duration: 3.6,
+    how: 'TAP THE SHIBA\nTO CHEER IT UP' };
+  init() { this.count = 0; this.need = this.byD(6, 10, 14); this.squish = 0; this.pops = []; }
   update(dt, input) {
-    if (input.justDown) { this.count++; Sfx.tap(); buzz(8); FX.burst(CX, CY, PAL.accent, 4, 40); FX.shake(1.2); if (this.count >= this.need) this.succeed(); }
+    this.squish = Math.max(0, this.squish - dt);
+    for (const p of this.pops) { p.t += dt; p.y -= 34 * dt; }
+    this.pops = this.pops.filter(p => p.t < 0.7);
+    // a pat has to land on the dog, but the dog is big
+    if (input.justDown && !this.finished && Math.abs(input.x - CX) < 56 && Math.abs(input.y - (CY + 4)) < 60) {
+      this.count++; this.squish = 0.15;
+      Sfx.blip(480 + this.count * 45, 0.06, 'triangle', 0.07); buzz(8);
+      this.pops.push({ x: input.x, y: input.y - 8, t: 0, n: this.count });
+      if (this.count >= this.need) { FX.burst(CX, CY - 24, PAL.accent, 16, 70); this.succeed(); }
+    }
+  }
+  // the mascot sheet's moods: teary (14) → sad (12, 10) → happy (0) → cheering
+  // (1-7), with eyes shut (8) for a beat on every pat, enjoying it
+  frame() {
+    if (this.won) return 1 + Math.floor(this.t * 14) % 7;
+    if (this.squish > 0) return 8;
+    const p = this.count / this.need;
+    return p < 0.2 ? 14 : p < 0.4 ? 12 : p < 0.6 ? 10 : p < 0.85 ? 0 : 1 + Math.floor(this.t * 14) % 7;
+  }
+  heart(x, y, c) {
+    g.rect(x - 4, y - 3, 3, 2, c); g.rect(x + 1, y - 3, 3, 2, c);
+    g.rect(x - 5, y - 1, 10, 2, c); g.rect(x - 4, y + 1, 8, 2, c); g.rect(x - 2, y + 3, 4, 2, c);
   }
   draw(g) {
     g.clear();
-    const r = Input.down ? 30 : 34;
-    g.circle(CX, CY, r, Input.down ? PAL.accent : PAL.ink);
-    g.text(this.need - this.count, CX, CY + 6, 16, PAL.bg);
-    g.bar(30, BOT - 16, W - 60, 8, this.count / this.need);
+    const sq = this.squish > 0 ? 1 : 0;
+    g.sprite('shiba', CX, CY + 4 + sq * 5, { w: 105 + sq * 8, h: 111 - sq * 10, frame: this.frame() });
+    for (const p of this.pops) {
+      ctx.globalAlpha = 1 - p.t / 0.7;
+      this.heart(p.x, p.y, PAL.bad);
+      g.text(String(p.n), p.x + 8, p.y + 4, 12, PAL.accent, 'left');
+      ctx.globalAlpha = 1;
+    }
+    g.text('PATS ' + this.count + ' / ' + this.need, CX, TOP + 24, 10, PAL.ink);
+    g.bar(30, BOT - 16, W - 60, 8, this.count / this.need, PAL.bad);
   }
 }
 
@@ -3137,7 +3164,7 @@ class SquidDoll extends Microgame {
 
 // ── REGISTRY ─────────────────────────────────────────────────────────────────
 const POOL = [
-  TapBug, CatchCoin, RubClean, PullTissue, SodaShake, SwipeArrow, MashButton, HoldRelease, DontTap,
+  TapBug, CatchCoin, RubClean, PullTissue, SodaShake, SwipeArrow, PatShiba, HoldRelease, DontTap,
   StopBar, FollowDot, TapOrder, OddOneOut, FeedDog, WhackMole, PumpBalloon, CutRope,
   BlowSail, TracePath, GrabCount, FlickShot,
   Flappy, Crossy, Doodle, PianoTiles, DinoRun, KnockStack, MoveCam, DryShiba, LeanDodge,
@@ -3198,9 +3225,10 @@ const Mascot = {
 const Run = {
   GAMES: 5,          // games per stage — CHONK adds one
   SLOTS: 5,          // treat slots — CHONK takes one
-  // art is [sprite, frame]; GOLDEN BONE draws its own bone
+  // art is [sprite, frame, scale?] — scale for sheets with roomy frames, like
+  // the 120px runners; GOLDEN BONE draws its own bone
   TREATS: [
-    { id: 'zoom',  name: 'ZOOMIES',     tag: 'ZOOM', art: ['hopdog', 8],     price: 5, lines: ['DRAG GAMES', '+20 CHIPS'] },
+    { id: 'zoom',  name: 'ZOOMIES',     tag: 'ZOOM', art: ['swiperight', 0, 1.6], price: 5, lines: ['DRAG GAMES', '+20 CHIPS'] },
     { id: 'star',  name: 'CAMERA STAR', tag: 'STAR', art: ['flydog', 3],     price: 6, lines: ['MOVE GAMES', 'x2 CHIPS'] },
     { id: 'lung',  name: 'BIG LUNGS',   tag: 'LUNG', art: ['pumpdog', 6],    price: 5, lines: ['BLOW + SHAKE', '+4 MULT'] },
     { id: 'hot',   name: 'HOT STREAK',  tag: 'HOT',  art: ['face', 0],       price: 6, lines: ['STREAK MULT', 'COUNTS x2'] },
@@ -3386,13 +3414,21 @@ const Run = {
     r(0, 1, 6, 2); r(-1, 0, 2, 2); r(-1, 2, 2, 2); r(5, 0, 2, 2); r(5, 2, 2, 2);
   },
 
+  // a treat's picture centred on x, y at about size s
+  drawArt(t, x, y, s) {
+    if (!t.art) { const k = Math.max(2, Math.round(s / 13)); this.bone(x - 3 * k, y - 2 * k, PAL.accent, k); return; }
+    const sz = s * (t.art[2] || 1);
+    if (t.id === 'zoom') for (let i = 0; i < 3; i++)   // speed lines trailing the runner
+      g.rect(x - s * 0.5 - i * s * 0.04, y - s * 0.12 + i * s * 0.12, s * 0.2, Math.max(1, s / 26), PAL.mid);
+    g.sprite(t.art[0], x, y, { w: sz, h: sz, frame: t.art[1] });
+  },
+
   // a treat as a card: big in the shop, small in your row
   drawTreat(t, x, y, w, h, small) {
     g.rect(x, y, w, h, small ? PAL.mid : PAL.ink);
     g.rect(x + 2, y + 2, w - 4, h - 4, PAL.bg);
     const ay = small ? y + 13 : y + 42, as = small ? 20 : 40;
-    if (t.art) g.sprite(t.art[0], x + w / 2, ay, { w: as, h: as, frame: t.art[1] });
-    else this.bone(x + w / 2 - (small ? 6 : 9), ay - (small ? 4 : 6), PAL.accent, small ? 2 : 3);
+    this.drawArt(t, x + w / 2, ay, as);
     if (small) { g.text(t.tag, x + w / 2, y + h - 4, 6, PAL.ink); return; }
     g.text(t.name, x + w / 2, y + 12, 6, PAL.ink);
     t.lines.forEach((l, i) => g.text(l, x + w / 2, y + h - 30 + i * 8, 6, PAL.mid));
@@ -3441,8 +3477,7 @@ const Run = {
     g.rect(P.x, P.y, P.w, P.h, PAL.accent);
     g.rect(P.x + 2, P.y + 2, P.w - 4, P.h - 4, PAL.bg);
     g.text(t.name, CX, P.y + 18, 10, PAL.accent);
-    if (t.art) g.sprite(t.art[0], CX, P.y + 56, { w: 52, h: 52, frame: t.art[1] });
-    else this.bone(CX - 12, P.y + 48, PAL.accent, 4);
+    this.drawArt(t, CX, P.y + 56, 52);
     t.lines.forEach((l, i) => g.text(l, CX, P.y + 96 + i * 11, 8, PAL.ink));
     if (Engine.state === 'SHOP') {
       const S = this.SELL;
