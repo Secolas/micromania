@@ -33,16 +33,20 @@ more precisely than the camera's centre-of-motion can. Hold the swatter on the
 fly to squash it (or tap). Whatever the phone was doing when the round starts
 becomes centre, so any comfortable hold works.
 
-MOVE, DRY, LEAN, FREEZE, DANCE and BLOW snap a still off the camera on a win and
-show it as a polaroid before the next round — in the camera's own colours, and
-cover-cropped so a portrait selfie frame is never squeezed into the 4:3 print.
-Opt a game in with `photo: true` in its meta.
+MOVE, DRY, LEAN, FREEZE, DANCE, BLOW, CANDLES and SQUID end a win with a
+**photo pose**: the polaroid shows the live camera with BACK UP & SMILE! and a
+3-2-1 (tap to snap early), so a player who had the phone at their mouth for
+BLOW can lean back first. Stills are the camera's whole frame, never cropped —
+portrait on a phone — and the lens is set to its widest zoom where the browser
+allows. Opt a game in with `photo: true` in its meta.
 
 Every other game takes a **candid** on a win too — whatever face you were
 pulling when you won — shown as a small polaroid on the result screen. The last
-four of a run are laid out on the game-over screen.
+four of a run are laid out on the game-over screen, whose **SHARE** button
+builds a picture of them with the score and opens the phone's share sheet (or
+downloads it where there is none).
 
-A game can stamp the still before handing it over. Filters live in `PhotoFX`,
+A game can stamp the still with a `stampPhoto(canvas)` method. Filters live in `PhotoFX`,
 draw in the photo's own pixel space, and use the five palette colours so they
 read as pixel art on a photograph rather than a grade over someone's face:
 
@@ -81,8 +85,8 @@ Set it with `how` in a game's meta.
 Everything lives in `index.html` — engine, all games, and the sprites
 (base64-embedded). No build step, no dependencies.
 
-- `const DEBUG = true` near the top enables the in-game **DEV** test menu
-  (top-right). Flip to `false` to ship without it.
+- `const DEBUG = false` near the top; set it to `true` for the in-game **DEV**
+  test menu (top-right) and the live sensor readouts.
 - The DEV menu lists every game, with a difficulty selector and a LOOP mode
   that replays one game without losing lives — for testing and tuning.
 
