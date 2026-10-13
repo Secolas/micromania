@@ -84,6 +84,19 @@ actually has — a camera game on touch says "TAP FAST". The first time a game
 comes up in a session the card stays up an extra second so it can be read.
 Set it with `how` in a game's meta.
 
+## Fake-outs and sounds
+
+Once you have met PAT! or TAP!, about one time in seven it comes back as
+**DON'T PAT!** / **DON'T TAP!** — the same scene, won by keeping your hands off.
+A game opts in with `this.fakeOut(chance, prompt, how)` in `init()`.
+
+`Sfx` has a small kit beyond the blips — `bark`, `growl`, `boop`, `squeak`,
+`crunch`, `chomp`, `splash`, `whoosh`, `thud` — all synthesised, no samples.
+
+Props are drawn in code in the five palette colours (`g.bone`, `g.choc`,
+`g.paw`, `g.doghouse`, `g.tennis`, `g.pot`, `g.car`, `g.fence`), so new scenes
+don't need generated art.
+
 ## Develop
 
 Everything lives in `index.html` — engine, all games, and the sprites
