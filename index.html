@@ -135,6 +135,10 @@ const ART = {
         winOnTimeout  true = survive-the-clock game (default false)
         photo         true = a win shows the camera still in Engine.lastPhoto
         photoCap      caption printed under that photo (default 'NICE MOVES!')
+        how           how to play, shown under the prompt ("TAP THE BUG"; '\n'
+                      for a second line). For a sensor game, one line per way of
+                      playing it, best first — { tilt, cam, mic, motion, touch }
+                      — and the first the player actually has is shown.
    3. Add the class to POOL (normal games) or BOSSES (boss stages).
    That's it — prompts, timer, difficulty, HUD and scoring are handled for you.
 
@@ -180,6 +184,13 @@ function resize() {
   const scale = Math.max(1, Math.min(vw / W, vh / H));
   canvas.style.width  = Math.floor(W * scale) + 'px';
   canvas.style.height = Math.floor(H * scale) + 'px';
+  // Draw at the screen's own resolution, not 180x320 stretched up: stretched,
+  // 7-8px text smeared into unreadable blocks. Games still draw in virtual
+  // pixels through the transform, and sprites stay pixel-crisp (smoothing off).
+  const k = Math.min(6, Math.max(1, Math.round(scale * (window.devicePixelRatio || 1))));
+  canvas.width = W * k; canvas.height = H * k;
+  ctx.setTransform(k, 0, 0, k, 0, 0);
+  ctx.imageSmoothingEnabled = false;   // resizing the canvas resets this
 }
 window.addEventListener('resize', resize);
 window.addEventListener('orientationchange', () => setTimeout(resize, 120));
@@ -853,7 +864,8 @@ class Microgame {
 
 // 1. TAP — hit the moving bug
 class TapBug extends Microgame {
-  static meta = { id: 'tap', prompt: 'TAP!', hint: 'tap', duration: 3.2 };
+  static meta = { id: 'tap', prompt: 'TAP!', hint: 'tap', duration: 3.2,
+    how: 'TAP THE BUG' };
   init() {
     this.miss = 0;
     this.bug = { x: 24 + Math.random() * (W - 48), y: TOP + 26 + Math.random() * (BOT - TOP - 52), r: 9 };
@@ -881,7 +893,8 @@ class TapBug extends Microgame {
 
 // 2. DRAG — catch every coin in the basket
 class CatchCoin extends Microgame {
-  static meta = { id: 'catch', prompt: 'CATCH!', hint: 'drag', duration: 4.0 };
+  static meta = { id: 'catch', prompt: 'CATCH!', hint: 'drag', duration: 4.0,
+    how: 'DRAG THE BASKET\nCATCH EVERY COIN' };
   init() {
     this.bx = CX;
     this.need = this.byD(1, 2, 3);
@@ -943,7 +956,8 @@ class CatchCoin extends Microgame {
 
 // 3. RUB — scrub the panel clean
 class RubClean extends Microgame {
-  static meta = { id: 'rub', prompt: 'RUB!', hint: 'rub', duration: 3.6 };
+  static meta = { id: 'rub', prompt: 'RUB!', hint: 'rub', duration: 3.6,
+    how: 'RUB THE SCREEN\nBACK AND FORTH' };
   init() { this.dirt = 1; this.rate = this.byD(0.010, 0.0075, 0.006); }
   update(dt, input) {
     if (input.down) this.dirt -= input.moveDist * this.rate;
@@ -962,7 +976,8 @@ class RubClean extends Microgame {
 
 // 4. SWIPE UP — pull the tissues out
 class PullTissue extends Microgame {
-  static meta = { id: 'pull', prompt: 'PULL DOWN!', hint: 'swipe', duration: 4.0 };
+  static meta = { id: 'pull', prompt: 'PULL DOWN!', hint: 'swipe', duration: 4.0,
+    how: 'SWIPE DOWN TO\nPULL A TISSUE' };
   init() {
     this.pulled = 0; this.need = this.byD(2, 3, 4);
     this.sheetY = 0;        // animates the sheet sliding out on each pull
@@ -1006,7 +1021,8 @@ class PullTissue extends Microgame {
 
 // 5. SHAKE — build up pressure (accelerometer or frantic wiggling)
 class SodaShake extends Microgame {
-  static meta = { id: 'shake', prompt: 'SHAKE!', hint: 'shake', duration: 3.6 };
+  static meta = { id: 'shake', prompt: 'SHAKE!', hint: 'shake', duration: 3.6,
+    how: { motion: 'SHAKE YOUR PHONE\nHARD!', touch: 'WIGGLE YOUR FINGER\nFAST' } };
   init() { this.fill = 0; this.need = this.byD(1.4, 1.8, 2.3); this.buzzT = 0; }
   update(dt, input) {
     this.fill += input.shake * dt * 2.2;
@@ -1042,7 +1058,8 @@ class SodaShake extends Microgame {
 
 // 6. SWIPE — follow the arrow, in order
 class SwipeArrow extends Microgame {
-  static meta = { id: 'swipe', prompt: 'SWIPE!', hint: 'swipe', duration: 4.0 };
+  static meta = { id: 'swipe', prompt: 'SWIPE!', hint: 'swipe', duration: 4.0,
+    how: 'SWIPE THE WAY\nEACH ARROW POINTS' };
   init() {
     const dirs = ['up', 'down', 'left', 'right'];
     this.seq = Array.from({ length: this.byD(1, 2, 3) }, () => dirs[Math.floor(Math.random() * 4)]);
@@ -1082,7 +1099,8 @@ class SwipeArrow extends Microgame {
 
 // 7. MASH — tap fast
 class MashButton extends Microgame {
-  static meta = { id: 'mash', prompt: 'MASH!', hint: 'mash', duration: 3.4 };
+  static meta = { id: 'mash', prompt: 'MASH!', hint: 'mash', duration: 3.4,
+    how: 'TAP AS FAST\nAS YOU CAN' };
   init() { this.count = 0; this.need = this.byD(6, 10, 14); }
   update(dt, input) {
     if (input.justDown) { this.count++; Sfx.tap(); buzz(8); FX.burst(CX, CY, PAL.accent, 4, 40); FX.shake(1.2); if (this.count >= this.need) this.succeed(); }
@@ -1098,7 +1116,8 @@ class MashButton extends Microgame {
 
 // 8. HOLD — release inside the marked zone
 class HoldRelease extends Microgame {
-  static meta = { id: 'hold', prompt: 'HOLD!', hint: 'hold', duration: 4.2 };
+  static meta = { id: 'hold', prompt: 'HOLD!', hint: 'hold', duration: 4.2,
+    how: 'HOLD, THEN LET GO\nIN THE ZONE' };
   init() {
     this.p = 0; this.dir = 1;
     this.speed = this.byD(0.55, 0.8, 1.1);
@@ -1129,7 +1148,8 @@ class HoldRelease extends Microgame {
 
 // 9. DODGE — survive the falling blocks (boss-capable)
 class Dodge extends Microgame {
-  static meta = { id: 'dodge', prompt: 'DODGE!', hint: 'drag', duration: 5.0, winOnTimeout: true };
+  static meta = { id: 'dodge', prompt: 'DODGE!', hint: 'drag', duration: 5.0, winOnTimeout: true,
+    how: 'DRAG TO DODGE\nTHE FALLING BLOCKS' };
   init() {
     this.px = CX; this.py = BOT - 26;
     this.blocks = [];
@@ -1170,7 +1190,8 @@ class Dodge extends Microgame {
 
 // 10. WAIT — do nothing. The classic trap.
 class DontTap extends Microgame {
-  static meta = { id: 'dont', prompt: "DON'T!", hint: 'wait', duration: 3.0, winOnTimeout: true };
+  static meta = { id: 'dont', prompt: "DON'T!", hint: 'wait', duration: 3.0, winOnTimeout: true,
+    how: "DO NOTHING.\nDON'T TOUCH!" };
   init() { this.pulse = 0; }
   update(dt, input) {
     this.pulse += dt * 6;
@@ -1187,7 +1208,8 @@ class DontTap extends Microgame {
 
 // 11. TAP TIMING — stop the sweeping marker inside the band
 class StopBar extends Microgame {
-  static meta = { id: 'stop', prompt: 'STOP!', hint: 'tap', duration: 3.4 };
+  static meta = { id: 'stop', prompt: 'STOP!', hint: 'tap', duration: 3.4,
+    how: 'TAP WHEN THE MARKER\nIS IN THE BAND' };
   init() {
     this.p = Math.random(); this.dir = Math.random() < 0.5 ? 1 : -1;
     // >= 2.4 units of travel guarantees the marker crosses the band from any
@@ -1215,7 +1237,8 @@ class StopBar extends Microgame {
 
 // 12. TRACKING — keep your finger on the runaway dot
 class FollowDot extends Microgame {
-  static meta = { id: 'follow', prompt: 'FOLLOW!', hint: 'drag', duration: 4.6, winOnTimeout: true };
+  static meta = { id: 'follow', prompt: 'FOLLOW!', hint: 'drag', duration: 4.6, winOnTimeout: true,
+    how: 'KEEP YOUR FINGER\nON THE DOT' };
   init() {
     this.x = CX; this.y = CY;
     const sp = this.byD(34, 52, 74);
@@ -1245,7 +1268,8 @@ class FollowDot extends Microgame {
 
 // 13. SEQUENCE — tap the targets in numbered order
 class TapOrder extends Microgame {
-  static meta = { id: 'order', prompt: 'IN ORDER!', hint: 'tap', duration: 4.2 };
+  static meta = { id: 'order', prompt: 'IN ORDER!', hint: 'tap', duration: 4.2,
+    how: 'TAP THE NUMBERS\nIN ORDER: 1, 2, 3' };
   init() {
     this.n = this.byD(3, 4, 5); this.i = 0; this.r = 17;
     // r stays 17 for spacing — it is what makes 5 signs fit — while the sprite
@@ -1305,7 +1329,8 @@ class TapOrder extends Microgame {
 
 // 14. DISCRIMINATION — one of these is not like the others
 class OddOneOut extends Microgame {
-  static meta = { id: 'odd', prompt: 'ODD ONE!', hint: 'tap', duration: 3.8 };
+  static meta = { id: 'odd', prompt: 'ODD ONE!', hint: 'tap', duration: 3.8,
+    how: "TAP THE ONE\nTHAT'S DIFFERENT" };
   init() {
     const cols = this.byD(2, 3, 3), rows = this.byD(2, 2, 3);
     this.cells = []; this.r = this.byD(18, 14, 12);
@@ -1338,7 +1363,8 @@ class OddOneOut extends Microgame {
 
 // 15. DRAG TO TARGET — get the treat to the dog
 class FeedDog extends Microgame {
-  static meta = { id: 'feed', prompt: 'FEED!', hint: 'drag', duration: 4.4 };
+  static meta = { id: 'feed', prompt: 'FEED!', hint: 'drag', duration: 4.4,
+    how: 'DRAG THE TREAT\nTO THE DOG' };
   init() {
     this.dx = CX; this.dy = TOP + 42;
     this.sway = this.byD(0, 26, 42);
@@ -1365,7 +1391,8 @@ class FeedDog extends Microgame {
 
 // 16. REACTION — whack each one before it drops
 class WhackMole extends Microgame {
-  static meta = { id: 'whack', prompt: 'WHACK!', hint: 'mash', duration: 4.4 };
+  static meta = { id: 'whack', prompt: 'WHACK!', hint: 'mash', duration: 4.4,
+    how: 'TAP EACH DOG\nAS IT POPS UP' };
   init() {
     this.need = this.byD(2, 3, 4); this.hit = 0; this.r = 18;
     this.sw = 46;                          // drawn sprite size
@@ -1425,7 +1452,8 @@ class WhackMole extends Microgame {
 
 // 17. RESTRAINT — pump into the band, then stop before it bursts
 class PumpBalloon extends Microgame {
-  static meta = { id: 'pump', prompt: 'PUMP!', hint: 'mash', duration: 4.2 };
+  static meta = { id: 'pump', prompt: 'PUMP!', hint: 'mash', duration: 4.2,
+    how: 'TAP TO PUMP\nSTOP IN THE BAND' };
   init() {
     this.f = 0; this.still = 0; this.bounce = 0;
     this.band = this.byD(0.26, 0.19, 0.13);
@@ -1465,7 +1493,8 @@ class PumpBalloon extends Microgame {
 
 // 18. PRECISION SWIPE — cut the marked rope, only that one
 class CutRope extends Microgame {
-  static meta = { id: 'cut', prompt: 'CUT!', hint: 'swipe', duration: 4.0 };
+  static meta = { id: 'cut', prompt: 'CUT!', hint: 'swipe', duration: 4.0,
+    how: 'SWIPE ACROSS\nTHE MARKED ROPE' };
   init() {
     this.n = this.byD(2, 3, 4);
     this.ropes = [];
@@ -1525,7 +1554,8 @@ class CutRope extends Microgame {
 
 // 19. BOSS — thread the gaps
 class Squeeze extends Microgame {
-  static meta = { id: 'squeeze', prompt: 'SQUEEZE!', hint: 'drag', duration: 5.0, winOnTimeout: true };
+  static meta = { id: 'squeeze', prompt: 'SQUEEZE!', hint: 'drag', duration: 5.0, winOnTimeout: true,
+    how: 'DRAG THROUGH\nTHE GAPS' };
   init() {
     this.px = CX; this.py = BOT - 26;
     this.gap = this.byD(66, 54, 44);   // widened to clear the 18px-wide dog
@@ -1564,7 +1594,8 @@ class Squeeze extends Microgame {
 
 // 20. BLOW — puff to fill the sail / spin the pinwheel (mic, or tap-fallback)
 class BlowSail extends Microgame {
-  static meta = { id: 'blow', prompt: 'BLOW!', hint: 'blow', duration: 4.2, photo: true, photoCap: 'MAKE A WISH!' };
+  static meta = { id: 'blow', prompt: 'BLOW!', hint: 'blow', duration: 4.2, photo: true, photoCap: 'MAKE A WISH!',
+    how: { mic: 'BLOW INTO\nTHE MIC', touch: 'TAP FAST\nTO BLOW' } };
   init() {
     this.fill = 0;
     this.need = this.byD(0.9, 1.3, 1.7);
@@ -1619,7 +1650,8 @@ class BlowSail extends Microgame {
 
 // 21. TRACE — drag along the dotted path from start to end without straying
 class TracePath extends Microgame {
-  static meta = { id: 'trace', prompt: 'TRACE!', hint: 'trace', duration: 4.8 };
+  static meta = { id: 'trace', prompt: 'TRACE!', hint: 'trace', duration: 4.8,
+    how: 'DRAG ALONG\nTHE DOTTED PATH' };
   init() {
     // a polyline of 3-4 nodes; you must drag through each in order
     const n = this.byD(3, 4, 4);
@@ -1677,7 +1709,8 @@ class TracePath extends Microgame {
 
 // 22. COUNT — tap exactly the number asked for, no more
 class GrabCount extends Microgame {
-  static meta = { id: 'count', prompt: 'GRAB 3!', hint: 'count', duration: 4.2 };
+  static meta = { id: 'count', prompt: 'GRAB 3!', hint: 'count', duration: 4.2,
+    how: 'TAP EXACTLY\nTHAT MANY' };
   init() {
     const total = this.byD(5, 7, 9);
     this.need = 2 + Math.floor(Math.random() * (this.byD(2, 3, 4)));
@@ -1714,7 +1747,8 @@ class GrabCount extends Microgame {
 
 // 23. FLICK — pull back and release to launch the ball into the target
 class FlickShot extends Microgame {
-  static meta = { id: 'flick', prompt: 'SHOOT!', hint: 'flick', duration: 4.6 };
+  static meta = { id: 'flick', prompt: 'SHOOT!', hint: 'flick', duration: 4.6,
+    how: 'PULL BACK, LET GO\nTO SHOOT' };
   init() {
     this.K = 6;                              // pull -> velocity multiplier
     this.ox = CX; this.oy = BOT - 70;        // origin with room to pull downward
@@ -1771,7 +1805,8 @@ class FlickShot extends Microgame {
 
 // 24. FLAPPY — tap to flap through the pipe gaps
 class Flappy extends Microgame {
-  static meta = { id: 'flappy', prompt: 'FLAP!', hint: 'mash', duration: 4.4, winOnTimeout: true, minDuration: 2.8 };
+  static meta = { id: 'flappy', prompt: 'FLAP!', hint: 'mash', duration: 4.4, winOnTimeout: true, minDuration: 2.8,
+    how: 'TAP TO FLAP\nTHROUGH THE GAPS' };
   init() {
     this.d = 1;                                // stays gentle — hardest verb on touch
     this.y = CY; this.vy = 0;
@@ -1822,7 +1857,8 @@ class Flappy extends Microgame {
 
 // 25. CROSSY — hop forward across lanes of traffic to the far side
 class Crossy extends Microgame {
-  static meta = { id: 'crossy', prompt: 'CROSS!', hint: 'tap', duration: 4.8, minDuration: 4.4 };
+  static meta = { id: 'crossy', prompt: 'CROSS!', hint: 'tap', duration: 4.8, minDuration: 4.4,
+    how: 'TAP TO HOP\nACROSS THE ROAD' };
   init() {
     this.d = 1;                                // crossy stays gentle at all levels
     this.lanes = this.byD(2, 3, 3);
@@ -1861,7 +1897,8 @@ class Crossy extends Microgame {
 
 // 26. DOODLE — auto-bounce; steer to land on each rising platform
 class Doodle extends Microgame {
-  static meta = { id: 'doodle', prompt: 'HOP!', hint: 'drag', duration: 5.0, winOnTimeout: true };
+  static meta = { id: 'doodle', prompt: 'HOP!', hint: 'drag', duration: 5.0, winOnTimeout: true,
+    how: 'DRAG LEFT/RIGHT\nTO LAND ON STEPS' };
   init() {
     this.x = CX; this.vy = 0;
     this.grav = 240; this.bounce = -210;
@@ -1903,7 +1940,8 @@ class Doodle extends Microgame {
 
 // 27. TILES — tap the black tiles as they fall, never miss one (Piano Tiles)
 class PianoTiles extends Microgame {
-  static meta = { id: 'tiles', prompt: 'TILES!', hint: 'tap', duration: 4.6 };
+  static meta = { id: 'tiles', prompt: 'TILES!', hint: 'tap', duration: 4.6,
+    how: "TAP EVERY TILE\nDON'T MISS ONE" };
   init() {
     this.cols = 4; this.colW = W / this.cols;
     this.need = this.byD(3, 4, 5); this.hit = 0;
@@ -1948,7 +1986,8 @@ class PianoTiles extends Microgame {
 
 // 28. RUN — Chrome-dino style: auto-run, tap to jump the cacti, survive to the end
 class DinoRun extends Microgame {
-  static meta = { id: 'run', prompt: 'JUMP!', hint: 'tap', duration: 5.0, winOnTimeout: true, minDuration: 3.2 };
+  static meta = { id: 'run', prompt: 'JUMP!', hint: 'tap', duration: 5.0, winOnTimeout: true, minDuration: 3.2,
+    how: 'TAP TO JUMP\nOVER THE CACTI' };
   init() {
     this.ground = BOT - 6;
     this.dogW = 30; this.dogH = 28;
@@ -2018,7 +2057,8 @@ class DinoRun extends Microgame {
 
 // 29. KNOCK — Angry-Birds style: sling the shiba to topple the block stack
 class KnockStack extends Microgame {
-  static meta = { id: 'knock', prompt: 'KNOCK IT!', hint: 'flick', duration: 5.0, minDuration: 3.2 };
+  static meta = { id: 'knock', prompt: 'KNOCK IT!', hint: 'flick', duration: 5.0, minDuration: 3.2,
+    how: 'PULL BACK, LET GO\nTO KNOCK IT DOWN' };
   init() {
     this.K = 6;                               // pull -> velocity (same as flick)
     this.ox = 34; this.oy = BOT - 40;         // slingshot on the lower-left
@@ -2113,7 +2153,8 @@ class KnockStack extends Microgame {
 
 // 30. MOVE — wave your body at the camera to fill the meter; snaps a photo on win
 class MoveCam extends Microgame {
-  static meta = { id: 'move', prompt: 'MOVE!', hint: 'move', duration: 5.0, minDuration: 4.0, photo: true };
+  static meta = { id: 'move', prompt: 'MOVE!', hint: 'move', duration: 5.0, minDuration: 4.0, photo: true,
+    how: { cam: 'MOVE YOUR BODY\nIN FRONT OF THE CAMERA', touch: 'TAP FAST' } };
   init() {
     this.fill = 0;
     this.need = this.byD(1.0, 1.4, 1.8);
@@ -2156,7 +2197,8 @@ class MoveCam extends Microgame {
 
 // 31. DRY — shake fast at the camera to dry off the wet shiba (Snapped! homage)
 class DryShiba extends Microgame {
-  static meta = { id: 'dry', prompt: 'SHAKE!', hint: 'move', duration: 5.0, minDuration: 4.0, photo: true, photoCap: 'ALL FLUFFY!' };
+  static meta = { id: 'dry', prompt: 'SHAKE!', hint: 'move', duration: 5.0, minDuration: 4.0, photo: true, photoCap: 'ALL FLUFFY!',
+    how: { cam: 'SHAKE YOUR HEAD\nAT THE CAMERA', touch: 'TAP FAST' } };
   init() {
     this.dry = 0; this.need = this.byD(1.0, 1.4, 1.8);
     this.drops = [];
@@ -2195,7 +2237,8 @@ class DryShiba extends Microgame {
 
 // 32. LEAN — move to the side the arrow points (motion on that half of frame)
 class LeanDodge extends Microgame {
-  static meta = { id: 'lean', prompt: 'LEAN!', hint: 'move', duration: 5.0, minDuration: 4.0, photo: true, photoCap: 'DODGED IT!' };
+  static meta = { id: 'lean', prompt: 'LEAN!', hint: 'move', duration: 5.0, minDuration: 4.0, photo: true, photoCap: 'DODGED IT!',
+    how: { cam: 'LEAN YOUR HEAD\nWHERE THE ARROW POINTS', touch: 'TAP THE SIDE\nTHE ARROW POINTS' } };
   init() {
     this.need = this.byD(2, 2, 3); this.hit = 0;
     Input.enableCam();
@@ -2273,7 +2316,8 @@ class LeanDodge extends Microgame {
 
 // 33. FREEZE — hold perfectly still until the clock runs out
 class FreezeStatue extends Microgame {
-  static meta = { id: 'freeze', prompt: 'FREEZE!', hint: 'still', duration: 4.6, minDuration: 3.8, winOnTimeout: true, photo: true, photoCap: 'PERFECT STATUE!' };
+  static meta = { id: 'freeze', prompt: 'FREEZE!', hint: 'still', duration: 4.6, minDuration: 3.8, winOnTimeout: true, photo: true, photoCap: 'PERFECT STATUE!',
+    how: { cam: 'HOLD STILL IN FRONT\nOF THE CAMERA', touch: "DON'T TOUCH\nANYTHING" } };
   init() {
     Input.enableCam();
     this.paused = Input.camPending; this.wait = 0;
@@ -2369,7 +2413,8 @@ class FreezeStatue extends Microgame {
 
 // 34. SWAT — put your hand where the fly is; the camera tracks where you moved
 class SwatFly extends Microgame {
-  static meta = { id: 'swat', prompt: 'SWAT!', hint: 'move', duration: 5.0, minDuration: 4.2 };
+  static meta = { id: 'swat', prompt: 'SWAT!', hint: 'move', duration: 5.0, minDuration: 4.2,
+    how: { tilt: 'TILT THE PHONE\nTO AIM AT THE FLY', cam: 'WAVE YOUR HAND\nAT THE FLY', touch: 'TAP THE FLY' } };
   init() {
     Input.enableCam();
     Input.enableTilt(); Input.zeroTilt();      // hold the phone however you like
@@ -2482,7 +2527,8 @@ class SwatFly extends Microgame {
 
 // 35. HIDE — cover the lens with your hand until the searchlight gives up
 class HideLens extends Microgame {
-  static meta = { id: 'hide', prompt: 'HIDE!', hint: 'cover', duration: 4.6, minDuration: 3.8 };
+  static meta = { id: 'hide', prompt: 'HIDE!', hint: 'cover', duration: 4.6, minDuration: 3.8,
+    how: { cam: 'COVER THE CAMERA\nWITH YOUR HAND', touch: 'HOLD YOUR FINGER\nON THE SCREEN' } };
   init() {
     Input.enableCam();
     this.paused = Input.camPending; this.wait = 0;
@@ -2534,7 +2580,8 @@ class HideLens extends Microgame {
 
 // 36. DANCE — move on the beat: hit the ring each time it lands
 class DanceBeat extends Microgame {
-  static meta = { id: 'dance', prompt: 'DANCE!', hint: 'move', duration: 5.0, minDuration: 4.4, photo: true, photoCap: 'DANCE MACHINE!' };
+  static meta = { id: 'dance', prompt: 'DANCE!', hint: 'move', duration: 5.0, minDuration: 4.4, photo: true, photoCap: 'DANCE MACHINE!',
+    how: { cam: 'MOVE WHEN THE RING\nLANDS ON THE BEAT', touch: 'TAP ON THE BEAT' } };
   init() {
     Input.enableCam();
     this.paused = Input.camPending; this.wait = 0;
@@ -2602,7 +2649,8 @@ class DanceBeat extends Microgame {
 // B3. RED LIGHT — move on green, freeze on red. The camera boss: it is MOVE and
 // FREEZE in one, switching between them while you play.
 class RedLight extends Microgame {
-  static meta = { id: 'redlight', prompt: 'RED LIGHT!', hint: 'mash', duration: 5.6, minDuration: 5.0 };
+  static meta = { id: 'redlight', prompt: 'RED LIGHT!', hint: 'mash', duration: 5.6, minDuration: 5.0,
+    how: 'TAP ON GREEN\nSTOP ON RED' };
   init() {
     // tap-based boss (no camera) — mash on green, stop on red. SQUID is the
     // camera version; this one is the touch twin.
@@ -2667,7 +2715,8 @@ class RedLight extends Microgame {
 // B4. JUGGLE — keep every ball off the floor. Both other bosses are survive-by-
 // dragging; this one is survive-by-tapping, and it splits your attention.
 class Juggle extends Microgame {
-  static meta = { id: 'juggle', prompt: 'JUGGLE!', hint: 'tap', duration: 5.5, winOnTimeout: true };
+  static meta = { id: 'juggle', prompt: 'JUGGLE!', hint: 'tap', duration: 5.5, winOnTimeout: true,
+    how: 'TAP THE BALLS\nKEEP THEM UP' };
   init() {
     this.n = this.byD(2, 2, 3);
     this.grav = this.byD(120, 140, 160);
@@ -2731,7 +2780,8 @@ class Juggle extends Microgame {
 
 // TILT — keep the ball on the see-saw plank until the clock runs out
 class BalanceBall extends Microgame {
-  static meta = { id: 'balance', prompt: 'BALANCE!', hint: 'move', duration: 5.0, minDuration: 4.2, winOnTimeout: true };
+  static meta = { id: 'balance', prompt: 'BALANCE!', hint: 'move', duration: 5.0, minDuration: 4.2, winOnTimeout: true,
+    how: { tilt: 'TILT THE PHONE\nKEEP THE BALL ON', touch: 'HOLD LEFT OR RIGHT\nTO TILT' } };
   init() {
     Input.enableTilt(); Input.zeroTilt();
     this.pos = 0; this.vel = 0; this.tilt = 0;
@@ -2766,7 +2816,8 @@ class BalanceBall extends Microgame {
 
 // TILT — pour the drink to the line, then stop before it overflows
 class PourCup extends Microgame {
-  static meta = { id: 'pour', prompt: 'POUR!', hint: 'move', duration: 5.0, minDuration: 4.4 };
+  static meta = { id: 'pour', prompt: 'POUR!', hint: 'move', duration: 5.0, minDuration: 4.4,
+    how: { tilt: 'TILT THE PHONE\nSTOP AT THE LINE', touch: 'HOLD TO POUR\nSTOP AT THE LINE' } };
   init() {
     Input.enableTilt(); Input.zeroTilt();
     this.fill = 0;
@@ -2815,7 +2866,8 @@ class PourCup extends Microgame {
 
 // TILT — steer the running shiba down the lane, dodging rocks
 class SteerRun extends Microgame {
-  static meta = { id: 'steer', prompt: 'STEER!', hint: 'move', duration: 5.0, minDuration: 4.0, winOnTimeout: true };
+  static meta = { id: 'steer', prompt: 'STEER!', hint: 'move', duration: 5.0, minDuration: 4.0, winOnTimeout: true,
+    how: { tilt: 'TILT THE PHONE\nTO DODGE ROCKS', touch: 'HOLD LEFT OR RIGHT\nTO STEER' } };
   init() {
     Input.enableTilt(); Input.zeroTilt();
     this.px = CX; this.rocks = []; this.spawn = 0.5;
@@ -2848,7 +2900,8 @@ class SteerRun extends Microgame {
 
 // BLOW — blow out every candle before the clock runs out
 class BlowCandles extends Microgame {
-  static meta = { id: 'candles', prompt: 'BLOW!', hint: 'blow', duration: 4.6, minDuration: 4.0, photo: true, photoCap: 'MAKE A WISH!' };
+  static meta = { id: 'candles', prompt: 'BLOW!', hint: 'blow', duration: 4.6, minDuration: 4.0, photo: true, photoCap: 'MAKE A WISH!',
+    how: { mic: 'BLOW INTO THE MIC\nPUT OUT EVERY CANDLE', touch: 'TAP FAST\nTO BLOW' } };
   init() {
     Input.enableMic(); Input.enableCam();
     this.paused = Input.micPending; this.wait = 0;
@@ -2887,7 +2940,8 @@ class BlowCandles extends Microgame {
 
 // BLOW — blow every seed off the dandelion
 class Dandelion extends Microgame {
-  static meta = { id: 'puff', prompt: 'BLOW!', hint: 'blow', duration: 4.8, minDuration: 4.2 };
+  static meta = { id: 'puff', prompt: 'BLOW!', hint: 'blow', duration: 4.8, minDuration: 4.2,
+    how: { mic: 'BLOW INTO THE MIC\nCLEAR EVERY SEED', touch: 'TAP FAST\nTO BLOW' } };
   init() {
     Input.enableMic();
     this.paused = Input.micPending; this.wait = 0;
@@ -2938,7 +2992,8 @@ class Dandelion extends Microgame {
 
 // TAP — drop each block on the stack; miss the tower and it topples
 class StackBlocks extends Microgame {
-  static meta = { id: 'stack', prompt: 'STACK!', hint: 'tap', duration: 5.0, minDuration: 4.2 };
+  static meta = { id: 'stack', prompt: 'STACK!', hint: 'tap', duration: 5.0, minDuration: 4.2,
+    how: 'TAP TO DROP\nEACH BLOCK ON TOP' };
   init() {
     this.need = this.byD(3, 4, 5); this.done = 0;
     this.w = 46; this.h = 12;
@@ -2980,7 +3035,8 @@ class StackBlocks extends Microgame {
 
 // SWIPE — send each treat to its matching bowl by colour
 class SortTreats extends Microgame {
-  static meta = { id: 'sort', prompt: 'SORT!', hint: 'swipe', duration: 5.0, minDuration: 4.2 };
+  static meta = { id: 'sort', prompt: 'SORT!', hint: 'swipe', duration: 5.0, minDuration: 4.2,
+    how: 'SWIPE EACH TREAT\nTO ITS BOWL' };
   init() {
     this.need = this.byD(2, 3, 4); this.done = 0;
     this.newTreat();
@@ -3016,7 +3072,8 @@ class SortTreats extends Microgame {
 // spins to face you (red) → hold perfectly still or you're caught. Reach the
 // goal before the clock runs out to win. Uses the full portrait set for the spin.
 class SquidDoll extends Microgame {
-  static meta = { id: 'squid', prompt: 'RUN & FREEZE!', hint: 'move', duration: 7.0, minDuration: 6.0, photo: true, photoCap: 'YOU MADE IT!' };
+  static meta = { id: 'squid', prompt: 'RUN & FREEZE!', hint: 'move', duration: 7.0, minDuration: 6.0, photo: true, photoCap: 'YOU MADE IT!',
+    how: { cam: 'MOVE YOUR HEAD TO RUN\nFREEZE WHEN IT LOOKS', touch: 'HOLD ON GREEN\nLET GO ON RED' } };
   init() {
     Input.enableCam();
     this.paused = Input.camPending; this.wait = 0;
@@ -3147,6 +3204,9 @@ const Engine = {
   // best survives a reload; storage can throw (private mode), so it is optional
   best: (() => { try { return +localStorage.getItem('micromania.best') || 0; } catch (e) { return 0; } })(),
   game: null, isBoss: false, result: null, lastId: null,
+  // games met this session: the first time, the prompt card stays up long
+  // enough to read how to play it
+  seen: new Set(),
   // camera/mic/motion: null = not asked yet (show the sensors screen before
   // the first run), true = allowed, false = the player picked touch only
   sensors: null,
@@ -3187,6 +3247,22 @@ const Engine = {
     this.game.init();
     this.state = 'PROMPT';
     this.timer = this.isBoss ? 1.0 : 0.7;
+    if (!this.seen.has(C.meta.id)) { this.seen.add(C.meta.id); this.timer += 1.1; }
+  },
+
+  // The how-to line for the input this player will really use: a camera game
+  // played on touch says "TAP FAST", not "MOVE YOUR BODY".
+  howTo(m) {
+    const h = m.how;
+    if (!h || typeof h === 'string') return h || '';
+    const has = {
+      tilt: Input.tiltReady,
+      cam: Input.camReady || Input.camPending,
+      mic: Input.micReady || Input.micPending,
+      motion: Input._motionOn && (navigator.maxTouchPoints > 0),
+    };
+    for (const k in h) if (k === 'touch' || has[k]) return h[k];
+    return h.touch || '';
   },
 
   update(dt) {
@@ -3458,6 +3534,7 @@ const Engine = {
       g.rect(0, CY - 34, W, 44, this.isBoss ? PAL.ink : PAL.accent);
       g.text(m.prompt, CX, CY - 4, m.prompt.length > 9 ? 13 : m.prompt.length > 6 ? 18 : 22, PAL.bg);
       g.hint(m.hint, CX, CY + 40);
+      this.howTo(m).split('\n').forEach((line, i) => g.text(line, CX, CY + 72 + i * 13, 9, PAL.ink));
       this.drawHud();
       return;
     }

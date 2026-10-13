@@ -66,6 +66,12 @@ the cake polaroid), PUFF clears a dandelion. **Touch**: STACK drops blocks on a
 tower, SORT swipes treats to colour-matched bowls. Each falls back to touch
 where its sensor is missing.
 
+Every prompt card says **how to play** under the pictogram ("MOVE YOUR BODY IN
+FRONT OF THE CAMERA", "SHAKE YOUR PHONE HARD!"), worded for the input the player
+actually has — a camera game on touch says "TAP FAST". The first time a game
+comes up in a session the card stays up an extra second so it can be read.
+Set it with `how` in a game's meta.
+
 ## Develop
 
 Everything lives in `index.html` — engine, all games, and the sprites
