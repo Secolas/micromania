@@ -133,7 +133,8 @@ const ART = {
         duration      seconds at speed 1.0 (engine divides by current speed)
         minDuration   floor on the round length, for games speed can't shrink
         winOnTimeout  true = survive-the-clock game (default false)
-        photo         true = a win shows the camera still in Engine.lastPhoto
+        photo         true = a win poses for a photo (live preview, 3-2-1); a
+                      game's stampPhoto(canvas) can draw on it (PhotoFX)
         photoCap      caption printed under that photo (default 'NICE MOVES!')
         how           how to play, shown under the prompt ("TAP THE DOG"; '\n'
                       for a second line). For a sensor game, one line per way of
@@ -153,7 +154,7 @@ const ART = {
    Five colours only (PAL). Keep new art inside that palette.
 ============================================================================= */
 
-const DEBUG = true;
+const DEBUG = false;
 
 // ── CONFIG ───────────────────────────────────────────────────────────────────
 const W = 180, H = 320;        // virtual pixels
@@ -394,6 +395,11 @@ const Input = {
     const cc = document.createElement('canvas');
     cc.width = this.camW; cc.height = this.camH;
     this._cam = stream; this._camVideo = v;
+    // widest the lens goes, where the browser lets us set it (Android Chrome)
+    try {
+      const tr = stream.getVideoTracks()[0], caps = tr.getCapabilities && tr.getCapabilities();
+      if (caps && caps.zoom) tr.applyConstraints({ advanced: [{ zoom: caps.zoom.min }] }).catch(() => {});
+    } catch (e) {}
     this._camCanvas = cc; this._camCtx = cc.getContext('2d', { willReadFrequently: true });
     this.camReady = true; this.camPending = false;
   },
@@ -460,22 +466,33 @@ const Input = {
     this._prevFrame = cur.slice(0);
   },
 
-  // Grab a still from the camera for the photo payoff, in the colours the
-  // camera saw. It is cover-cropped rather than scaled to fit: squeezing a
-  // phone's portrait selfie frame into the 4:3 polaroid came out wide.
-  snapPhoto(fw = 120, fh = 90) {
+  // Grab a still from the camera, in the colours the camera saw. The whole
+  // frame, never cropped: a phone's selfie feed is portrait, and cropping it
+  // to a 4:3 landscape polaroid kept only a band across the middle — a face
+  // held close for BLOW came out as nothing but nose. long = longest side.
+  snapPhoto(long = 120) {
     if (!this.camReady || !this._camVideo) return null;
+    const v = this._camVideo, sw = v.videoWidth, sh = v.videoHeight;
+    if (!sw || !sh) return null;
+    const k = long / Math.max(sw, sh);
+    const c = document.createElement('canvas');
+    c.width = Math.round(sw * k); c.height = Math.round(sh * k);
+    this.drawLive(c.getContext('2d'), 0, 0, c.width, c.height);
+    return c;   // a canvas, so a game can stamp it (see stampPhoto)
+  },
+  // width / height of the camera picture (4:3 until the feed reports)
+  camAspect() {
     const v = this._camVideo;
-    const sw = v.videoWidth || fw, sh = v.videoHeight || fh;
-    // largest centred crop that already has the polaroid's shape
-    const k = Math.max(fw / sw, fh / sh);
-    const cw = fw / k, ch = fh / k;
-    const c = document.createElement('canvas'); c.width = fw; c.height = fh;
-    const cx = c.getContext('2d');
-    cx.save(); cx.scale(-1, 1);
-    cx.drawImage(v, (sw - cw) / 2, (sh - ch) / 2, cw, ch, -fw, 0, fw, fh);   // mirrored
-    cx.restore();
-    return c;   // a canvas, so a game could filter it further
+    return v && v.videoWidth && v.videoHeight ? v.videoWidth / v.videoHeight : 4 / 3;
+  },
+  // the live camera, mirrored like a mirror, into a rect of its own aspect
+  drawLive(c, x, y, w, h) {
+    const v = this._camVideo;
+    if (!this.camReady || !v || v.readyState < 2) return false;
+    c.save(); c.translate(x + w, y); c.scale(-1, 1);
+    c.drawImage(v, 0, 0, w, h);
+    c.restore();
+    return true;
   },
 
   enableMic() {
@@ -1624,12 +1641,9 @@ class BlowSail extends Microgame {
     const b = input.blow > 0.28 ? input.blow : 0;   // only a real blow fills the sail
     this.fill += b * dt * 1.9;
     this.spin += b * dt * 16;
-    if (this.fill >= this.need && !this.finished) {
-      const shot = Input.snapPhoto();
-      if (shot) { PhotoFX.cake(shot); Engine.lastPhoto = shot; }
-      this.succeed();
-    }
+    if (this.fill >= this.need && !this.finished) this.succeed();
   }
+  stampPhoto(c) { PhotoFX.cake(c); }
   draw(g) {
     g.clear();
     if (this.paused) {
@@ -2175,9 +2189,6 @@ class MoveCam extends Microgame {
     }
     this.fill += input.motion * dt * 1.4;
     if (this.fill >= this.need && !this.finished) {
-      // snap the photo at the winning moment; the engine shows it after
-      const shot = Input.snapPhoto();
-      if (shot) Engine.lastPhoto = shot;
       this.flash = 1;
       this.succeed();
     }
@@ -2219,10 +2230,7 @@ class DryShiba extends Microgame {
     if (m > 0.4 && Math.random() < m) this.drops.push({ x: CX + (Math.random() - 0.5) * 40, y: CY, vx: (Math.random() - 0.5) * 120, vy: -60 - Math.random() * 60, t: 0 });
     for (const d of this.drops) { d.t += dt; d.x += d.vx * dt; d.y += d.vy * dt; d.vy += 200 * dt; }
     this.drops = this.drops.filter(d => d.t < 0.6);
-    if (this.dry >= this.need && !this.finished) {
-      const shot = Input.snapPhoto(); if (shot) Engine.lastPhoto = shot;
-      this.succeed();
-    }
+    if (this.dry >= this.need && !this.finished) this.succeed();
   }
   draw(g) {
     g.clear();
@@ -2264,16 +2272,13 @@ class LeanDodge extends Microgame {
       this.hold += dt * 1.4;                       // fills a touch faster than real time
       if (this.hold >= this.holdNeed) {
         this.hit++; FX.hit(this.dir === 'L' ? 30 : W - 30, CY, PAL.accent); Sfx.tick(); buzz(15);
-        if (this.hit >= this.need) {
-          // it flies in from the side you leaned away from
-          const shot = Input.snapPhoto();
-          if (shot) { PhotoFX.dodge(shot, this.dir === 'L' ? 'R' : 'L'); Engine.lastPhoto = shot; }
-          this.succeed(); return;
-        }
+        if (this.hit >= this.need) { this.succeed(); return; }
         this.newDir();
       }
     } else { this.hold = Math.max(0, this.hold - dt * 0.4); }
   }
+  // the brick flies in from the side you leaned away from
+  stampPhoto(c) { PhotoFX.dodge(c, this.dir === 'L' ? 'R' : 'L'); }
   draw(g) {
     g.clear();
     if (this.paused) { g.text('ALLOW CAMERA…', CX, CY - 6, 11, PAL.ink); g.text('(then lean side to side)', CX, CY + 12, 7, PAL.mid); return; }
@@ -2376,15 +2381,7 @@ class FreezeStatue extends Microgame {
       this.hp = Math.min(1, this.hp + dt * 0.04);   // very slow refill — stillness is the only real recovery
     }
   }
-  // winOnTimeout: the engine calls this when the clock runs out, so the photo
-  // is snapped here rather than in update()
-  succeed() {
-    if (!this.finished) {
-      const shot = Input.snapPhoto();
-      if (shot) { PhotoFX.statue(shot); Engine.lastPhoto = shot; }
-    }
-    super.succeed();
-  }
+  stampPhoto(c) { PhotoFX.statue(c); }
   draw(g) {
     g.clear();
     if (this.paused) { g.text('ALLOW CAMERA…', CX, CY - 6, 11, PAL.ink); g.text('(then hold still)', CX, CY + 12, 7, PAL.mid); return; }
@@ -2610,10 +2607,7 @@ class DanceBeat extends Microgame {
       if (Math.abs(off) <= this.win && input.motion > this.thr) {
         b.hit = true; this.hits++; this.pop = 0.22;
         Sfx.tick(); buzz(15); FX.hit(CX, CY - 6, PAL.accent);
-        if (this.hits >= this.need) {
-          const shot = Input.snapPhoto(); if (shot) Engine.lastPhoto = shot;
-          this.succeed(); return;
-        }
+        if (this.hits >= this.need) { this.succeed(); return; }
       } else if (off > this.win) { b.miss = true; Sfx.blip(180, 0.06); }
     }
     // every beat resolved and one was dropped — no point running out the clock
@@ -2918,11 +2912,9 @@ class BlowCandles extends Microgame {
       // snuff the candles left-to-right so progress is visible
       for (let i = 0; i < this.n; i++) { if (this.lit[i] > 0) { this.lit[i] = Math.max(0, this.lit[i] - input.blow * dt * 1.6); break; } }
     }
-    if (this.lit.every(l => l <= 0) && !this.finished) {
-      const shot = Input.snapPhoto(); if (shot) { PhotoFX.cake(shot); Engine.lastPhoto = shot; }
-      this.succeed();
-    }
+    if (this.lit.every(l => l <= 0) && !this.finished) this.succeed();
   }
+  stampPhoto(c) { PhotoFX.cake(c); }
   draw(g) {
     g.clear();
     if (this.paused) { g.text('ALLOW MIC…', CX, CY - 6, 12, PAL.ink); g.text('(then blow)', CX, CY + 12, 7, PAL.mid); return; }
@@ -3124,10 +3116,6 @@ class SquidDoll extends Microgame {
         if (this.pt <= 0) { this.phase = 'green'; this.pt = this.gT; }
         break;
     }
-  }
-  succeed() {
-    if (!this.finished) { const shot = Input.snapPhoto(); if (shot) Engine.lastPhoto = shot; }
-    super.succeed();
   }
   draw(g) {
     g.clear();
@@ -3535,7 +3523,7 @@ const Run = {
     g.text('REACHED ' + this.label(), CX, CY + 26, 10, PAL.ink);
     g.text(this.score + ' / ' + this.target(), CX, CY + 42, 8, PAL.mid);
     g.text('BEST ' + this.label(this.best), CX, CY + 56, 8, PAL.mid);
-    if (Math.floor(Engine.time * 2) % 2) g.text('TAP TO CONTINUE', CX, CY + 84, 9, PAL.mid);
+    Engine.drawShareButton();
   }
 };
 
@@ -3699,7 +3687,7 @@ const Engine = {
           this.score++; this.combo++; this.result = 'WIN'; Sfx.win(); buzz(20); Mascot.set('cheer');
           // photo games already took theirs (with their stamp); every other
           // game gets a candid one — the concentration face is the joke
-          this.snap = Engine.lastPhoto || Input.snapPhoto();
+          this.snap = Input.snapPhoto();
           if (this.snap) { this.album.push(this.snap); if (this.album.length > 4) this.album.shift(); }
           FX.flash(PAL.accent, 0.45);
           FX.burst(Mascot.x, Mascot.y - 8, PAL.accent, 12 + Math.min(12, this.combo * 2), 80);
@@ -3724,9 +3712,11 @@ const Engine = {
       if (this.mode === 'run' && Input.justDown && this.timer < 1.4) this.timer = 0;   // skip the tally
       if (this.timer > 0) return;
       // if the just-won game captured a photo, show it before moving on
-      if (this.result === 'WIN' && this.game && this.game.meta.photo && Engine.lastPhoto) {
+      // a photo game poses for its picture: live preview, 3-2-1, snap
+      if (this.result === 'WIN' && this.game && this.game.meta.photo && Input.camReady) {
         this.photoCap = this.game.meta.photoCap || 'NICE MOVES!';
-        this.state = 'PHOTO'; this.timer = 2.6; this.photoReveal = 0;
+        this.state = 'PHOTO'; this.photoPhase = 'pose'; this.timer = 1.8; this.photoBeat = 4;
+        Engine.lastPhoto = null;
         return;
       }
       this.advance();
@@ -3739,12 +3729,33 @@ const Engine = {
     }
 
     if (s === 'PHOTO') {
+      if (this.photoPhase === 'pose') {
+        // 3 · 2 · 1 with a tick each, then the shutter; a tap snaps it now
+        const n = Math.ceil(this.timer / 0.6);
+        if (n !== this.photoBeat && n > 0) { this.photoBeat = n; Sfx.tick(); }
+        if (this.timer <= 0 || Input.justDown) this.takePhoto();
+        return;
+      }
       this.photoReveal = Math.min(1, (this.photoReveal || 0) + dt * 1.2);
       if (this.timer <= 0 || Input.justDown) {
         Engine.lastPhoto = null;
         this.advance();
       }
     }
+  },
+
+  takePhoto() {
+    const shot = Input.snapPhoto();
+    if (shot) {
+      if (this.game.stampPhoto) this.game.stampPhoto(shot);
+      Engine.lastPhoto = shot;
+      // the posed shot replaces this win's candid in the album
+      if (this.snap && this.album[this.album.length - 1] === this.snap) this.album[this.album.length - 1] = shot;
+      else { this.album.push(shot); if (this.album.length > 4) this.album.shift(); }
+      this.snap = shot;
+    }
+    this.photoPhase = 'show'; this.timer = 1.8; this.photoReveal = 0;
+    Sfx.blip(1700, 0.05, 'square', 0.06); buzz(30); FX.flash(PAL.ink, 0.8);
   },
 
   // ── BUTTONS ────────────────────────────────────────────────────────────────
@@ -3755,6 +3766,7 @@ const Engine = {
   PERM_SKIP:  { x: CX - 50, y: CY + 54, w: 100, h: 24 },
   BTN_RUN:     { x: CX - 50, y: CY + 36, w: 100, h: 26 },
   BTN_CLASSIC: { x: CX - 50, y: CY + 70, w: 100, h: 22 },
+  BTN_SHARE:   { x: CX - 50, y: CY + 66, w: 100, h: 22 },
   hit(b, p) { return p.x >= b.x && p.x < b.x + b.w && p.y >= b.y && p.y < b.y + b.h; },
 
   press(p) {
@@ -3772,8 +3784,69 @@ const Engine = {
       if (this.sensors === null) { this.state = 'PERMS'; this.timer = 0.3; this.permWait = false; }
       else this.startRun();
     } else if (s === 'GAMEOVER' && this.timer <= 0) {
+      // share runs inside this tap: the share sheet only opens from a gesture
+      if (this.hit(this.BTN_SHARE, p)) { Sfx.tap(); this.share(); return; }
       this.state = 'TITLE'; this.timer = 0.2;   // back to pick a mode
     }
+  },
+
+  // ── SHARE ──────────────────────────────────────────────────────────────────
+  // A picture of the run: the photo strip, the result and where to play.
+  // Built at full size, not from the 180x320 screen, so it holds up in a chat.
+  shareCard() {
+    const c = document.createElement('canvas'); c.width = 720; c.height = 960;
+    const x = c.getContext('2d'); x.imageSmoothingEnabled = false;
+    const text = (str, tx, ty, size, col) => {
+      x.fillStyle = col; x.font = 'bold ' + size + 'px ui-monospace, monospace';
+      x.textAlign = 'center'; x.fillText(str, tx, ty);
+    };
+    const polaroid = (img, px, py, size, tilt) => {
+      const a = img.width / img.height, w = a < 1 ? size * a : size, h = a < 1 ? size : size / a, b = size / 16;
+      x.save(); x.translate(px, py); x.rotate(tilt);
+      x.fillStyle = PAL.ink; x.fillRect(-w / 2 - b, -h / 2 - b, w + b * 2, h + b * 4);
+      x.drawImage(img, -w / 2, -h / 2, w, h);
+      x.restore();
+    };
+    x.fillStyle = PAL.bg; x.fillRect(0, 0, 720, 960);
+    text('MICRO', 360, 120, 96, PAL.ink);
+    text('MANIA', 360, 212, 96, PAL.accent);
+    const n = this.album.length;
+    if (n === 0) {
+      const a = Assets.get('shiba');
+      if (a) x.drawImage(a.img, a.fw, 0, a.fw, a.fh, 210, 300, 300, 317);   // the cheering shiba
+    } else if (n <= 2) {
+      this.album.forEach((img, i) => polaroid(img, 360 + (i - (n - 1) / 2) * 330, 470, 300, i % 2 ? 0.05 : -0.05));
+    } else {
+      this.album.forEach((img, i) => polaroid(img, 205 + (i % 2) * 310, 375 + Math.floor(i / 2) * 240, 190, i % 2 ? 0.06 : -0.06));
+    }
+    const result = this.mode === 'run' ? 'REACHED ' + Run.label() : 'SCORE ' + this.score;
+    text(result, 360, 860, 60, PAL.ink);
+    text(location.host || 'MICROMANIA', 360, 920, 26, TEXT_MID);
+    return c;
+  },
+
+  share() {
+    const c = this.shareCard(), url = c.toDataURL('image/png');
+    const words = this.mode === 'run' ? 'I reached ' + Run.label() + ' in MICROMANIA RUN mode!' : 'I scored ' + this.score + ' in MICROMANIA!';
+    try {
+      // the phone's own share sheet, with the picture attached
+      const bin = atob(url.split(',')[1]), buf = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+      const file = new File([buf], 'micromania.png', { type: 'image/png' });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        navigator.share({ files: [file], title: 'MICROMANIA', text: words + ' ' + location.href }).catch(() => {});
+        return;
+      }
+    } catch (e) {}
+    // no share sheet (most desktops): save the picture instead
+    const a = document.createElement('a'); a.href = url; a.download = 'micromania.png';
+    document.body.appendChild(a); a.click(); a.remove();
+  },
+
+  drawShareButton() {
+    const B = this.BTN_SHARE;
+    g.rect(B.x, B.y, B.w, B.h, PAL.accent); g.text('SHARE', CX, B.y + 15, 10, PAL.bg);
+    if (Math.floor(this.time * 2) % 2) g.text('TAP ELSEWHERE TO CONTINUE', CX, CY + 104, 7, PAL.mid);
   },
 
   // The sensors screen eats its presses (see press), so its buttons are
@@ -3904,7 +3977,7 @@ const Engine = {
       g.text('OVER', CX, CY + 2, 24, PAL.bad);
       g.text('SCORE ' + this.score, CX, CY + 36, 10, PAL.ink);
       g.text('BEST ' + this.best, CX, CY + 52, 8, PAL.mid);
-      if (Math.floor(this.time * 2) % 2) g.text('TAP TO CONTINUE', CX, CY + 84, 9, PAL.mid);
+      this.drawShareButton();
       return;
     }
 
@@ -3969,10 +4042,20 @@ const Engine = {
 
     if (s === 'PHOTO') {
       g.clear();
-      const photo = Engine.lastPhoto;
-      const pw = 120, ph = 90, px = CX - pw / 2, py = CY - ph / 2 - 6;
-      // polaroid frame
+      const photo = Engine.lastPhoto, pose = this.photoPhase === 'pose';
+      // the polaroid takes the camera's shape: portrait on a phone
+      const asp = photo ? photo.width / photo.height : Input.camAspect();
+      const pw = asp < 1 ? Math.round(120 * asp) : 120, ph = asp < 1 ? 120 : Math.round(120 / asp);
+      const px = CX - pw / 2, py = CY - ph / 2 - 6;
       g.rect(px - 6, py - 6, pw + 12, ph + 30, PAL.ink);
+      if (pose) {
+        if (!Input.drawLive(ctx, px, py, pw, ph)) g.rect(px, py, pw, ph, PAL.mid);
+        const n = Math.max(1, Math.ceil(this.timer / 0.6));
+        g.text(String(n), CX, py - 14, 16, PAL.accent);
+        g.text('BACK UP & SMILE!', CX, py + ph + 14, 9, PAL.bg);
+        this.drawHud();
+        return;
+      }
       if (photo) {
         // draw pixelated + tinted to the game's palette for a retro look
         ctx.save();
@@ -3996,8 +4079,10 @@ const Engine = {
   },
 
   // a small tilted polaroid of a camera still, centred on x, y
-  drawPolaroid(img, x, y, w, tilt = 0) {
-    const h = w * 0.75, b = Math.max(2, Math.round(w / 18));
+  drawPolaroid(img, x, y, size, tilt = 0) {
+    const a = img.width / img.height;
+    const w = a < 1 ? size * a : size, h = a < 1 ? size : size / a;
+    const b = Math.max(2, Math.round(size / 18));
     ctx.save(); ctx.translate(x, y); ctx.rotate(tilt);
     g.rect(-w / 2 - b, -h / 2 - b, w + b * 2, h + b * 4, PAL.ink);
     ctx.drawImage(img, -w / 2, -h / 2, w, h);
