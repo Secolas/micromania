@@ -111,8 +111,8 @@ don't need generated art.
 Everything lives in `index.html` — engine, all games, and the sprites
 (base64-embedded). No build step, no dependencies.
 
-- `const DEBUG = false` near the top; set it to `true` for the in-game **DEV**
-  test menu (top-right) and the live sensor readouts.
+- Add **`?dev`** to the address (e.g. `…/index.html?dev`) for the in-game **DEV**
+  test menu (top-right) and the live sensor readouts. Players never see it.
 - The DEV menu lists every game, with a difficulty selector and a LOOP mode
   that replays one game without losing lives — for testing and tuning.
 

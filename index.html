@@ -157,7 +157,9 @@ const ART = {
    Five colours only (PAL). Keep new art inside that palette.
 ============================================================================= */
 
-const DEBUG = false;
+// The DEV test menu (every game, a difficulty picker, LOOP) and the live sensor
+// readouts. Off for players; add ?dev to the address to turn it on.
+const DEBUG = /[?&]dev\b/.test(location.search);
 
 // ── CONFIG ───────────────────────────────────────────────────────────────────
 const W = 180, H = 320;        // virtual pixels
