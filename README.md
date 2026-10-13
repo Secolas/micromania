@@ -82,6 +82,25 @@ Everything lives in `index.html` — engine, all games, and the sprites
 - The DEV menu lists every game, with a difficulty selector and a LOOP mode
   that replays one game without losing lives — for testing and tuning.
 
+## RUN mode
+
+The title offers **RUN** (the roguelike) and **CLASSIC** (the original endless
+lives run). RUN is Balatro-style scoring over the same microgames:
+
+- A run is worlds of three stages. Each stage gives you **5 games** to reach a
+  **score target** (150 / 220 / 320 in world 1, x1.6 per world). Miss it and
+  the run is over. The third stage opens on a boss.
+- A win scores **chips x mult**: 30 chips (80 for a boss) plus a speed bonus
+  for finishing early, times a mult that grows with your streak. A fail scores
+  nothing and breaks the streak.
+- Clearing a stage pays **bones**: 3 (5 for a boss stage), +1 per unused game,
+  and interest of 1 per 5 saved (max 5).
+- Between stages the **treat shop** sells perks (5 slots) that bend the sum:
+  ZOOMIES, CAMERA STAR, BIG LUNGS, HOT STREAK, GOOD BOY, SPEEDY, GOLDEN BONE,
+  CHONK. Tap to buy; REROLL costs 2 and goes up each time.
+- Inside a stage it is the same game-after-game rush; all the choosing happens
+  between stages. Everything lives in the `Run` object in `index.html`.
+
 ## Bosses
 
 A boss every eight rounds, always at difficulty 3 and 1.6x the round length:

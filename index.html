@@ -3199,8 +3199,291 @@ const Mascot = {
   }
 };
 
+/* ── RUN MODE ─────────────────────────────────────────────────────────────────
+   The roguelike layer, Balatro-style, over the same microgames. A run is worlds
+   of three stages; a stage gives you a few games to reach a score target. Each
+   win scores chips x mult (mult is your streak), treats bought in the shop
+   between stages bend that sum, and missing a target ends the run.
+   Inside a stage nothing changes: it is the same game-after-game rush, and all
+   the choosing happens between stages, so the pace never stops mid-stage.
+─────────────────────────────────────────────────────────────────────────────── */
+const Run = {
+  GAMES: 5,          // games per stage — CHONK adds one
+  SLOTS: 5,          // treat slots — CHONK takes one
+  // art is [sprite, frame]; GOLDEN BONE draws its own bone
+  TREATS: [
+    { id: 'zoom',  name: 'ZOOMIES',     tag: 'ZOOM', art: ['hopdog', 8],     price: 5, lines: ['DRAG GAMES', '+20 CHIPS'] },
+    { id: 'star',  name: 'CAMERA STAR', tag: 'STAR', art: ['flydog', 3],     price: 6, lines: ['MOVE GAMES', 'x2 CHIPS'] },
+    { id: 'lung',  name: 'BIG LUNGS',   tag: 'LUNG', art: ['pumpdog', 6],    price: 5, lines: ['BLOW + SHAKE', '+4 MULT'] },
+    { id: 'hot',   name: 'HOT STREAK',  tag: 'HOT',  art: ['face', 0],       price: 6, lines: ['STREAK MULT', 'COUNTS x2'] },
+    { id: 'good',  name: 'GOOD BOY',    tag: 'GOOD', art: ['shiba', 3],      price: 5, lines: ['1ST FAIL EACH', 'STAGE IS FREE'] },
+    { id: 'fast',  name: 'SPEEDY',      tag: 'FAST', art: ['runjump', 2],    price: 4, lines: ['SPEED BONUS', 'x2'] },
+    { id: 'gold',  name: 'GOLDEN BONE', tag: 'GOLD', art: null,              price: 4, lines: ['+3 BONES', 'EVERY STAGE'] },
+    { id: 'chonk', name: 'CHONK',       tag: 'CHNK', art: ['shaketable', 0], price: 4, lines: ['+1 GAME/STAGE', '-1 SLOT'] },
+  ],
+  // which games a treat counts, by their control pictogram
+  DRAG: ['drag', 'trace', 'flick'], MOVE: ['move', 'still', 'cover'], LUNG: ['blow', 'shake'],
+
+  world: 1, stage: 0, bones: 0, treats: [], score: 0, left: 0, played: 0, streak: 0,
+  freeFail: false, last: null, payout: [], shop: [], reroll: 2,
+  // furthest stage ever reached, counted 0 = 1-1, 1 = 1-2, ...
+  best: (() => { try { return +localStorage.getItem('micromania.bestRun') || 0; } catch (e) { return 0; } })(),
+
+  has(id) { return this.treats.includes(id); },
+  treat(id) { return this.TREATS.find(t => t.id === id); },
+  games() { return this.GAMES + (this.has('chonk') ? 1 : 0); },
+  slots() { return this.SLOTS - (this.has('chonk') ? 1 : 0); },
+  bossStage() { return this.stage === 2; },
+  target() { return Math.round([150, 220, 320][this.stage] * Math.pow(1.6, this.world - 1) / 10) * 10; },
+  reached() { return (this.world - 1) * 3 + this.stage; },
+  label(i = this.reached()) { return (Math.floor(i / 3) + 1) + '-' + (i % 3 + 1); },
+
+  start() { this.world = 1; this.stage = 0; this.bones = 4; this.treats = []; },
+
+  beginStage() {
+    this.score = 0; this.left = this.games(); this.played = 0; this.streak = 0;
+    this.freeFail = this.has('good');
+    // a touch faster every stage, a step faster every world
+    Engine.speed = Math.min(2.6, 1 + (this.world - 1) * 0.2 + this.stage * 0.06);
+    Engine.state = 'STAGE'; Engine.timer = 1.8;
+  },
+
+  // the boss stage opens on a boss; every other game comes from the pool
+  nextGame() {
+    const boss = this.bossStage() && this.played === 0;
+    Engine.startRound(Engine.pick(boss ? BOSSES : POOL), boss ? 3 : Math.min(3, this.world), boss);
+  },
+
+  // Score a finished game. remain is the share of the round clock left over,
+  // which is the speed bonus. Every line that adds to the sum is kept in rows,
+  // so the tally can show which treats fired.
+  onResult(won, remain) {
+    const m = Engine.game.meta, rows = [];
+    this.played++;
+    if (!won) {
+      if (this.freeFail) { this.freeFail = false; rows.push(['GOOD BOY', 'FREE TRY', PAL.accent]); }
+      else {
+        this.left--;
+        if (this.streak) rows.push(['STREAK', 'LOST', PAL.bad]);
+        this.streak = 0;
+      }
+      this.last = { won, rows, points: 0, from: this.score };
+      return;
+    }
+    this.left--;
+    let chips = Engine.isBoss ? 80 : 30;
+    rows.push([Engine.isBoss ? 'BOSS' : 'WIN', '+' + chips, PAL.ink]);
+    let bonus = m.winOnTimeout ? 10 : Math.round(25 * remain);
+    if (this.has('fast')) bonus *= 2;
+    if (bonus) { chips += bonus; rows.push([this.has('fast') ? 'SPEEDY' : 'SPEED', '+' + bonus, this.has('fast') ? PAL.accent : PAL.ink]); }
+    if (this.has('zoom') && this.DRAG.includes(m.hint)) { chips += 20; rows.push(['ZOOMIES', '+20', PAL.accent]); }
+    if (this.has('star') && this.MOVE.includes(m.hint)) { chips *= 2; rows.push(['CAMERA STAR', 'x2 CHIPS', PAL.accent]); }
+    let mult = 1 + this.streak * (this.has('hot') ? 2 : 1);
+    if (this.streak) rows.push([this.has('hot') ? 'HOT STREAK' : 'STREAK', '+' + (mult - 1) + ' MULT', this.has('hot') ? PAL.accent : PAL.bad]);
+    if (this.has('lung') && this.LUNG.includes(m.hint)) { mult += 4; rows.push(['BIG LUNGS', '+4 MULT', PAL.accent]); }
+    this.streak++;
+    const points = chips * mult;
+    this.last = { won, rows, chips, mult, points, from: this.score };
+    this.score += points;
+  },
+
+  // after the tally (and any photo): stage cleared, run over, or next game
+  after() {
+    if (this.score >= this.target()) this.clear();
+    else if (this.left <= 0) this.over();
+    else this.nextGame();
+  },
+
+  clear() {
+    const rows = [[this.bossStage() ? 'BOSS STAGE' : 'STAGE CLEAR', this.bossStage() ? 5 : 3]];
+    if (this.left) rows.push(['GAMES LEFT x' + this.left, this.left]);
+    const interest = Math.min(5, Math.floor(this.bones / 5));
+    if (interest) rows.push(['INTEREST', interest]);
+    if (this.has('gold')) rows.push(['GOLDEN BONE', 3]);
+    this.payout = rows;
+    this.bones += rows.reduce((n, r) => n + r[1], 0);
+    this.saveBest(this.reached() + 1);
+    Engine.state = 'CLEAR'; Engine.timer = 2.4;
+    Sfx.win(); FX.flash(PAL.accent, 0.4);
+  },
+
+  over() {
+    this.saveBest(this.reached());
+    Engine.state = 'GAMEOVER'; Engine.timer = 0.8;
+  },
+
+  saveBest(i) {
+    if (i <= this.best) return;
+    this.best = i;
+    try { localStorage.setItem('micromania.bestRun', String(i)); } catch (e) {}
+  },
+
+  nextStage() {
+    this.stage++;
+    if (this.stage > 2) { this.stage = 0; this.world++; }
+    this.beginStage();
+  },
+
+  // ── SHOP ─────────────────────────────────────────────────────────────────
+  CARD(i) { return { x: 4 + i * 59, y: TOP + 86, w: 54, h: 104 }; },
+  REROLL: { x: 8, y: BOT - 28, w: 76, h: 22 },
+  NEXT: { x: W - 84, y: BOT - 28, w: 76, h: 22 },
+
+  openShop() { this.reroll = 2; this.stock(); Engine.state = 'SHOP'; Engine.timer = 0.3; },
+
+  stock() {
+    const pool = this.TREATS.filter(t => !this.has(t.id)).map(t => t.id);
+    for (let i = pool.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [pool[i], pool[j]] = [pool[j], pool[i]]; }
+    this.shop = pool.slice(0, 3);
+  },
+
+  canBuy(t) {
+    const slots = t.id === 'chonk' ? this.SLOTS - 1 : this.slots();
+    return this.bones >= t.price && this.treats.length < slots;
+  },
+
+  shopUpdate(input) {
+    if (Engine.timer > 0) return;
+    for (const tp of input.taps) {
+      for (let i = 0; i < 3; i++) if (Engine.hit(this.CARD(i), tp)) this.buy(i);
+      if (Engine.hit(this.REROLL, tp)) {
+        if (this.bones >= this.reroll && this.shop.length) { this.bones -= this.reroll; this.reroll++; this.stock(); Sfx.tap(); }
+        else { Sfx.fail(); FX.shake(2); }
+      }
+      if (Engine.hit(this.NEXT, tp)) { Sfx.tap(); this.nextStage(); return; }
+    }
+  },
+
+  buy(i) {
+    const id = this.shop[i]; if (!id) return;
+    const t = this.treat(id), c = this.CARD(i);
+    if (!this.canBuy(t)) { Sfx.fail(); FX.shake(2); return; }
+    this.bones -= t.price; this.treats.push(id); this.shop[i] = null;
+    Sfx.win(); buzz(20); FX.burst(c.x + c.w / 2, c.y + c.h / 2, PAL.accent, 14, 70);
+  },
+
+  // ── DRAW ─────────────────────────────────────────────────────────────────
+  bone(x, y, c = PAL.ink, k = 1) {
+    const r = (a, b, w, h) => g.rect(x + a * k, y + b * k, w * k, h * k, c);
+    r(0, 1, 6, 2); r(-1, 0, 2, 2); r(-1, 2, 2, 2); r(5, 0, 2, 2); r(5, 2, 2, 2);
+  },
+
+  // a treat as a card: big in the shop, small in your row
+  drawTreat(t, x, y, w, h, small) {
+    g.rect(x, y, w, h, small ? PAL.mid : PAL.ink);
+    g.rect(x + 2, y + 2, w - 4, h - 4, PAL.bg);
+    const ay = small ? y + 13 : y + 42, as = small ? 20 : 40;
+    if (t.art) g.sprite(t.art[0], x + w / 2, ay, { w: as, h: as, frame: t.art[1] });
+    else this.bone(x + w / 2 - (small ? 6 : 9), ay - (small ? 4 : 6), PAL.accent, small ? 2 : 3);
+    if (small) { g.text(t.tag, x + w / 2, y + h - 4, 6, PAL.ink); return; }
+    g.text(t.name, x + w / 2, y + 12, 6, PAL.ink);
+    t.lines.forEach((l, i) => g.text(l, x + w / 2, y + h - 30 + i * 8, 6, PAL.mid));
+  },
+
+  drawOwned(y) {
+    const n = Math.max(this.slots(), this.treats.length);
+    for (let i = 0; i < n; i++) {
+      const x = 8 + i * 33;
+      if (this.treats[i]) this.drawTreat(this.treat(this.treats[i]), x, y, 30, 34, true);
+      else { g.box(x, y, 30, 34, PAL.mid); g.text('+', x + 15, y + 21, 10, PAL.mid); }
+    }
+  },
+
+  drawHud() {
+    g.text(this.label(), 4, 13, 9, PAL.ink, 'left');
+    this.bone(W - 34, 6);
+    g.text(String(this.bones), W - 6, 13, 9, PAL.ink, 'right');
+    g.rect(0, TOP - 1, W, 1, PAL.mid);
+    // games left and stage progress only mean something while a stage is on
+    if (Engine.state === 'CLEAR' || Engine.state === 'SHOP') return;
+    const n = this.games();
+    for (let i = 0; i < n; i++) g.rect(28 + i * 6, 6, 4, 6, i < this.left ? PAL.accent : PAL.mid);
+    g.rect(0, TOP - 2, W * Math.min(1, this.score / this.target()), 2, PAL.accent);
+  },
+
+  drawStage() {
+    const boss = this.bossStage();
+    g.text('WORLD ' + this.world, CX, CY - 56, 11, PAL.mid);
+    g.text(boss ? 'BOSS STAGE' : 'STAGE ' + (this.stage + 1) + ' / 3', CX, CY - 32, 16, boss ? PAL.bad : PAL.ink);
+    g.text('TARGET', CX, CY - 4, 9, PAL.mid);
+    g.text(String(this.target()), CX, CY + 24, 26, PAL.accent);
+    g.text(this.games() + ' GAMES TO SCORE IT', CX, CY + 46, 8, PAL.ink);
+    if (this.treats.length) this.drawOwned(CY + 62);
+  },
+
+  drawTally() {
+    const L = this.last;
+    g.text(L.won ? 'GOOD!' : 'FAIL!', CX, TOP + 36, 22, L.won ? PAL.accent : PAL.bad);
+    g.text(Engine.game.meta.prompt, CX, TOP + 50, 7, PAL.mid);
+    L.rows.forEach(([a, v, c], i) => {
+      g.text(a, 14, TOP + 70 + i * 12, 8, PAL.mid, 'left');
+      g.text(v, W - 14, TOP + 70 + i * 12, 8, c, 'right');
+    });
+    if (L.won) {
+      const y = TOP + 140;
+      g.rect(14, y, 64, 18, PAL.ink); g.text(String(L.chips), 46, y + 13, 11, PAL.bg);
+      g.text('x', CX, y + 13, 11, PAL.ink);
+      g.rect(W - 78, y, 64, 18, PAL.bad); g.text(String(L.mult), W - 46, y + 13, 11, PAL.ink);
+      g.text('= ' + L.points, CX, y + 42, 16, PAL.accent);
+    }
+    // the stage bar fills from where it was to where it is now
+    const y = TOP + 200, goal = this.target();
+    const k = Math.min(1, (1.8 - Engine.timer) / 0.6);
+    const shown = Math.round(L.from + (this.score - L.from) * Math.max(0, k));
+    g.text('SCORE', 8, y, 7, PAL.mid, 'left');
+    g.text(shown + ' / ' + goal, W - 8, y, 8, PAL.ink, 'right');
+    g.rect(8, y + 4, W - 16, 5, PAL.mid);
+    g.rect(8, y + 4, (W - 16) * Math.min(1, shown / goal), 5, PAL.accent);
+    const msg = this.score >= goal ? ['TARGET HIT!', PAL.accent]
+              : this.left <= 0 ? ['OUT OF GAMES', PAL.bad]
+              : [this.left + (this.left === 1 ? ' GAME' : ' GAMES') + ' LEFT', PAL.ink];
+    g.text(msg[0], CX, y + 28, 10, msg[1]);
+  },
+
+  drawClear() {
+    g.text(this.stage === 2 ? 'WORLD ' + this.world : 'STAGE', CX, CY - 64, 18, PAL.accent);
+    g.text('CLEAR!', CX, CY - 42, 18, PAL.accent);
+    this.payout.forEach(([a, v], i) => {
+      g.text(a, 20, CY - 12 + i * 13, 8, PAL.mid, 'left');
+      g.text('+' + v, W - 20, CY - 12 + i * 13, 8, PAL.ink, 'right');
+    });
+    const y = CY - 12 + this.payout.length * 13 + 10;
+    this.bone(CX - 22, y - 7, PAL.accent);
+    g.text(String(this.bones), CX - 10, y, 12, PAL.accent, 'left');
+    if (Math.floor(Engine.time * 2) % 2) g.text('TAP FOR THE SHOP', CX, BOT - 10, 8, PAL.mid);
+  },
+
+  drawShop() {
+    g.text('TREAT SHOP', CX, TOP + 24, 14, PAL.accent);
+    g.text('YOUR TREATS', 8, TOP + 40, 7, PAL.mid, 'left');
+    this.drawOwned(TOP + 44);
+    for (let i = 0; i < 3; i++) {
+      const c = this.CARD(i), id = this.shop[i];
+      if (!id) { g.box(c.x, c.y, c.w, c.h, PAL.mid); g.text(this.shop.length ? 'SOLD' : 'EMPTY', c.x + c.w / 2, c.y + c.h / 2, 8, PAL.mid); continue; }
+      const t = this.treat(id), ok = this.canBuy(t);
+      this.drawTreat(t, c.x, c.y, c.w, c.h, false);
+      this.bone(c.x + c.w / 2 - 10, c.y + c.h - 11, ok ? PAL.accent : PAL.mid);
+      g.text(String(t.price), c.x + c.w / 2 + 2, c.y + c.h - 5, 8, ok ? PAL.accent : PAL.mid, 'left');
+    }
+    g.text('TAP A TREAT TO BUY IT', CX, this.CARD(0).y + 118, 7, PAL.mid);
+    const R = this.REROLL, N = this.NEXT;
+    g.box(R.x, R.y, R.w, R.h, PAL.mid); g.text('REROLL ' + this.reroll, R.x + R.w / 2, R.y + 15, 8, PAL.ink);
+    g.rect(N.x, N.y, N.w, N.h, PAL.accent); g.text('NEXT >', N.x + N.w / 2, N.y + 15, 9, PAL.bg);
+  },
+
+  drawOver() {
+    g.text('RUN', CX, CY - 30, 24, PAL.bad);
+    g.text('OVER', CX, CY - 4, 24, PAL.bad);
+    g.text('REACHED ' + this.label(), CX, CY + 26, 10, PAL.ink);
+    g.text(this.score + ' / ' + this.target(), CX, CY + 42, 8, PAL.mid);
+    g.text('BEST ' + this.label(this.best), CX, CY + 56, 8, PAL.mid);
+    if (Math.floor(Engine.time * 2) % 2) g.text('TAP TO CONTINUE', CX, CY + 84, 9, PAL.mid);
+  }
+};
+
 /* =============================================================================
    ENGINE — states: TITLE > PROMPT > PLAYING > RESULT > (SPEEDUP) > ... GAMEOVER
+   RUN mode adds STAGE (intro) > games > CLEAR > SHOP between stages
 ============================================================================= */
 const Engine = {
   state: 'TITLE', timer: 0, time: 0,
@@ -3214,6 +3497,7 @@ const Engine = {
   // camera/mic/motion: null = not asked yet (show the sensors screen before
   // the first run), true = allowed, false = the player picked touch only
   sensors: null,
+  mode: 'classic',   // 'classic' = endless lives run, 'run' = the roguelike (see Run)
   BOSS_EVERY: 8, SPEEDUP_EVERY: 4,
 
   reset() {
@@ -3233,11 +3517,11 @@ const Engine = {
     return 3;
   },
 
-  startRound(forceClass, forceDiff) {
+  startRound(forceClass, forceDiff, forceBoss) {
     this.round++;
     FX.parts.length = 0; FX.fl = 0;   // no effects bleed across rounds
     Engine.lastPhoto = null;          // a shot from a lost round must not show after a later win
-    this.isBoss = !forceClass && this.round % this.BOSS_EVERY === 0;
+    this.isBoss = !!forceBoss || (!forceClass && this.round % this.BOSS_EVERY === 0);
     const C = forceClass || this.pick(this.isBoss ? BOSSES : POOL);
     this.lastId = C.meta.id;
     const diff = forceDiff || (this.isBoss ? 3 : this.difficulty());
@@ -3305,7 +3589,24 @@ const Engine = {
         if (n > 0) { Sfx.tick(); buzz(15); FX.shake(1.5); }
         else { Sfx.blip(990, 0.14); buzz(40); FX.flash(PAL.accent, 0.4); FX.shake(3); }
       }
-      if (this.timer <= 0) this.startRound();
+      if (this.timer <= 0) { if (this.mode === 'run') Run.beginStage(); else this.startRound(); }
+      return;
+    }
+
+    // RUN mode's between-stage screens; each can be tapped past
+    if (s === 'STAGE') {
+      Mascot.set('watch');
+      if (this.timer <= 0 || (Input.justDown && this.timer < 1.4)) Run.nextGame();
+      return;
+    }
+    if (s === 'CLEAR') {
+      Mascot.set('cheer');
+      if (this.timer <= 0 || (Input.justDown && this.timer < 1.9)) Run.openShop();
+      return;
+    }
+    if (s === 'SHOP') {
+      Mascot.set('watch');
+      Run.shopUpdate(Input);
       return;
     }
 
@@ -3321,6 +3622,7 @@ const Engine = {
       this.game.t += dt;
       this.game.update(dt, Input);
       const out = this.timer <= 0;
+      this.timer_ = this.timer;   // round clock left, for RUN's speed bonus
       if (out && !this.game.finished) {
         if (this.game.meta.winOnTimeout) this.game.succeed(); else this.game.lose();
       }
@@ -3331,20 +3633,22 @@ const Engine = {
           FX.burst(Mascot.x, Mascot.y - 8, PAL.accent, 12 + Math.min(12, this.combo * 2), 80);
           if (this.combo >= 3) FX.shake(3);   // a little extra on a streak
         } else {
-          if (!this.testClass) this.lives--;
+          if (!this.testClass && this.mode === 'classic') this.lives--;
           this.combo = 0; this.result = 'FAIL'; Sfx.fail(); buzz(120); Mascot.set('sad');
           FX.flash(PAL.bad, 0.55); FX.shake(5);
         }
-        if (this.score > this.best && !this.testClass) {
+        if (this.score > this.best && !this.testClass && this.mode === 'classic') {
           this.best = this.score;
           try { localStorage.setItem('micromania.best', String(this.best)); } catch (e) {}
         }
         this.state = 'RESULT'; this.timer = 0.9;
+        if (this.mode === 'run') { Run.onResult(this.game.won, Math.max(0, this.timer_ / this.duration)); this.timer = 1.8; }
       }
       return;
     }
 
     if (s === 'RESULT') {
+      if (this.mode === 'run' && Input.justDown && this.timer < 1.4) this.timer = 0;   // skip the tally
       if (this.timer > 0) return;
       // if the just-won game captured a photo, show it before moving on
       if (this.result === 'WIN' && this.game && this.game.meta.photo && Engine.lastPhoto) {
@@ -3376,6 +3680,8 @@ const Engine = {
   MUTE: { x: CX - 12, y: 0, w: 24, h: TOP },
   PERM_ALLOW: { x: CX - 50, y: CY + 22, w: 100, h: 24 },
   PERM_SKIP:  { x: CX - 50, y: CY + 54, w: 100, h: 24 },
+  BTN_RUN:     { x: CX - 50, y: CY + 36, w: 100, h: 26 },
+  BTN_CLASSIC: { x: CX - 50, y: CY + 70, w: 100, h: 22 },
   hit(b, p) { return p.x >= b.x && p.x < b.x + b.w && p.y >= b.y && p.y < b.y + b.h; },
 
   press(p) {
@@ -3385,10 +3691,15 @@ const Engine = {
 
   release(p) {
     const s = this.state;
-    if ((s === 'TITLE' || s === 'GAMEOVER') && this.timer <= 0) {
-      Sfx.unlock();
+    if (s === 'TITLE' && this.timer <= 0) {
+      const mode = this.hit(this.BTN_RUN, p) ? 'run' : this.hit(this.BTN_CLASSIC, p) ? 'classic' : null;
+      if (!mode) return;
+      this.mode = mode;
+      Sfx.unlock(); Sfx.tap();
       if (this.sensors === null) { this.state = 'PERMS'; this.timer = 0.3; this.permWait = false; }
       else this.startRun();
+    } else if (s === 'GAMEOVER' && this.timer <= 0) {
+      this.state = 'TITLE'; this.timer = 0.2;   // back to pick a mode
     }
   },
 
@@ -3412,6 +3723,7 @@ const Engine = {
   startRun() {
     if (this.sensors) { Input.enableAV(); Input.enableMotion(); Input.enableTilt(); }
     this.reset();
+    if (this.mode === 'run') Run.start();
     this.state = 'READY';
     this.timer = 3.2;          // 3 · 2 · 1 · GO, then the first prompt
     this.readyLast = 4;
@@ -3423,6 +3735,7 @@ const Engine = {
   advance() {
     // test mode: replay the same game forever, never lose lives or advance
     if (this.testClass) { this.lives = 4; this.startRound(this.testClass, this.testDiff); return; }
+    if (this.mode === 'run') { Run.after(); return; }
     if (this.lives <= 0) { this.state = 'GAMEOVER'; this.timer = 0.8; return; }
     if (this.round % this.SPEEDUP_EVERY === 0) {
       this.speed = Math.min(2.6, this.speed + 0.12);
@@ -3482,8 +3795,13 @@ const Engine = {
       g.text('MANIA', CX, CY - 8, 26, PAL.accent);
       g.rect(CX - 40, CY + 4, 80, 1, PAL.mid);
       g.text(POOL.length + BOSSES.length + ' microgames', CX, CY + 22, 8, PAL.mid);
-      if (Math.floor(this.time * 2) % 2) g.text('TAP TO START', CX, CY + 64, 10, PAL.ink);
-      if (this.best) g.text('BEST ' + this.best, CX, BOT, 8, PAL.mid);
+      const R = this.BTN_RUN, C = this.BTN_CLASSIC;
+      g.rect(R.x, R.y, R.w, R.h, PAL.accent); g.text('RUN', CX, R.y + 18, 13, PAL.bg);
+      g.box(C.x, C.y, C.w, C.h, PAL.mid); g.text('CLASSIC', CX, C.y + 15, 9, PAL.ink);
+      const best = [];
+      if (Run.best) best.push('RUN ' + Run.label(Run.best));
+      if (this.best) best.push('CLASSIC ' + this.best);
+      if (best.length) g.text('BEST  ' + best.join('  ·  '), CX, BOT - 6, 7, PAL.mid);
       return;
     }
 
@@ -3501,12 +3819,17 @@ const Engine = {
       return;
     }
 
+    if (s === 'GAMEOVER' && this.mode === 'run') { Run.drawOver(); return; }
+    if (s === 'STAGE') { this.drawHud(); Run.drawStage(); return; }
+    if (s === 'CLEAR') { this.drawHud(); Run.drawClear(); return; }
+    if (s === 'SHOP')  { this.drawHud(); Run.drawShop(); return; }
+
     if (s === 'GAMEOVER') {
       g.text('GAME', CX, CY - 24, 24, PAL.bad);
       g.text('OVER', CX, CY + 2, 24, PAL.bad);
       g.text('SCORE ' + this.score, CX, CY + 36, 10, PAL.ink);
       g.text('BEST ' + this.best, CX, CY + 52, 8, PAL.mid);
-      if (Math.floor(this.time * 2) % 2) g.text('TAP TO RETRY', CX, CY + 84, 9, PAL.mid);
+      if (Math.floor(this.time * 2) % 2) g.text('TAP TO CONTINUE', CX, CY + 84, 9, PAL.mid);
       return;
     }
 
@@ -3548,6 +3871,8 @@ const Engine = {
       this.drawHud();
       return;
     }
+
+    if (s === 'RESULT' && this.mode === 'run') { this.drawHud(); Run.drawTally(); return; }
 
     if (s === 'RESULT') {
       const win = this.result === 'WIN';
@@ -3594,6 +3919,7 @@ const Engine = {
   },
 
   drawHud() {
+    if (this.mode === 'run') { Run.drawHud(); return; }
     // lives as little shiba faces; spent lives shown as a faded marker
     for (let i = 0; i < 4; i++) {
       if (i < this.lives) g.sprite('face', 11 + i * 13, 9, { w: 13, h: 13, frame: 0 });
@@ -3678,6 +4004,7 @@ else {
       Input.enableMotion(); Input.enableTilt(); Input.enableMic(); Sfx.unlock();
       if (Engine.sensors === null) Engine.sensors = true;
       Engine.reset();
+      Engine.mode = 'classic';
       Engine.testClass = loop ? C : null;
       Engine.testDiff = testDiff;
       Engine.lives = 4;
