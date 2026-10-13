@@ -133,8 +133,9 @@ const ART = {
         duration      seconds at speed 1.0 (engine divides by current speed)
         minDuration   floor on the round length, for games speed can't shrink
         winOnTimeout  true = survive-the-clock game (default false)
-        photo         true = a win poses for a photo (live preview, 3-2-1); a
-                      game's stampPhoto(canvas) can draw on it (PhotoFX)
+        photo         true = the win shows an action shot: the frame with the most
+                      movement (or blow, or stillness for 'still') caught while
+                      playing; a game's stampPhoto(canvas) can draw on it (PhotoFX)
         photoCap      caption printed under that photo (default 'NICE MOVES!')
         env           backdrop: 'lawn' 'sky' 'bath' 'snow' 'field@Y' 'room@Y' (see Env)
         cam           true = played with the camera: the shelf shows the live
@@ -1650,41 +1651,55 @@ class DontTap extends Microgame {
   }
 }
 
-// 11. THROW — tap when the running shiba is under the frisbee zone
+// 11. LEAP — tap to jump when the running shiba is under the hanging frisbee
 class StopBar extends Microgame {
-  static meta = { id: 'stop', env: 'park@177', prompt: 'THROW!', hint: 'tap', duration: 3.4,
-    how: 'TAP TO THROW WHEN THE\nSHIBA IS IN THE ZONE' };
+  static meta = { id: 'stop', env: 'park@177', prompt: 'LEAP!', hint: 'tap', duration: 3.6,
+    how: 'TAP TO JUMP WHEN THE\nSHIBA IS UNDER THE FRISBEE' };
   init() {
     this.p = Math.random(); this.dir = Math.random() < 0.5 ? 1 : -1;
-    // >= 2.4 units of travel guarantees the runner crosses the zone from any
-    // starting point, however short the round has become.
+    // >= 2.4 units of travel guarantees the runner passes under the frisbee
+    // from any starting point, however short the round has become.
     this.speed = Math.max(this.byD(0.75, 1.05, 1.45), 2.4 / this.timeLimit);
-    this.band = this.byD(0.26, 0.18, 0.12);
-    this.at = 0.28 + Math.random() * 0.44;
+    this.band = this.byD(0.26, 0.18, 0.12);   // how close counts as "under it"
+    this.at = 0.2 + Math.random() * 0.6;      // where the frisbee hangs
+    this.jump = -1;                           // seconds into the jump, -1 = running
+    this.caught = false;
   }
   update(dt, input) {
+    if (this.jump >= 0) {                     // mid-leap: play it out, then score it
+      this.jump += dt;
+      if (this.jump > 0.5) { if (this.caught) this.succeed(); else this.lose(); }
+      return;
+    }
     this.p += this.dir * this.speed * dt;
     if (this.p > 1) { this.p = 1; this.dir = -1; }
     if (this.p < 0) { this.p = 0; this.dir = 1; }
     if (input.justDown) {
+      this.jump = 0;
+      this.caught = Math.abs(this.p - this.at) < this.band / 2;
       Sfx.whoosh();
-      if (Math.abs(this.p - this.at) < this.band / 2) { Sfx.bark(); this.succeed(); } else this.lose();
+      if (this.caught) setTimeout(() => Sfx.bark(), 200); else buzz(40);
     }
   }
   draw(g) {
     g.clear();
-    const x = 20, w = W - 40, ground = CY + 30;
-    g.rect(0, ground, W, 2, PAL.mid);
-    // the catch zone on the ground, with the frisbee hanging over it
-    const zx = x + (this.at - this.band / 2) * w, zw = this.band * w;
-    g.rect(zx, ground - 2, zw, 6, PAL.accent);
-    ctx.globalAlpha = 0.25; g.rect(zx, TOP + 30, zw, ground - TOP - 30, PAL.accent); ctx.globalAlpha = 1;
-    const fy = TOP + 40 + Math.sin(this.t * 4) * 3;
-    g.rect(zx + zw / 2 - 10, fy - 1, 20, 6, PAL.bg); g.rect(zx + zw / 2 - 7, fy - 3, 14, 3, PAL.bg);   // dark rim, reads on sky
-    g.rect(zx + zw / 2 - 9, fy, 18, 4, PAL.accent); g.rect(zx + zw / 2 - 6, fy - 2, 12, 2, PAL.accent);
-    // the shiba sprinting back and forth under it
-    const sx = x + this.p * w;
-    g.sprite(this.dir > 0 ? 'swiperight' : 'swipeleft', sx, ground - 18, { w: 64, h: 64, frame: Math.floor(this.t * 16) % 9 });
+    const x0 = 20, w = W - 40, ground = CY + 30;
+    const fx = x0 + this.at * w, fy = ground - 78 + Math.sin(this.t * 3) * 3;
+    // the frisbee's spot on the grass, so "under it" is something you can see
+    const sw = this.band * w;
+    ctx.globalAlpha = 0.5; g.rect(fx - sw / 2, ground + 2, sw, 3, PAL.bg); ctx.globalAlpha = 1;
+    for (let y = fy + 6; y < ground - 2; y += 6) g.rect(fx - 0.5, y, 1, 3, PAL.ink);
+    // the shiba: running, or leaping straight up
+    const sx = x0 + this.p * w;
+    const k = this.jump >= 0 ? Math.sin(Math.min(1, this.jump / 0.5) * Math.PI) : 0;
+    const sy = ground - 18 - k * 64;
+    if (this.jump >= 0) g.sprite('runjump', sx, sy, { w: 62, h: 62, frame: k > 0.6 ? 3 : 2, flip: this.dir < 0 });
+    else g.sprite(this.dir > 0 ? 'swiperight' : 'swipeleft', sx, sy, { w: 64, h: 64, frame: Math.floor(this.t * 16) % 9 });
+    // the frisbee: hanging in the air, or in the shiba's mouth once caught
+    const held = this.caught && this.jump > 0.12;
+    const dx = held ? sx + (this.dir > 0 ? 14 : -14) : fx, dy = held ? sy - 10 : fy;
+    g.rect(dx - 10, dy - 1, 20, 6, PAL.bg); g.rect(dx - 7, dy - 3, 14, 3, PAL.bg);   // dark rim
+    g.rect(dx - 9, dy, 18, 4, PAL.accent); g.rect(dx - 6, dy - 2, 12, 2, PAL.accent);
   }
 }
 
@@ -2887,7 +2902,7 @@ class FreezeStatue extends Microgame {
 
 // 34. SWAT — put your hand where the fly is; the camera tracks where you moved
 class SwatFly extends Microgame {
-  static meta = { id: 'swat', cam: true, prompt: 'SWAT!', hint: 'move', duration: 5.0, minDuration: 4.2,
+  static meta = { id: 'swat', cam: true, photo: true, photoCap: 'GOT IT!', prompt: 'SWAT!', hint: 'move', duration: 5.0, minDuration: 4.2,
     how: { tilt: 'TILT THE PHONE\nTO AIM AT THE FLY', cam: 'WAVE YOUR HAND\nAT THE FLY', touch: 'TAP THE FLY' } };
   init() {
     Input.enableCam();
@@ -3441,7 +3456,7 @@ class BlowCandles extends Microgame {
 
 // BLOW — blow every seed off the dandelion
 class Dandelion extends Microgame {
-  static meta = { id: 'puff', env: 'sunny@258', prompt: 'BLOW!', hint: 'blow', duration: 4.8, minDuration: 4.2,
+  static meta = { id: 'puff', env: 'sunny@258', photo: true, photoCap: 'WHOOSH!', prompt: 'BLOW!', hint: 'blow', duration: 4.8, minDuration: 4.2,
     how: { mic: 'BLOW INTO THE MIC\nCLEAR EVERY SEED', touch: 'TAP FAST\nTO BLOW' } };
   init() {
     Input.enableMic();
@@ -4107,6 +4122,7 @@ const Engine = {
     this.round++;
     FX.parts.length = 0; FX.fl = 0;   // no effects bleed across rounds
     Engine.lastPhoto = null;          // a shot from a lost round must not show after a later win
+    this.shot = null; this.shotBest = 0; this.shotAt = -1; this.shotFlash = 0;
     this.isBoss = !!forceBoss || (!forceClass && this.round % this.BOSS_EVERY === 0);
     const C = forceClass || this.pick(this.isBoss ? BOSSES : POOL);
     this.lastId = C.meta.id;
@@ -4214,6 +4230,7 @@ const Engine = {
       if (this.game.paused) { this.game.update(dt, Input); return; }  // frozen; let it poll its unpause
       this.game.t += dt;
       this.game.update(dt, Input);
+      this.trackShot();
       const out = this.timer <= 0;
       this.timer_ = this.timer;   // round clock left, for RUN's speed bonus
       if (out && !this.game.finished) {
@@ -4222,10 +4239,16 @@ const Engine = {
       if (this.game.finished) {
         if (this.game.won) {
           this.score++; this.combo++; this.result = 'WIN'; Sfx.win(); buzz(20); Mascot.set('cheer');
-          // photo games already took theirs (with their stamp); every other
-          // game gets a candid one — the concentration face is the joke
-          this.snap = Input.snapPhoto();
-          if (this.snap) { this.album.push(this.snap); if (this.album.length > 4) this.album.shift(); }
+          // the action shot: the best moment caught while playing, stamped
+          this.snap = null;
+          if (this.game.meta.photo && this.shootsNow()) {
+            const shot = this.shot || Input.snapPhoto();
+            if (shot) {
+              if (this.game.stampPhoto) this.game.stampPhoto(shot);
+              this.snap = Engine.lastPhoto = shot;
+              this.album.push(shot); if (this.album.length > 4) this.album.shift();
+            }
+          }
           FX.flash(PAL.accent, 0.45);
           FX.burst(Mascot.x, Mascot.y - 8, PAL.accent, 12 + Math.min(12, this.combo * 2), 80);
           if (this.combo >= 3) FX.shake(3);   // a little extra on a streak
@@ -4248,12 +4271,10 @@ const Engine = {
     if (s === 'RESULT') {
       if (this.mode === 'run' && Input.justDown && this.timer < 1.4) this.timer = 0;   // skip the tally
       if (this.timer > 0) return;
-      // if the just-won game captured a photo, show it before moving on
-      // a photo game poses for its picture: live preview, 3-2-1, snap
-      if (this.result === 'WIN' && this.game && this.game.meta.photo && Input.camReady) {
+      // if the just-won game caught an action shot, show it before moving on
+      if (this.result === 'WIN' && this.game && this.game.meta.photo && Engine.lastPhoto) {
         this.photoCap = this.game.meta.photoCap || 'NICE MOVES!';
-        this.state = 'PHOTO'; this.photoPhase = 'pose'; this.timer = 1.8; this.photoBeat = 4;
-        Engine.lastPhoto = null;
+        this.state = 'PHOTO'; this.timer = 2.2; this.photoReveal = 0;
         return;
       }
       this.advance();
@@ -4266,13 +4287,6 @@ const Engine = {
     }
 
     if (s === 'PHOTO') {
-      if (this.photoPhase === 'pose') {
-        // 3 · 2 · 1 with a tick each, then the shutter; a tap snaps it now
-        const n = Math.ceil(this.timer / 0.6);
-        if (n !== this.photoBeat && n > 0) { this.photoBeat = n; Sfx.tick(); }
-        if (this.timer <= 0 || Input.justDown) this.takePhoto();
-        return;
-      }
       this.photoReveal = Math.min(1, (this.photoReveal || 0) + dt * 1.2);
       if (this.timer <= 0 || Input.justDown) {
         Engine.lastPhoto = null;
@@ -4281,18 +4295,24 @@ const Engine = {
     }
   },
 
-  takePhoto() {
-    const shot = Input.snapPhoto();
-    if (shot) {
-      if (this.game.stampPhoto) this.game.stampPhoto(shot);
-      Engine.lastPhoto = shot;
-      // the posed shot replaces this win's candid in the album
-      if (this.snap && this.album[this.album.length - 1] === this.snap) this.album[this.album.length - 1] = shot;
-      else { this.album.push(shot); if (this.album.length > 4) this.album.shift(); }
-      this.snap = shot;
+  // WarioWare Snapped!-style: no posing. While a photo game is played the
+  // camera keeps the frame with the most action in it — the biggest wave,
+  // shake, lean or dance move, the hardest blow, or for FREEZE the stillest
+  // moment — and that is the picture. Grabs are throttled and only taken when
+  // the moment beats the best so far; the shelf view blinks on each one.
+  shootsNow() {
+    const gm = this.game;
+    return Input.camReady && !('usesCam' in gm && !gm.usesCam);
+  },
+  trackShot() {
+    const gm = this.game, m = gm.meta;
+    if (!m.photo || !this.shootsNow() || gm.t < 0.25 || gm.finished) return;
+    const by = m.hint === 'blow' ? 'blow' : m.hint === 'still' ? 'still' : 'motion';
+    const v = by === 'blow' ? Input.blow : by === 'still' ? 1 - Input.motion : Input.motion;
+    if (v > this.shotBest + 0.03 && this.time - this.shotAt > 0.15) {
+      const shot = Input.snapPhoto();
+      if (shot) { this.shot = shot; this.shotBest = v; this.shotAt = this.time; this.shotFlash = 0.12; }
     }
-    this.photoPhase = 'show'; this.timer = 1.8; this.photoReveal = 0;
-    Sfx.blip(1700, 0.05, 'square', 0.06); buzz(30); FX.flash(PAL.ink, 0.8);
   },
 
   // ── BUTTONS ────────────────────────────────────────────────────────────────
@@ -4464,12 +4484,16 @@ const Engine = {
   drawCamView() {
     if (this.state !== 'PROMPT' && this.state !== 'PLAYING') return;
     const gm = this.game; if (!gm || !Input.camReady) return;
-    const on = 'usesCam' in gm ? gm.usesCam : gm.meta.cam;
+    const on = 'usesCam' in gm ? gm.usesCam : (gm.meta.cam || gm.meta.photo);
     if (!on) return;
     const a = Input.camAspect(), h = 32, w = Math.round(h * a), x = 6, y = BOT + 3;
     g.rect(x - 1, y - 1, w + 2, h + 2, PAL.ink);
     if (!Input.drawLive(ctx, x, y, w, h)) g.rect(x, y, w, h, PAL.mid);
     if (Math.floor(this.time * 2) % 2) g.circle(x + 4, y + 4, 2, PAL.bad);
+    if (this.shotFlash > 0) {                       // shutter: a shot was just caught
+      this.shotFlash -= STEP;
+      ctx.globalAlpha = Math.min(1, this.shotFlash * 8); g.rect(x, y, w, h, PAL.ink); ctx.globalAlpha = 1;
+    }
   },
 
   // speaker in the middle of the HUD band, with sound waves or a cross. Drawn
@@ -4596,20 +4620,12 @@ const Engine = {
 
     if (s === 'PHOTO') {
       g.clear();
-      const photo = Engine.lastPhoto, pose = this.photoPhase === 'pose';
+      const photo = Engine.lastPhoto;
       // the polaroid takes the camera's shape: portrait on a phone
       const asp = photo ? photo.width / photo.height : Input.camAspect();
       const pw = asp < 1 ? Math.round(120 * asp) : 120, ph = asp < 1 ? 120 : Math.round(120 / asp);
       const px = CX - pw / 2, py = CY - ph / 2 - 6;
       g.rect(px - 6, py - 6, pw + 12, ph + 30, PAL.ink);
-      if (pose) {
-        if (!Input.drawLive(ctx, px, py, pw, ph)) g.rect(px, py, pw, ph, PAL.mid);
-        const n = Math.max(1, Math.ceil(this.timer / 0.6));
-        g.text(String(n), CX, py - 14, 16, PAL.accent);
-        g.text('BACK UP & SMILE!', CX, py + ph + 14, 9, PAL.bg);
-        this.drawHud();
-        return;
-      }
       if (photo) {
         // draw pixelated + tinted to the game's palette for a retro look
         ctx.save();
