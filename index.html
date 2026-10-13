@@ -991,6 +991,7 @@ const PhotoFX = {
      'field@Y'  side view: sky down to a horizon, grass from the ground at Y
      'room@Y'   a living room: wallpaper down to a floor at Y
      'wall@Y'   the same room without the picture, for games that use the wall
+     'sunny@Y'  a bright day: blue sky, the sun, a flowery meadow from Y
    Each is painted once into a 180x320 canvas and blitted after that, so it
    costs nothing per frame; only the sky's clouds are drawn live.
 ─────────────────────────────────────────────────────────────────────────────── */
@@ -1000,6 +1001,9 @@ const SCENE = {
   wall: '#33262d', wallHi: '#3b2c34', skirt: '#24191a', floor: '#45301f', floorLo: '#35251a',
   tile: '#1b303a', tileHi: '#21394a', grout: '#2b4655',
   snow: '#24324a', snowHi: '#344660', pine: '#1a2b33',
+  // a bright day, for the one game that should feel like one
+  day0: '#3b7cc4', day1: '#6aa5dc', dayCloud: '#e6f0fa', dayHill: '#3f8a47',
+  meadow: '#4a9a4f', meadowHi: '#62b466', stem: '#3d7a35',
 };
 const Env = {
   cache: {},
@@ -1009,6 +1013,18 @@ const Env = {
     ctx.fillStyle = PAL.bg; ctx.fillRect(0, 0, W, H);
     ctx.drawImage(c, 0, 0, W, H);
     if (spec === 'sky') this.clouds();
+    if (spec.startsWith('sunny')) this.dayClouds();
+  },
+  // fat white clouds, drifting slowly across a sunny sky
+  dayClouds() {
+    const t = Engine.time;
+    for (let i = 0; i < 3; i++) {
+      const x = ((i * 83 + t * (3 + i * 2)) % (W + 70)) - 35, y = TOP + 22 + i * 30;
+      ctx.fillStyle = SCENE.dayCloud;
+      ctx.fillRect(Math.round(x - 14), Math.round(y), 28, 6);
+      ctx.fillRect(Math.round(x - 9), Math.round(y - 4), 14, 4);
+      ctx.fillRect(Math.round(x + 1), Math.round(y - 7), 10, 7);
+    }
   },
   // a few clouds drifting across the sky, drawn live so they move
   clouds() {
@@ -1077,6 +1093,26 @@ const Env = {
       for (let fy = y + 7, row = 0; fy < BOT; fy += 7, row++) {
         R(0, fy, W, 1, SCENE.floorLo);
         for (let fx = (row % 2) * 22; fx < W; fx += 44) R(fx, fy - 7, 1, 7, SCENE.floorLo);
+      }
+    } else if (kind === 'sunny') {
+      const bands = 8, h = (y - TOP) / bands;
+      for (let i = 0; i < bands; i++) R(0, TOP + i * h, W, h + 1, mix(SCENE.day0, SCENE.day1, i / (bands - 1)));
+      // the sun, rays and all, in the top corner
+      const sx = W - 30, sy = TOP + 28;
+      x.fillStyle = PAL.accent;
+      for (let k = 0; k < 8; k++) {
+        const a = k * Math.PI / 4;
+        R(sx + Math.cos(a) * 17 - 1.5, sy + Math.sin(a) * 17 - 1.5, 3, 3, PAL.accent);
+        R(sx + Math.cos(a) * 21 - 1, sy + Math.sin(a) * 21 - 1, 2, 2, PAL.accent);
+      }
+      x.beginPath(); x.arc(sx, sy, 12, 0, 6.2832); x.fill();
+      for (let i = 0; i < W; i++) { const hh = 7 + Math.sin(i / 19) * 4 + Math.sin(i / 6) * 1.5; R(i, y - hh, 1, hh, SCENE.dayHill); }
+      R(0, y, W, BOT - y, SCENE.meadow);
+      R(0, y, W, 2, SCENE.meadowHi);
+      for (let i = 0; i < 18; i++) {                  // tufts and little flowers
+        const tx = rnd() * W, ty = y + 3 + rnd() * (BOT - y - 5);
+        R(tx, ty, 1, 2, SCENE.meadowHi); R(tx + 2, ty - 1, 1, 3, SCENE.meadowHi);
+        if (i % 3 === 0) R(tx + 4, ty - 1, 2, 2, [PAL.accent, PAL.ink, PAL.bad][i % 9 / 3 | 0]);
       }
     } else if (kind === 'bath') {
       for (let ty = TOP; ty < BOT; ty += 16) for (let tx = 0; tx < W; tx += 16) {
@@ -3357,14 +3393,14 @@ class BlowCandles extends Microgame {
 
 // BLOW — blow every seed off the dandelion
 class Dandelion extends Microgame {
-  static meta = { id: 'puff', env: 'field@262', prompt: 'BLOW!', hint: 'blow', duration: 4.8, minDuration: 4.2,
+  static meta = { id: 'puff', env: 'sunny@258', prompt: 'BLOW!', hint: 'blow', duration: 4.8, minDuration: 4.2,
     how: { mic: 'BLOW INTO THE MIC\nCLEAR EVERY SEED', touch: 'TAP FAST\nTO BLOW' } };
   init() {
     Input.enableMic();
     this.paused = Input.micPending; this.wait = 0;
     this.n = this.byD(6, 7, 8); this.seeds = [];
     for (let i = 0; i < this.n; i++) {
-      const a = (i / this.n) * 6.2832 + Math.random() * 0.4, r = 9 + Math.random() * 11;
+      const a = (i / this.n) * 6.2832 + Math.random() * 0.4, r = 13 + Math.random() * 11;
       this.seeds.push({ a, x: CX + Math.cos(a) * r, y: CY - 8 + Math.sin(a) * r, gone: false, vx: 0, vy: 0, t: 0, spin: 0 });
     }
     this.cleared = 0; this.cool = 0;
@@ -3393,17 +3429,27 @@ class Dandelion extends Microgame {
   draw(g) {
     g.clear();
     if (this.paused) { g.text('ALLOW MIC…', CX, CY - 6, 12, PAL.ink); g.text('(then blow)', CX, CY + 12, 7, PAL.mid); return; }
-    g.line(CX, CY - 8, CX, BOT - 6, PAL.mid, 2);            // stem
-    g.circle(CX, CY - 8, 3, PAL.ink);                       // head
+    // the stem, a couple of leaves at its foot, and the seed head
+    g.line(CX, CY - 8, CX + 2, BOT - 16, SCENE.stem, 3);
+    g.rect(CX - 12, BOT - 24, 12, 3, SCENE.stem); g.rect(CX + 3, BOT - 30, 11, 3, SCENE.stem);
+    // a happy shiba in the grass, waiting to see the seeds fly
+    g.sprite('face', W - 30, BOT - 34, { w: 34, h: 35, frame: this.cleared > this.n / 2 ? 0 : 3 });
+    g.circle(CX, CY - 8, 4, SCENE.stem);
     for (const s of this.seeds) {
       if (s.gone && s.t > 0.9) continue;
       ctx.globalAlpha = s.gone ? Math.max(0, 1 - s.t / 0.9) : 1;
-      g.circle(s.x, s.y, 2, PAL.ink);
-      if (!s.gone) g.line(CX, CY - 8, s.x, s.y, PAL.mid, 1);
+      if (!s.gone) g.line(CX, CY - 8, s.x, s.y, PAL.ink, 1);
+      // the seed's fluffy parachute: little white spokes round a dot
+      const sp = s.gone ? s.t * s.spin : 0;
+      for (let k = 0; k < 5; k++) {
+        const a = sp + k * 1.2566;
+        g.line(s.x, s.y, s.x + Math.cos(a) * 4, s.y + Math.sin(a) * 4, PAL.ink, 1);
+      }
+      g.circle(s.x, s.y, 1.5, PAL.ink);
       ctx.globalAlpha = 1;
     }
-    g.text(Input.micReady ? 'BLOW!' : 'TAP FAST!', CX, TOP + 24, 9, PAL.mid);
-    g.bar(30, BOT - 14, W - 60, 6, this.cleared / this.n);
+    g.text(Input.micReady ? 'BLOW!' : 'TAP FAST!', CX, TOP + 24, 10, PAL.ink);
+    g.bar(30, BOT - 10, W - 60, 5, this.cleared / this.n);
   }
 }
 
