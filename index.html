@@ -136,6 +136,8 @@ const ART = {
         photo         true = a win poses for a photo (live preview, 3-2-1); a
                       game's stampPhoto(canvas) can draw on it (PhotoFX)
         photoCap      caption printed under that photo (default 'NICE MOVES!')
+        cam           true = played with the camera: the shelf shows the live
+                      view while it runs (a game can veto it with a usesCam getter)
         how           how to play, shown under the prompt ("TAP THE DOG"; '\n'
                       for a second line). For a sensor game, one line per way of
                       playing it, best first — { tilt, cam, mic, motion, touch }
@@ -735,6 +737,14 @@ const g = {
     this.rect(x, y, w, h, bg);
     this.rect(x, y, Math.max(0, Math.min(1, pct)) * w, h, c);
   },
+  // A dog bone centred on x, y, w wide (half as tall) — the game's treat, drawn
+  // in rects so it stays pixel art at any size.
+  bone(x, y, w, c = PAL.accent) {
+    const k = w / 8, ox = x - 3 * k, oy = y - 2 * k;
+    const r = (a, b, rw, rh) => ctx.fillRect(ox + a * k, oy + b * k, rw * k, rh * k);
+    ctx.fillStyle = c;
+    r(0, 1, 6, 2); r(-1, 0, 2, 2); r(-1, 2, 2, 2); r(5, 0, 2, 2); r(5, 2, 2, 2);
+  },
   // Draws a PixelLab sprite, or a labelled placeholder if the art isn't in yet.
   sprite(name, x, y, o = {}) {
     const a = Assets.get(name);
@@ -912,10 +922,10 @@ class TapBug extends Microgame {
   }
 }
 
-// 2. DRAG — catch every coin in the basket
+// 2. DRAG — catch every falling treat
 class CatchCoin extends Microgame {
   static meta = { id: 'catch', prompt: 'CATCH!', hint: 'drag', duration: 4.0,
-    how: 'DRAG THE BASKET\nCATCH EVERY COIN' };
+    how: 'DRAG THE SHIBA\nCATCH EVERY TREAT' };
   init() {
     this.bx = CX;
     this.need = this.byD(1, 2, 3);
@@ -967,7 +977,7 @@ class CatchCoin extends Microgame {
     for (const c of this.coins) {
       if (c.done) continue;
       if (c.delay > 0) { g.rect(c.x - 1, this.startY - 6, 2, 3, PAL.mid); continue; }  // drop marker
-      g.sprite('coin', c.x, c.y, { w: 9, h: 9, color: PAL.accent });
+      g.bone(c.x, c.y, 13);
     }
     g.sprite('catcher', this.bx, this.dogY, { w: this.dogW, h: this.dogH, color: PAL.ink,
              frame: Math.floor(this.t * 8) % 5 });
@@ -1755,7 +1765,7 @@ class TracePath extends Microgame {
 // 22. COUNT — tap exactly the number asked for, no more
 class GrabCount extends Microgame {
   static meta = { id: 'count', prompt: 'GRAB 3!', hint: 'count', duration: 4.2,
-    how: 'TAP EXACTLY\nTHAT MANY' };
+    how: 'TAP EXACTLY\nTHAT MANY TREATS' };
   init() {
     const total = this.byD(5, 7, 9);
     this.need = 2 + Math.floor(Math.random() * (this.byD(2, 3, 4)));
@@ -1785,7 +1795,7 @@ class GrabCount extends Microgame {
   }
   draw(g) {
     g.clear();
-    for (const it of this.items) if (!it.taken) g.sprite('coin', it.x, it.y, { w: 12, h: 12, color: PAL.accent });
+    for (const it of this.items) if (!it.taken) g.bone(it.x, it.y, 18);
     g.text(this.got + ' / ' + this.need, CX, TOP + 26, 9, this.got > this.need ? PAL.bad : PAL.ink);
   }
 }
@@ -1853,13 +1863,12 @@ class Flappy extends Microgame {
   static meta = { id: 'flappy', prompt: 'FLAP!', hint: 'mash', duration: 4.4, winOnTimeout: true, minDuration: 2.8,
     how: 'TAP TO FLAP\nTHROUGH THE GAPS' };
   init() {
-    this.d = 1;                                // stays gentle — hardest verb on touch
     this.y = CY; this.vy = 0;
     this.grav = 170; this.flap = -84;          // floatier: a plane, not a bird
     this.planeW = 30; this.planeH = 26;        // drawn size
     this.hitW = 16; this.hitH = 12;            // collision box: fuselage only, not wings
     this.need = this.byD(1, 2, 2); this.passed = 0;
-    this.gap = this.byD(104, 96, 96);          // wide enough to fly the plane through
+    this.gap = this.byD(104, 96, 88);          // wide enough to fly the plane through
     this.pipeW = 14; this.bx = 40;
     const budget = Math.max(2.2, this.timeLimit - 0.3);  // floor so fast speeds stay fair
     const span = W - this.bx + 30;
@@ -1905,15 +1914,14 @@ class Crossy extends Microgame {
   static meta = { id: 'crossy', prompt: 'CROSS!', hint: 'tap', duration: 4.8, minDuration: 4.4,
     how: 'TAP TO HOP\nACROSS THE ROAD' };
   init() {
-    this.d = 1;                                // crossy stays gentle at all levels
-    this.lanes = this.byD(2, 3, 3);
+    this.lanes = this.byD(2, 3, 4);
     this.laneH = (BOT - TOP - 24) / (this.lanes + 1);
     this.px = CX; this.row = 0;
     this.py = BOT - 12;
     this.cars = [];
     for (let L = 0; L < this.lanes; L++) {
       const dir = L % 2 ? 1 : -1;
-      const sp = this.byD(22, 28, 34) * dir;   // slow enough that a gap always recurs in time
+      const sp = this.byD(22, 30, 38) * dir;   // slow enough that a gap always recurs in time
       for (let k = 0; k < 1; k++) this.cars.push({ lane: L, x: Math.random() * W, sp, w: 18 });
     }
     this.hopping = 0;
@@ -2198,7 +2206,7 @@ class KnockStack extends Microgame {
 
 // 30. MOVE — wave your body at the camera to fill the meter; snaps a photo on win
 class MoveCam extends Microgame {
-  static meta = { id: 'move', prompt: 'MOVE!', hint: 'move', duration: 5.0, minDuration: 4.0, photo: true,
+  static meta = { id: 'move', cam: true, prompt: 'MOVE!', hint: 'move', duration: 5.0, minDuration: 4.0, photo: true,
     how: { cam: 'MOVE YOUR BODY\nIN FRONT OF THE CAMERA', touch: 'TAP FAST' } };
   init() {
     this.fill = 0;
@@ -2239,7 +2247,7 @@ class MoveCam extends Microgame {
 
 // 31. DRY — shake fast at the camera to dry off the wet shiba (Snapped! homage)
 class DryShiba extends Microgame {
-  static meta = { id: 'dry', prompt: 'SHAKE!', hint: 'move', duration: 5.0, minDuration: 4.0, photo: true, photoCap: 'ALL FLUFFY!',
+  static meta = { id: 'dry', cam: true, prompt: 'DRY OFF!', hint: 'move', duration: 5.0, minDuration: 4.0, photo: true, photoCap: 'ALL FLUFFY!',
     how: { cam: 'SHAKE YOUR HEAD\nAT THE CAMERA', touch: 'TAP FAST' } };
   init() {
     this.dry = 0; this.need = this.byD(1.0, 1.4, 1.8);
@@ -2276,7 +2284,7 @@ class DryShiba extends Microgame {
 
 // 32. LEAN — move to the side the arrow points (motion on that half of frame)
 class LeanDodge extends Microgame {
-  static meta = { id: 'lean', prompt: 'LEAN!', hint: 'move', duration: 5.0, minDuration: 4.0, photo: true, photoCap: 'DODGED IT!',
+  static meta = { id: 'lean', cam: true, prompt: 'LEAN!', hint: 'move', duration: 5.0, minDuration: 4.0, photo: true, photoCap: 'DODGED IT!',
     how: { cam: 'LEAN YOUR HEAD\nWHERE THE ARROW POINTS', touch: 'TAP THE SIDE\nTHE ARROW POINTS' } };
   init() {
     this.need = this.byD(2, 2, 3); this.hit = 0;
@@ -2352,7 +2360,7 @@ class LeanDodge extends Microgame {
 
 // 33. FREEZE — hold perfectly still until the clock runs out
 class FreezeStatue extends Microgame {
-  static meta = { id: 'freeze', prompt: 'FREEZE!', hint: 'still', duration: 4.6, minDuration: 3.8, winOnTimeout: true, photo: true, photoCap: 'PERFECT STATUE!',
+  static meta = { id: 'freeze', cam: true, prompt: 'FREEZE!', hint: 'still', duration: 4.6, minDuration: 3.8, winOnTimeout: true, photo: true, photoCap: 'PERFECT STATUE!',
     how: { cam: 'HOLD STILL IN FRONT\nOF THE CAMERA', touch: "DON'T TOUCH\nANYTHING" } };
   init() {
     Input.enableCam();
@@ -2441,7 +2449,7 @@ class FreezeStatue extends Microgame {
 
 // 34. SWAT — put your hand where the fly is; the camera tracks where you moved
 class SwatFly extends Microgame {
-  static meta = { id: 'swat', prompt: 'SWAT!', hint: 'move', duration: 5.0, minDuration: 4.2,
+  static meta = { id: 'swat', cam: true, prompt: 'SWAT!', hint: 'move', duration: 5.0, minDuration: 4.2,
     how: { tilt: 'TILT THE PHONE\nTO AIM AT THE FLY', cam: 'WAVE YOUR HAND\nAT THE FLY', touch: 'TAP THE FLY' } };
   init() {
     Input.enableCam();
@@ -2456,6 +2464,7 @@ class SwatFly extends Microgame {
     this.pop = 0;
     this.newFly();
   }
+  get usesCam() { return !Input.tiltReady; }
   newFly() {
     // kept off the edges (the motion centre rarely reaches a corner of the
     // frame) and away from where the hand already is, so it can't die on spawn
@@ -2555,7 +2564,7 @@ class SwatFly extends Microgame {
 
 // 35. HIDE — cover the lens with your hand until the searchlight gives up
 class HideLens extends Microgame {
-  static meta = { id: 'hide', prompt: 'HIDE!', hint: 'cover', duration: 4.6, minDuration: 3.8,
+  static meta = { id: 'hide', cam: true, prompt: 'HIDE!', hint: 'cover', duration: 4.6, minDuration: 3.8,
     how: { cam: 'COVER THE CAMERA\nWITH YOUR HAND', touch: 'HOLD YOUR FINGER\nON THE SCREEN' } };
   init() {
     Input.enableCam();
@@ -2608,7 +2617,7 @@ class HideLens extends Microgame {
 
 // 36. DANCE — move on the beat: hit the ring each time it lands
 class DanceBeat extends Microgame {
-  static meta = { id: 'dance', prompt: 'DANCE!', hint: 'move', duration: 5.0, minDuration: 4.4, photo: true, photoCap: 'DANCE MACHINE!',
+  static meta = { id: 'dance', cam: true, prompt: 'DANCE!', hint: 'move', duration: 5.0, minDuration: 4.4, photo: true, photoCap: 'DANCE MACHINE!',
     how: { cam: 'MOVE WHEN THE RING\nLANDS ON THE BEAT', touch: 'TAP ON THE BEAT' } };
   init() {
     Input.enableCam();
@@ -3083,8 +3092,7 @@ class SortTreats extends Microgame {
     g.text('WHITE', W - 24, TOP + 30, 7, PAL.ink); g.rect(W - 42, CY + 30, 36, 10, PAL.ink);
     // the treat in the middle, coloured to the side it belongs
     const col = this.side === 'left' ? PAL.accent : PAL.ink;
-    g.sprite('coin', CX, CY - 4, { w: 16 + this.pop * 20, h: 16 + this.pop * 20, color: col });
-    g.circle(CX, CY - 4, 8, col);
+    g.bone(CX, CY - 4, 26 + this.pop * 24, col);
     g.text('SWIPE TO ITS BOWL', CX, TOP + 22, 8, PAL.mid);
     for (let i = 0; i < this.need; i++) g.rect(CX - this.need * 4 + i * 8, BOT - 14, 5, 5, i < this.done ? PAL.accent : PAL.mid);
   }
@@ -3095,7 +3103,7 @@ class SortTreats extends Microgame {
 // spins to face you (red) → hold perfectly still or you're caught. Reach the
 // goal before the clock runs out to win. Uses the full portrait set for the spin.
 class SquidDoll extends Microgame {
-  static meta = { id: 'squid', prompt: 'RUN & FREEZE!', hint: 'move', duration: 7.0, minDuration: 6.0, photo: true, photoCap: 'YOU MADE IT!',
+  static meta = { id: 'squid', cam: true, prompt: 'RUN & FREEZE!', hint: 'move', duration: 7.0, minDuration: 6.0, photo: true, photoCap: 'YOU MADE IT!',
     how: { cam: 'MOVE YOUR HEAD TO RUN\nFREEZE WHEN IT LOOKS', touch: 'HOLD ON GREEN\nLET GO ON RED' } };
   init() {
     Input.enableCam();
@@ -3953,6 +3961,21 @@ const Engine = {
     }
     FX.post();
     this.drawMute();
+    this.drawCamView();
+  },
+
+  // In a camera game the shelf shows what the camera sees, mirrored like a
+  // mirror, with a blinking REC dot — so the player knows it is watching and
+  // can see themselves move, instead of guessing whether it is working.
+  drawCamView() {
+    if (this.state !== 'PROMPT' && this.state !== 'PLAYING') return;
+    const gm = this.game; if (!gm || !Input.camReady) return;
+    const on = 'usesCam' in gm ? gm.usesCam : gm.meta.cam;
+    if (!on) return;
+    const a = Input.camAspect(), h = 32, w = Math.round(h * a), x = 6, y = BOT + 3;
+    g.rect(x - 1, y - 1, w + 2, h + 2, PAL.ink);
+    if (!Input.drawLive(ctx, x, y, w, h)) g.rect(x, y, w, h, PAL.mid);
+    if (Math.floor(this.time * 2) % 2) g.circle(x + 4, y + 4, 2, PAL.bad);
   },
 
   // speaker in the middle of the HUD band, with sound waves or a cross. Drawn

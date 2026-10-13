@@ -28,6 +28,10 @@ middle of the top bar mutes sound, and the choice is remembered.
 | DANCE | movement in time with a beat | tap on the beat |
 | SQUID | move on green, freeze on red (red-light/green-light) | hold on green, release on red |
 
+While a camera game is on, the shelf at the bottom-left shows the **live
+camera** (mirrored, with a blinking REC dot), so players can see themselves and
+know it is watching. Flag a game with `cam: true` in its meta.
+
 SWAT prefers the **gyro** where the device has one — tilting the phone aims far
 more precisely than the camera's centre-of-motion can. Hold the swatter on the
 fly to squash it (or tap). Whatever the phone was doing when the round starts
