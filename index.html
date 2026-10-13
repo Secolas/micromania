@@ -174,6 +174,8 @@ const PAL = {
   bad:    '#ff4b3e'
 };
 
+const TEXT_MID = '#a0a0a0';   // PAL.mid as text — see g.text
+
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 ctx.imageSmoothingEnabled = false;
@@ -704,7 +706,9 @@ const g = {
   circle(x, y, r, c) { ctx.fillStyle = c; ctx.beginPath(); ctx.arc(x, y, r, 0, 6.2832); ctx.fill(); },
   line(x1, y1, x2, y2, c, lw = 1) { ctx.strokeStyle = c; ctx.lineWidth = lw; ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); },
   text(str, x, y, size = 8, c = PAL.ink, align = 'center', bold = true) {
-    ctx.fillStyle = c;
+    // PAL.mid is fine for bars and lines but too dark to read as small text on
+    // the near-black background, so grey text is drawn a few steps lighter
+    ctx.fillStyle = c === PAL.mid ? TEXT_MID : c;
     ctx.font = (bold ? 'bold ' : '') + size + 'px ui-monospace, monospace';
     ctx.textAlign = align;
     ctx.fillText(str, Math.round(x), Math.round(y));
@@ -3459,7 +3463,7 @@ const Engine = {
   // speaker in the middle of the HUD band, with sound waves or a cross. Drawn
   // after the FX so a flash or shake never hides it.
   drawMute() {
-    const x = CX - 6, y = 4, c = PAL.mid;
+    const x = CX - 6, y = 4, c = TEXT_MID;   // a control, so it reads like text
     g.rect(x, y + 3, 3, 4, c);
     g.rect(x + 3, y + 2, 1, 6, c); g.rect(x + 4, y + 1, 1, 8, c); g.rect(x + 5, y, 1, 10, c);
     if (Sfx.muted) {
