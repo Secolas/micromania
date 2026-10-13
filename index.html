@@ -229,7 +229,9 @@ const Assets = {
 const Sfx = {
   ac: null, muted: false,
   unlock() {
-    if (this.ac) return;
+    // iOS suspends the context again after the tab is backgrounded, so every
+    // touch re-resumes it, not just the first one
+    if (this.ac) { if (this.ac.state === 'suspended') this.ac.resume(); return; }
     const AC = window.AudioContext || window.webkitAudioContext;
     if (AC) this.ac = new AC();
   },
@@ -3093,7 +3095,9 @@ const Mascot = {
 ============================================================================= */
 const Engine = {
   state: 'TITLE', timer: 0, time: 0,
-  lives: 4, score: 0, round: 0, combo: 0, best: 0, speed: 1,
+  lives: 4, score: 0, round: 0, combo: 0, speed: 1,
+  // best survives a reload; storage can throw (private mode), so it is optional
+  best: (() => { try { return +localStorage.getItem('micromania.best') || 0; } catch (e) { return 0; } })(),
   game: null, isBoss: false, result: null, lastId: null,
   BOSS_EVERY: 8, SPEEDUP_EVERY: 4,
 
@@ -3117,6 +3121,7 @@ const Engine = {
   startRound(forceClass, forceDiff) {
     this.round++;
     FX.parts.length = 0; FX.fl = 0;   // no effects bleed across rounds
+    Engine.lastPhoto = null;          // a shot from a lost round must not show after a later win
     this.isBoss = !forceClass && this.round % this.BOSS_EVERY === 0;
     const C = forceClass || this.pick(this.isBoss ? BOSSES : POOL);
     this.lastId = C.meta.id;
@@ -3197,7 +3202,10 @@ const Engine = {
           this.combo = 0; this.result = 'FAIL'; Sfx.fail(); buzz(120); Mascot.set('sad');
           FX.flash(PAL.bad, 0.55); FX.shake(5);
         }
-        this.best = Math.max(this.best, this.score);
+        if (this.score > this.best && !this.testClass) {
+          this.best = this.score;
+          try { localStorage.setItem('micromania.best', String(this.best)); } catch (e) {}
+        }
         this.state = 'RESULT'; this.timer = 0.9;
       }
       return;
@@ -3211,13 +3219,7 @@ const Engine = {
         this.state = 'PHOTO'; this.timer = 2.6; this.photoReveal = 0;
         return;
       }
-      // test mode: replay the same game forever, never lose lives or advance
-      if (this.testClass) { this.lives = 4; this.startRound(this.testClass, this.testDiff); return; }
-      if (this.lives <= 0) { this.state = 'GAMEOVER'; this.timer = 0.8; return; }
-      if (this.round % this.SPEEDUP_EVERY === 0) {
-        this.speed = Math.min(2.6, this.speed + 0.12);
-        this.state = 'SPEEDUP'; this.timer = 0.9;
-      } else { this.startRound(); }
+      this.advance();
       return;
     }
 
@@ -3230,11 +3232,22 @@ const Engine = {
       this.photoReveal = Math.min(1, (this.photoReveal || 0) + dt * 1.2);
       if (this.timer <= 0 || Input.justDown) {
         Engine.lastPhoto = null;
-        if (this.testClass) { this.lives = 4; this.startRound(this.testClass, this.testDiff); return; }
-        if (this.lives <= 0) { this.state = 'GAMEOVER'; this.timer = 0.8; return; }
-        this.startRound();
+        this.advance();
       }
     }
+  },
+
+  // After a round's result (and its photo, if any): game over, a speed-up, or
+  // straight on. Shared so a photo win can't skip the speed-up — SQUID is a
+  // boss on a multiple of SPEEDUP_EVERY, so that used to happen every run.
+  advance() {
+    // test mode: replay the same game forever, never lose lives or advance
+    if (this.testClass) { this.lives = 4; this.startRound(this.testClass, this.testDiff); return; }
+    if (this.lives <= 0) { this.state = 'GAMEOVER'; this.timer = 0.8; return; }
+    if (this.round % this.SPEEDUP_EVERY === 0) {
+      this.speed = Math.min(2.6, this.speed + 0.12);
+      this.state = 'SPEEDUP'; this.timer = 0.9;
+    } else { this.startRound(); }
   },
 
   // ── DRAW ───────────────────────────────────────────────────────────────────
