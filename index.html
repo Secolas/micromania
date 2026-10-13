@@ -227,7 +227,12 @@ const Assets = {
 
 // ── AUDIO (tiny blips; replace with samples later) ───────────────────────────
 const Sfx = {
-  ac: null, muted: false,
+  ac: null,
+  muted: (() => { try { return localStorage.getItem('micromania.muted') === '1'; } catch (e) { return false; } })(),
+  toggleMute() {
+    this.muted = !this.muted;
+    try { localStorage.setItem('micromania.muted', this.muted ? '1' : '0'); } catch (e) {}
+  },
   unlock() {
     // iOS suspends the context again after the tab is backgrounded, so every
     // touch re-resumes it, not just the first one
@@ -302,7 +307,10 @@ const Input = {
       // A press that starts on the mascot shelf raises no tap/justDown, so the
       // shiba can never trigger or fail a microgame. Dragging and swiping from
       // there still works (people swipe up from the bottom of the screen).
-      this._shelfPress = p.y > BOT;
+      // the engine's own buttons (mute, the sensors screen) eat their press the
+      // same way, so a microgame never sees it
+      this._uiPress = Engine.press(p);
+      this._shelfPress = p.y > BOT || this._uiPress;
       this._justDownRaw = !this._shelfPress;
       this._sx = p.x; this._sy = p.y; this._st = performance.now(); this._travel = 0;
       Sfx.unlock();
@@ -330,6 +338,13 @@ const Input = {
         // start/end points included so games can test what the swipe crossed
         this._pendingSwipe = { dir, dist, vx: dx / (dt / 1000), vy: dy / (dt / 1000), x0: this._sx, y0: this._sy, x1: p.x, y1: p.y };
       }
+      // Handled here in the event rather than in the next step: on a phone only
+      // the release counts as a user gesture, and iOS refuses the motion and
+      // tilt permission prompts outside one.
+      if (e.type === 'pointerup') {
+        if (this._uiPress) Engine.permRelease(p);
+        else if (!this._shelfPress) Engine.release(p);
+      }
       e.preventDefault();
     };
     el.addEventListener('pointerup', end, { passive: false });
@@ -353,17 +368,43 @@ const Input = {
     if (this._cam || this.camDenied || this.camPending) return;
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { this.camDenied = true; return; }
     this.camPending = true;
-    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: 320, height: 240 }, audio: false }).then(stream => {
-      const v = document.createElement('video');
-      v.autoplay = true; v.playsInline = true; v.muted = true;
-      v.srcObject = stream;
-      v.play().catch(() => {});
-      const cc = document.createElement('canvas');
-      cc.width = this.camW; cc.height = this.camH;
-      this._cam = stream; this._camVideo = v;
-      this._camCanvas = cc; this._camCtx = cc.getContext('2d', { willReadFrequently: true });
-      this.camReady = true; this.camPending = false;
-    }).catch(() => { this.camDenied = true; this.camPending = false; });
+    navigator.mediaDevices.getUserMedia({ video: this.CAM_SPEC, audio: false })
+      .then(stream => this._useCam(stream))
+      .catch(() => { this.camDenied = true; this.camPending = false; });
+  },
+  CAM_SPEC: { facingMode: 'user', width: 320, height: 240 },
+  _useCam(stream) {
+    const v = document.createElement('video');
+    v.autoplay = true; v.playsInline = true; v.muted = true;
+    v.srcObject = stream;
+    v.play().catch(() => {});
+    const cc = document.createElement('canvas');
+    cc.width = this.camW; cc.height = this.camH;
+    this._cam = stream; this._camVideo = v;
+    this._camCanvas = cc; this._camCtx = cc.getContext('2d', { willReadFrequently: true });
+    this.camReady = true; this.camPending = false;
+  },
+
+  // Camera and mic in one request, so the player sees one popup on the sensors
+  // screen instead of one each, mid-round. If a device is missing (a laptop
+  // with no camera) the pair fails as a whole, so each is then asked for alone;
+  // a refusal is a refusal of both.
+  enableAV() {
+    const camDone = this._cam || this.camDenied || this.camPending;
+    const micDone = this._mic || this.micDenied || this.micPending;
+    if (camDone && micDone) return;
+    if (camDone || micDone || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      this.enableCam(); this.enableMic(); return;
+    }
+    this.camPending = this.micPending = true;
+    navigator.mediaDevices.getUserMedia({ video: this.CAM_SPEC, audio: true }).then(stream => {
+      this._useCam(new MediaStream(stream.getVideoTracks()));
+      this._useMic(new MediaStream(stream.getAudioTracks()));
+    }).catch(err => {
+      this.camPending = this.micPending = false;
+      if (err && err.name === 'NotAllowedError') { this.camDenied = this.micDenied = true; return; }
+      this.enableCam(); this.enableMic();
+    });
   },
 
   // Sample the camera each step: downscale, diff against the last frame. One
@@ -428,20 +469,23 @@ const Input = {
     if (this._mic || this.micDenied || this.micPending) return;
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { this.micDenied = true; return; }
     this.micPending = true;                       // decision not made yet
-    navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
-      Sfx.unlock();
-      const ac = Sfx.ac || new (window.AudioContext || window.webkitAudioContext)();
-      Sfx.ac = ac;
-      if (ac.state === 'suspended') ac.resume();  // iOS: context starts suspended
-      const src = ac.createMediaStreamSource(stream);
-      const an = ac.createAnalyser();
-      an.fftSize = 256;
-      src.connect(an);
-      this._mic = an;
-      this._micData = new Uint8Array(an.frequencyBinCount);
-      this.micReady = true;
-      this.micPending = false;
-    }).catch(() => { this.micDenied = true; this.micPending = false; });
+    navigator.mediaDevices.getUserMedia({ audio: true })
+      .then(stream => this._useMic(stream))
+      .catch(() => { this.micDenied = true; this.micPending = false; });
+  },
+  _useMic(stream) {
+    Sfx.unlock();
+    const ac = Sfx.ac || new (window.AudioContext || window.webkitAudioContext)();
+    Sfx.ac = ac;
+    if (ac.state === 'suspended') ac.resume();  // iOS: context starts suspended
+    const src = ac.createMediaStreamSource(stream);
+    const an = ac.createAnalyser();
+    an.fftSize = 256;
+    src.connect(an);
+    this._mic = an;
+    this._micData = new Uint8Array(an.frequencyBinCount);
+    this.micReady = true;
+    this.micPending = false;
   },
 
   // Gyro/tilt, for aiming. gamma is the left-right tilt, beta the front-back
@@ -470,7 +514,11 @@ const Input = {
   },
 
   enableMotion() {
-    const add = () => window.addEventListener('devicemotion', e => {
+    // once only: every run used to call this, and each call stacked another
+    // listener that added into _shakeRaw, so shake got stronger every retry
+    if (this._motionOn) return;
+    this._motionOn = true;
+    const add =() => window.addEventListener('devicemotion', e => {
       // rotation rate — the gyro proper. Peak rather than sum, so the reading
       // does not depend on how often the device fires the event.
       const rr = e.rotationRate;
@@ -3099,6 +3147,9 @@ const Engine = {
   // best survives a reload; storage can throw (private mode), so it is optional
   best: (() => { try { return +localStorage.getItem('micromania.best') || 0; } catch (e) { return 0; } })(),
   game: null, isBoss: false, result: null, lastId: null,
+  // camera/mic/motion: null = not asked yet (show the sensors screen before
+  // the first run), true = allowed, false = the player picked touch only
+  sensors: null,
   BOSS_EVERY: 8, SPEEDUP_EVERY: 4,
 
   reset() {
@@ -3147,17 +3198,19 @@ const Engine = {
     Mascot.update(dt);
     const s = this.state;
 
+    // starting a run is handled in release(), inside the tap itself
     if (s === 'TITLE' || s === 'GAMEOVER') {
       Mascot.set(s === 'TITLE' ? 'watch' : 'sad');
-      if (Input.justDown && this.timer <= 0) {
-        Input.enableMotion();
-        Input.enableTilt();
-        Input.enableMic();
-        Sfx.unlock();
-        this.reset();
-        this.state = 'READY';
-        this.timer = 3.2;          // 3 · 2 · 1 · GO, then the first prompt
-        this.readyLast = 4;
+      return;
+    }
+
+    if (s === 'PERMS') {
+      Mascot.set('watch');
+      // ALLOW was tapped: wait out the popup, then go. The cap only matters if
+      // a browser never answers — the games still fall back on their own.
+      if (this.permWait && ((!Input.camPending && !Input.micPending) || this.timer < -20)) {
+        this.sensors = true;
+        this.startRun();
       }
       return;
     }
@@ -3237,6 +3290,53 @@ const Engine = {
     }
   },
 
+  // ── BUTTONS ────────────────────────────────────────────────────────────────
+  // Called straight from the pointer events, so the permission prompts they
+  // raise are inside a user gesture. press() returns true to eat the press.
+  MUTE: { x: CX - 12, y: 0, w: 24, h: TOP },
+  PERM_ALLOW: { x: CX - 50, y: CY + 22, w: 100, h: 24 },
+  PERM_SKIP:  { x: CX - 50, y: CY + 54, w: 100, h: 24 },
+  hit(b, p) { return p.x >= b.x && p.x < b.x + b.w && p.y >= b.y && p.y < b.y + b.h; },
+
+  press(p) {
+    if (this.hit(this.MUTE, p)) { Sfx.toggleMute(); Sfx.unlock(); if (!Sfx.muted) Sfx.tap(); return true; }
+    return this.state === 'PERMS';   // the sensors screen is buttons only
+  },
+
+  release(p) {
+    const s = this.state;
+    if ((s === 'TITLE' || s === 'GAMEOVER') && this.timer <= 0) {
+      Sfx.unlock();
+      if (this.sensors === null) { this.state = 'PERMS'; this.timer = 0.3; this.permWait = false; }
+      else this.startRun();
+    }
+  },
+
+  // The sensors screen eats its presses (see press), so its buttons are
+  // checked here on the raw release instead.
+  permRelease(p) {
+    if (this.state !== 'PERMS' || this.permWait || this.timer > 0) return;
+    if (this.hit(this.PERM_ALLOW, p)) {
+      Sfx.tap();
+      this.permWait = true; this.timer = 0;
+      Input.enableAV(); Input.enableMotion(); Input.enableTilt();
+    } else if (this.hit(this.PERM_SKIP, p)) {
+      // touch only: every game takes its touch fallback, and none asks again
+      Sfx.tap();
+      this.sensors = false;
+      Input.camDenied = Input.micDenied = true;
+      this.startRun();
+    }
+  },
+
+  startRun() {
+    if (this.sensors) { Input.enableAV(); Input.enableMotion(); Input.enableTilt(); }
+    this.reset();
+    this.state = 'READY';
+    this.timer = 3.2;          // 3 · 2 · 1 · GO, then the first prompt
+    this.readyLast = 4;
+  },
+
   // After a round's result (and its photo, if any): game over, a speed-up, or
   // straight on. Shared so a photo win can't skip the speed-up — SQUID is a
   // boss on a multiple of SPEEDUP_EVERY, so that used to happen every run.
@@ -3277,6 +3377,20 @@ const Engine = {
       }
     }
     FX.post();
+    this.drawMute();
+  },
+
+  // speaker in the middle of the HUD band, with sound waves or a cross. Drawn
+  // after the FX so a flash or shake never hides it.
+  drawMute() {
+    const x = CX - 6, y = 4, c = PAL.mid;
+    g.rect(x, y + 3, 3, 4, c);
+    g.rect(x + 3, y + 2, 1, 6, c); g.rect(x + 4, y + 1, 1, 8, c); g.rect(x + 5, y, 1, 10, c);
+    if (Sfx.muted) {
+      for (let i = 0; i < 5; i++) { g.rect(x + 8 + i, y + 2 + i, 1, 1, c); g.rect(x + 12 - i, y + 2 + i, 1, 1, c); }
+    } else {
+      g.rect(x + 8, y + 3, 1, 4, c); g.rect(x + 10, y + 1, 1, 8, c);
+    }
   },
 
   drawScene() {
@@ -3290,6 +3404,20 @@ const Engine = {
       g.text(POOL.length + BOSSES.length + ' microgames', CX, CY + 22, 8, PAL.mid);
       if (Math.floor(this.time * 2) % 2) g.text('TAP TO START', CX, CY + 64, 10, PAL.ink);
       if (this.best) g.text('BEST ' + this.best, CX, BOT, 8, PAL.mid);
+      return;
+    }
+
+    if (s === 'PERMS') {
+      g.text('CAMERA + MIC', CX, CY - 62, 12, PAL.accent);
+      g.text('SOME GAMES SEE YOU MOVE', CX, CY - 40, 7, PAL.ink);
+      g.text('OR HEAR YOU BLOW', CX, CY - 30, 7, PAL.ink);
+      g.text('PHOTOS STAY ON THIS PHONE', CX, CY - 12, 7, PAL.mid);
+      if (this.permWait) { g.text('TAP ALLOW IN THE POPUP', CX, CY + 38, 8, PAL.ink); return; }
+      const A = this.PERM_ALLOW, S = this.PERM_SKIP;
+      g.rect(A.x, A.y, A.w, A.h, PAL.accent);
+      g.text('ALLOW', CX, A.y + 16, 10, PAL.bg);
+      g.box(S.x, S.y, S.w, S.h, PAL.mid);
+      g.text('TOUCH ONLY', CX, S.y + 16, 9, PAL.ink);
       return;
     }
 
@@ -3420,6 +3548,14 @@ document.addEventListener('visibilitychange', () => {
   if (running && Engine.state === 'PLAYING') { Engine.state = 'PROMPT'; Engine.timer = 0.6; }
 });
 
+// Already granted on an earlier visit: no need for the sensors screen, the
+// popup won't show again anyway. Browsers that can't say ask as usual.
+try {
+  Promise.all(['camera', 'microphone'].map(name => navigator.permissions.query({ name })))
+    .then(rs => { if (rs.every(r => r.state === 'granted') && Engine.sensors === null) Engine.sensors = true; })
+    .catch(() => {});
+} catch (e) {}
+
 Assets.load().then(() => requestAnimationFrame(frame));
 
 // ── TEST MENU ────────────────────────────────────────────────────────────────
@@ -3459,6 +3595,7 @@ else {
     list.appendChild(mk('div', 'MICROGAMES', 'devhead'));
     const launch = (C) => {
       Input.enableMotion(); Input.enableTilt(); Input.enableMic(); Sfx.unlock();
+      if (Engine.sensors === null) Engine.sensors = true;
       Engine.reset();
       Engine.testClass = loop ? C : null;
       Engine.testDiff = testDiff;
@@ -3483,9 +3620,6 @@ else {
     const normal = mk('button', '▶ play full run (no test loop)');
     normal.onclick = () => { Engine.testClass = null; Engine.reset(); Engine.state = 'TITLE'; Engine.timer = 0; list.style.display = 'none'; };
     list.appendChild(normal);
-    const mute = mk('button', '🔇 toggle mute');
-    mute.onclick = () => { Sfx.muted = !Sfx.muted; mute.textContent = Sfx.muted ? '🔊 unmute' : '🔇 toggle mute'; };
-    list.appendChild(mute);
   }
   rebuild();
 }

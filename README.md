@@ -11,6 +11,12 @@ Open `index.html` in any modern browser, or visit the deployed URL.
 not from a raw `file://` open. They fall back to touch if the camera is denied,
 so they stay playable anywhere. The deployed Vercel URL is HTTPS.
 
+The first run opens a **sensors screen**: ALLOW asks for camera and mic in one
+popup (plus motion/tilt on iOS), up front, so no round ever stops for a
+permission prompt; TOUCH ONLY plays every game on its touch fallback. It is
+skipped when the browser says both are already granted. The speaker in the
+middle of the top bar mutes sound, and the choice is remembered.
+
 | game | what the camera reads | touch fallback |
 |---|---|---|
 | MOVE | how much you move | tap fast |
