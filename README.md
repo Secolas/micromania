@@ -84,6 +84,14 @@ actually has — a camera game on touch says "TAP FAST". The first time a game
 comes up in a session the card stays up an extra second so it can be read.
 Set it with `how` in a game's meta.
 
+## Scenery
+
+Games play in a place, not on black: a game names a backdrop with `env` in its
+meta — `lawn`, `sky`, `bath`, `snow`, `field@Y` (horizon/ground at Y), `room@Y`
+or `wall@Y` (floor at Y). They use a small set of dark, muted scenery colours
+(`SCENE`) so the sprites and play colours stay on top; each is painted once and
+cached. Camera games keep the plain dark screen so the live view stays the focus.
+
 ## Fake-outs and sounds
 
 Once you have met PAT! or TAP!, about one time in seven it comes back as
