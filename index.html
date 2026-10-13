@@ -992,8 +992,7 @@ const PhotoFX = {
      'lawn'  grass seen from above          'sky'   dusk sky, drifting clouds
      'bath'  bathroom tiles                 'snow'  a night ski slope
      'field@Y'  side view: sky down to a horizon, grass from the ground at Y
-     'room@Y'   a living room: wallpaper down to a floor at Y
-     'wall@Y'   the same room without the picture, for games that use the wall
+     'room@Y'   a living room: wallpaper down to a floor at Y ('wall@Y' is the same)
      'sunny@Y'  a bright day: blue sky, the sun, a flowery meadow from Y
      'beach@Y'  a beach from above: sea down to the waterline at Y, then sand
      'park@Y'   the sunny day with a row of trees and a bench, grass from Y
@@ -1104,13 +1103,9 @@ const Env = {
       R(0, y, W, 2, SCENE.grassHi);
       tufts(y + 3, BOT, Math.max(4, (BOT - y) / 2));
     } else if (kind === 'room' || kind === 'wall') {
-      // striped wallpaper, a picture on the wall, skirting, floorboards
+      // striped wallpaper, skirting, floorboards. (A little framed picture
+      // used to hang here; at this size it read as a stray UI box.)
       for (let i = 0; i < W; i += 12) R(i, TOP, 6, y - TOP, SCENE.wall), R(i + 6, TOP, 6, y - TOP, SCENE.wallHi);
-      if (kind === 'room' && y - TOP > 70) {   // 'wall' is the same room, bare
-        const px = 18, py = TOP + 16;
-        R(px, py, 30, 22, SCENE.skirt); R(px + 2, py + 2, 26, 18, SCENE.sky1);
-        R(px + 2, py + 13, 26, 7, SCENE.hill); R(px + 18, py + 5, 4, 4, PAL.accent);   // a little landscape
-      }
       R(0, y - 4, W, 4, SCENE.skirt);
       R(0, y, W, BOT - y, SCENE.floor);
       for (let fy = y + 7, row = 0; fy < BOT; fy += 7, row++) {
@@ -4461,16 +4456,17 @@ const Engine = {
       // DEBUG: what the camera is actually reading, for tuning thresholds on a
       // real phone — a real lens reads nothing like a webcam test pattern
       const hint = this.game.meta.hint;
+      const dx = Input.camReady ? 12 + Math.round(32 * Input.camAspect()) : 2;   // clear of the live view
       if (DEBUG && ['move', 'still', 'cover'].includes(hint)) {
         const cam = Input.camReady ? 'cam' : Input.camDenied ? 'NOCAM' : '…';
         const tl = Input.tiltReady ? ' T' + Input.tiltX.toFixed(2) + '/' + Input.tiltY.toFixed(2) : ' notilt';
         g.text(cam + ' m' + Input.motion.toFixed(2) + ' x' + Input.motionX.toFixed(2) +
                ' y' + Input.motionY.toFixed(2) + ' b' + Input.bright.toFixed(2) + tl,
-               2, H - 8, 6, PAL.mid, 'left');
+               dx, H - 8, 6, PAL.mid, 'left');
       } else if (DEBUG && (hint === 'shake' || hint === 'blow')) {
         g.text('shake' + Input.shake.toFixed(2) + (Input.gyroReady ? ' gyro' : ' NOGYRO') +
                ' blow' + Input.blow.toFixed(2) + (Input.micReady ? (Input.blowOk ? ' PUFF' : ' mic') : ' NOMIC'),
-               2, H - 8, 6, PAL.mid, 'left');
+               dx, H - 8, 6, PAL.mid, 'left');
       }
     }
     FX.post();
