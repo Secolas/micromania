@@ -391,7 +391,7 @@ const Beat = {
 const Input = {
   x: CX, y: CY, down: false, justDown: false, justUp: false,
   dx: 0, dy: 0, moveDist: 0, holdTime: 0,
-  taps: [], swipe: null, shake: 0, blow: 0,
+  taps: [], swipe: null, shake: 0, blow: 0, loud: 0,
   _rawDx: 0, _rawDy: 0, _sx: 0, _sy: 0, _st: 0, _travel: 0,
   _pendingTaps: [], _pendingSwipe: null, _shakeRaw: 0, _lastAcc: null,
   _mic: null, _micData: null, _blowRaw: 0, micReady: false, micDenied: false, micPending: false, blowOk: false,
@@ -729,9 +729,14 @@ const Input = {
       const bottomHeavy = loAvg / (hiAvg + 6);           // low vs high content
       this.blowOk = flat > 0.4 && bottomHeavy > 1.6;     // looks like a puff (for DEBUG)
       raw = this.blowOk ? level : 0;
+      // loud: any sound at all across the voice range — a shout, not a puff
+      let all = 0; for (let i = lo0; i < hi1; i++) all += d[i];
+      this._loudRaw = Math.max(0, (all / (hi1 - lo0) - 34) / 60);
     } else {
       raw = this.justDown ? 1.6 : 0;                     // tap fallback (over-driven; see integrator)
+      this._loudRaw = this.justDown ? 1.6 : 0;
     }
+    this.loud = Math.min(1, this.loud * 0.7 + (this._loudRaw || 0) * 0.3);
     // Unity-gain low-pass: blow tracks the actual level instead of the old
     // blow*0.75 + raw, which had a 4x DC gain that let any sustained sound pile
     // up to full — the real reason it felt so sensitive. A steady tone now
@@ -947,6 +952,7 @@ const g = {
       case 'mash':  this.circle(x - 6, y + 3, 3, PAL.mid); this.circle(x, y, 4, c); this.circle(x + 6, y - 3, 3, PAL.mid); break;
       case 'hold':  this.circle(x, y, 4, c); this.box(x - 9, y - 9, 18, 18, PAL.mid); this.box(x - 12, y - 12, 24, 24, PAL.mid); break;
       case 'wait':  this.circle(x, y, 7, PAL.mid); this.line(x, y, x, y - 5, c, 2); this.line(x, y, x + 4, y, c, 2); break;
+      case 'shout': this.circle(x - 6, y, 6, c); this.circle(x - 6, y + 1, 3, PAL.bad); for (let i = 0; i < 3; i++) this.line(x + 3, y - 6 + i * 6, x + 12, y - 9 + i * 9, c, 2); break;
       case 'blow':  this.circle(x - 6, y, 5, c); for (let i = 0; i < 3; i++) this.line(x, y - 4 + i * 4, x + 10, y - 6 + i * 6, PAL.mid, 2); break;
       case 'move':  this.box(x - 10, y - 7, 20, 14, c); this.circle(x, y, 3, c); this.line(x - 14, y, x - 11, y, PAL.mid, 2); this.line(x + 11, y, x + 14, y, PAL.mid, 2); this.line(x, y - 11, x, y - 8, PAL.mid, 2); break;
       case 'trace': this.line(x - 9, y + 5, x - 3, y - 6, c, 2); this.line(x - 3, y - 6, x + 3, y + 5, c, 2); this.line(x + 3, y + 5, x + 9, y - 6, c, 2); break;
@@ -3978,15 +3984,164 @@ class SquidDoll extends Microgame {
 }
 
 // ── REGISTRY ─────────────────────────────────────────────────────────────────
+// 47. DIG — swipe to dig a hole in the sand until the bone turns up
+class BeachDig extends Microgame {
+  static meta = { id: 'dig', env: 'beach@118', prompt: 'DIG!', hint: 'swipe', duration: 4.2,
+    how: 'SWIPE AGAIN AND AGAIN\nTO DIG UP THE BONE' };
+  init() {
+    this.need = this.byD(4, 5, 7); this.dug = 0;
+    this.sand = []; this.pop = 0; this.found = 0;
+    this.hx = CX; this.hy = 192;                     // the hole
+  }
+  update(dt, input) {
+    if (this.pop > 0) this.pop -= dt;
+    if (this.found > 0) { this.found += dt; if (this.found > 0.45 && !this.finished) this.succeed(); }
+    else if (input.swipe) {
+      // every swipe is a scoop: the hole gets deeper and sand flies back
+      this.dug++; this.pop = 0.18;
+      Sfx.noise(0.07, 0.06, 900); buzz(12);
+      for (let i = 0; i < 9; i++) this.sand.push({ x: this.hx + (Math.random() - 0.5) * 20, y: this.hy + 4, vx: (Math.random() - 0.5) * 120, vy: 40 + Math.random() * 90, t: 0 });
+      if (this.dug >= this.need) { this.found = 0.001; Sfx.win(); FX.burst(this.hx, this.hy, PAL.accent, 12, 60); }
+    }
+    for (const p of this.sand) { p.t += dt; p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 160 * dt; }
+    this.sand = this.sand.filter(p => p.t < 0.6);
+  }
+  draw(g) {
+    g.clear();
+    const k = Math.min(1, this.dug / this.need), rw = 12 + k * 18, rh = 6 + k * 8;
+    // the sand pile thrown up behind the dog, and the hole getting deeper
+    ctx.fillStyle = SCENE.sandLo; ctx.beginPath(); ctx.ellipse(this.hx + 30, this.hy + 6, 8 + k * 12, 4 + k * 6, 0, 0, 6.2832); ctx.fill();
+    ctx.fillStyle = SCENE.wetSand; ctx.beginPath(); ctx.ellipse(this.hx, this.hy, rw + 3, rh + 2, 0, 0, 6.2832); ctx.fill();
+    ctx.fillStyle = SCENE.trunk; ctx.beginPath(); ctx.ellipse(this.hx, this.hy + 1, rw, rh, 0, 0, 6.2832); ctx.fill();
+    if (this.dug === 0) { g.line(this.hx - 7, this.hy - 7, this.hx + 7, this.hy + 7, PAL.bad, 3); g.line(this.hx + 7, this.hy - 7, this.hx - 7, this.hy + 7, PAL.bad, 3); }   // X marks the spot
+    if (this.found > 0) {                                       // the bone rises out of the hole
+      const up = Math.min(1, this.found / 0.25) * 16;
+      g.bone(this.hx, this.hy - up, 26, PAL.bg); g.bone(this.hx, this.hy - up - 1, 24, PAL.ink);
+    }
+    // the shiba from behind, paws going, bobbing on each scoop
+    const bob = this.pop > 0 ? -3 : 0;
+    g.sprite('hero', this.hx, this.hy + 34 + bob, { w: 34, h: 42, frame: this.pop > 0 ? Math.floor(this.t * 30) % 9 : 0 });
+    for (const p of this.sand) { ctx.globalAlpha = 1 - p.t / 0.6; g.rect(p.x, p.y, 3, 3, SCENE.sandLo); ctx.globalAlpha = 1; }
+    for (let i = 0; i < this.need; i++) g.rect(CX - this.need * 5 + i * 10, BOT - 14, 7, 7, i < this.dug ? PAL.accent : PAL.bg);
+    g.text(this.found > 0 ? 'FOUND IT!' : 'SWIPE TO DIG!', CX, TOP + 26, 9, PAL.ink);
+  }
+}
+
+// 48. BOSS — a giant shiba asleep in its bed: shout it awake before time's up
+class WakeUp extends Microgame {
+  static meta = { id: 'wake', env: 'bedroom@232', prompt: 'WAKE UP!', hint: 'shout', duration: 4.6, photo: true, photoCap: 'RISE AND SHINE!',
+    how: { mic: 'SHOUT INTO THE MIC\nWAKE THE BIG SHIBA!', touch: 'TAP AS FAST AS YOU CAN\nTO WAKE IT UP' } };
+  init() {
+    Input.enableMic(); Input.enableCam();
+    this.paused = Input.micPending; this.wait = 0;
+    this.fill = 0; this.need = this.byD(1.4, 1.8, 2.2);
+    this.woke = 0; this.snoreT = 0.4; this.peak = 0;
+    sleepFace();
+  }
+  update(dt, input) {
+    if (this.paused) { this.wait += dt; if (!Input.micPending || this.wait > 1.2) this.paused = false; return; }
+    if (this.woke > 0) { this.woke += dt; if (this.woke > 0.5 && !this.finished) this.succeed(); return; }
+    // loud fills it, quiet lets it drift back off to sleep. With no mic every
+    // tap is a nudge instead — a tap's burst of "loudness" fades too fast to count.
+    if (Input.micReady) {
+      const l = input.loud;
+      this.fill = Math.max(0, this.fill + (l > 0.15 ? l * dt * 1.3 : -dt * 0.35));
+    } else this.fill = Math.max(0, this.fill + (input.justDown ? 0.13 : -dt * 0.25));
+    const stage = Math.floor(Math.min(0.99, this.fill / this.need) * 3);
+    if (stage > this.peak) { this.peak = stage; Sfx.squeak(); buzz(20); FX.shake(2); }
+    if (this.fill < this.need * 0.2) { this.snoreT -= dt; if (this.snoreT <= 0) { Sfx.snore(); this.snoreT = 1.2; } }
+    if (this.fill >= this.need) { this.woke = 0.001; Sfx.bark(); FX.shake(6); buzz(60); }
+  }
+  draw(g) {
+    g.clear();
+    if (this.paused) { g.text('ALLOW MIC…', CX, CY - 6, 11, PAL.ink); g.text('(then shout!)', CX, CY + 12, 7, PAL.mid); return; }
+    const k = Math.min(1, this.fill / this.need), stir = k > 0.33, awake = this.woke > 0;
+    // a huge dog bed across the floor
+    ctx.fillStyle = SCENE.trunk; ctx.beginPath(); ctx.ellipse(CX, 240, 84, 22, 0, 0, 6.2832); ctx.fill();
+    ctx.fillStyle = PAL.bad; ctx.beginPath(); ctx.ellipse(CX, 237, 72, 14, 0, 0, 6.2832); ctx.fill();
+    const breath = Math.sin(this.t * 2.2) * 3, j = (Math.random() - 0.5) * k * 8;
+    const jump = awake ? -Math.sin(Math.min(1, this.woke / 0.3) * Math.PI) * 26 : 0;
+    ctx.save();
+    ctx.translate(CX + j, 186 - breath * 0.5 + jump);
+    ctx.rotate(awake ? 0 : -0.3 + k * 0.2);
+    g.sprite(awake || stir ? 'face' : 'sleepface', 0, 0, { w: 128 + (awake ? 10 : 0), h: 132 + breath, frame: awake ? 0 : stir ? 5 : 0 });
+    ctx.restore();
+    if (awake) g.text('!!', CX + 58, 110, 22, PAL.bad);
+    else if (k > 0.66) g.text('!?', CX + 56, 118 + Math.sin(this.t * 14) * 2, 16, PAL.bad);
+    else if (stir) g.text('?', CX + 54, 122, 14, PAL.bad);
+    else for (let i = 0; i < 3; i++) {
+      const z = (this.t * 0.5 + i / 3) % 1;
+      ctx.globalAlpha = 1 - z; g.text('Z', CX + 48 + z * 26 + i * 4, 120 - z * 52, 12 + i * 4, PAL.ink); ctx.globalAlpha = 1;
+    }
+    // the wake-up meter: how loud you've been, draining while you're quiet
+    g.text(Input.micReady ? 'SHOUT!' : 'TAP TAP TAP!', CX, TOP + 26, 11, PAL.accent);
+    g.bar(30, TOP + 34, W - 60, 6, k, k > 0.66 ? PAL.bad : PAL.accent);
+    // sound rings off the speaker while you're loud
+    if (Input.loud > 0.2 && !awake) for (let i = 0; i < 3; i++) { ctx.globalAlpha = Input.loud * (1 - i / 3); ctx.strokeStyle = PAL.ink; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(CX, 300, 12 + i * 10 + (this.t * 40 % 10), Math.PI * 1.15, Math.PI * 1.85); ctx.stroke(); ctx.globalAlpha = 1; }
+  }
+}
+
+// 49. BOSS — bath time: shake the phone to fling the suds off a soapy shiba
+class BathTime extends Microgame {
+  static meta = { id: 'bath', env: 'bath', prompt: 'BATH TIME!', hint: 'shake', duration: 4.4,
+    how: { motion: 'SHAKE YOUR PHONE\nSHAKE OFF ALL THE SUDS', touch: 'WIGGLE YOUR FINGER FAST\nSHAKE OFF ALL THE SUDS' } };
+  init() {
+    this.n = this.byD(12, 16, 20);
+    this.suds = []; for (let i = 0; i < this.n; i++) this.suds.push(this.newSud());
+    this.flying = []; this.fling = 0; this.grow = 0; this.every = this.byD(1.0, 0.8, 0.6); this.done = 0;
+  }
+  newSud() {   // a bubble somewhere on the dog's head or the top of the tub
+    const a = Math.random() * 6.2832, r = Math.random();
+    return Math.random() < 0.6 ? { x: CX + Math.cos(a) * r * 26, y: 150 + Math.sin(a) * r * 22, r: 5 + Math.random() * 4 }
+                               : { x: 46 + Math.random() * 88, y: 182 + Math.random() * 6, r: 6 + Math.random() * 5 };
+  }
+  update(dt, input) {
+    if (this.done > 0) { this.done += dt; if (this.done > 0.45 && !this.finished) this.succeed(); return; }
+    // shaking flings suds off one by one; stop and the bubble bath foams back up
+    this.fling += input.shake * dt * 7;
+    while (this.fling >= 1 && this.suds.length) {
+      this.fling -= 1;
+      const s = this.suds.splice(Math.floor(Math.random() * this.suds.length), 1)[0];
+      const dir = s.x < CX ? -1 : 1;
+      this.flying.push({ x: s.x, y: s.y, r: s.r, vx: dir * (60 + Math.random() * 120), vy: -80 - Math.random() * 80, t: 0 });
+      Sfx.blip(1200 + Math.random() * 600, 0.03, 'sine', 0.04);
+    }
+    if (input.shake < 0.12) { this.grow += dt; if (this.grow >= this.every && this.suds.length < this.n) { this.grow = 0; this.suds.push(this.newSud()); } }
+    else this.grow = 0;
+    if (!this.suds.length) { this.done = 0.001; Sfx.splash(); FX.burst(CX, 150, PAL.ink, 14, 70); }
+    for (const f of this.flying) { f.t += dt; f.x += f.vx * dt; f.y += f.vy * dt; f.vy += 260 * dt; }
+    this.flying = this.flying.filter(f => f.t < 0.8);
+  }
+  bubble(x, y, r) { g.circle(x, y, r + 1, PAL.mid); g.circle(x, y, r, PAL.ink); g.circle(x - r * 0.35, y - r * 0.35, Math.max(1, r * 0.22), SCENE.dayCloud); }
+  draw(g) {
+    g.clear();
+    const j = (Math.random() - 0.5) * Input.shake * 8, clean = this.done > 0;
+    // the shiba sits in the tub, squinting under the suds; clean = all smiles
+    g.sprite('face', CX + j, 152, { w: 64, h: 66, frame: clean ? 0 : 1 });
+    // the tub: white enamel, a rim, little feet, the water line
+    g.rect(28, 178, 124, 52, PAL.ink); g.rect(24, 174, 132, 8, PAL.ink); g.rect(24, 180, 132, 2, PAL.mid);
+    g.rect(34, 230, 8, 8, PAL.mid); g.rect(138, 230, 8, 8, PAL.mid);
+    g.rect(36, 186, 108, 2, SCENE.sea1);
+    // a rubber duck riding the bath
+    const dx = 120 + Math.sin(this.t * 2) * 6;
+    g.circle(dx, 176, 6, PAL.accent); g.circle(dx + 5, 170, 4, PAL.accent); g.rect(dx + 8, 169, 4, 2, PAL.bad); g.rect(dx + 5, 168, 1, 1, PAL.bg);
+    for (const s of this.suds) this.bubble(s.x + j * 0.5, s.y, s.r);
+    for (const f of this.flying) { ctx.globalAlpha = 1 - f.t / 0.8; this.bubble(f.x, f.y, f.r); ctx.globalAlpha = 1; }
+    g.text(clean ? 'SQUEAKY CLEAN!' : 'SHAKE!', CX, TOP + 26, 11, PAL.accent);
+    g.text('SUDS ' + this.suds.length, CX, BOT - 10, 9, PAL.ink);
+  }
+}
+
 const POOL = [
   TapBug, CatchCoin, RubClean, PullTissue, SodaShake, SwipeArrow, PatShiba, HoldRelease, DontTap,
   StopBar, FollowDot, TapOrder, OddOneOut, FeedDog, WhackMole, PumpBalloon, CutRope,
   BlowSail, TracePath, GrabCount, FlickShot,
   Flappy, Crossy, Doodle, PianoTiles, DinoRun, KnockStack, MoveCam, DryShiba, LeanDodge,
   FreezeStatue, SwatFly, HideLens, DanceBeat,
-  BalanceBall, PourCup, SteerRun, BlowCandles, Dandelion, StackBlocks, SortTreats
+  BalanceBall, PourCup, SteerRun, BlowCandles, Dandelion, StackBlocks, SortTreats,
+  BeachDig
 ];
-const BOSSES = [Dodge, Squeeze, RedLight, Juggle, SquidDoll];
+const BOSSES = [Dodge, Squeeze, RedLight, Juggle, SquidDoll, WakeUp, BathTime];
 
 /* ── MASCOT ───────────────────────────────────────────────────────────────────
    The shiba is anchored on the shelf below the play field and NEVER moves — no
@@ -4668,8 +4823,8 @@ const Engine = {
   trackShot() {
     const gm = this.game, m = gm.meta;
     if (!m.photo || !this.shootsNow() || gm.t < 0.25 || gm.finished) return;
-    const by = m.hint === 'blow' ? 'blow' : m.hint === 'still' ? 'still' : 'motion';
-    const v = by === 'blow' ? Input.blow : by === 'still' ? 1 - Input.motion : Input.motion;
+    const by = m.hint === 'blow' ? 'blow' : m.hint === 'shout' ? 'loud' : m.hint === 'still' ? 'still' : 'motion';
+    const v = by === 'blow' ? Input.blow : by === 'loud' ? Input.loud : by === 'still' ? 1 - Input.motion : Input.motion;
     if (v > this.shotBest + 0.03 && this.time - this.shotAt > 0.15) {
       const shot = Input.snapPhoto();
       if (shot) { this.shot = shot; this.shotBest = v; this.shotAt = this.time; this.shotFlash = 0.12; }
