@@ -4132,6 +4132,142 @@ class BathTime extends Microgame {
   }
 }
 
+// 50. WALKIES — draw one path from 1 through every square, numbers in order
+// (a pocket-sized take on the classic one-line path puzzle); the shiba walks it
+class Walkies extends Microgame {
+  static meta = { id: 'walkies', env: 'lawn', prompt: 'WALKIES!', hint: 'trace', duration: 7.0,
+    how: 'DRAG FROM 1 THROUGH EVERY\nSQUARE, NUMBERS IN ORDER' };
+  init() {
+    const n = this.n = this.byD(3, 4, 4), N = n * n;
+    this.cs = Math.floor(150 / n);
+    this.bx = Math.round(CX - this.cs * n / 2); this.by = Math.round(CY - this.cs * n / 2 + 4);
+    // a random route that covers the board: the puzzle is built from a real answer
+    this.sol = Walkies.route(n);
+    const k = this.k = this.byD(3, 4, 5);
+    this.num = new Map();
+    // 1 at the start, the last number at the end, the rest spread along the way
+    let prev = 0;
+    for (let i = 0; i < k; i++) {
+      let at = i === 0 ? 0 : i === k - 1 ? N - 1
+             : Math.round(i * (N - 1) / (k - 1) + (Math.random() - 0.5) * 1.6);
+      if (i > 0 && i < k - 1) at = Math.max(prev + 1, Math.min(N - 2 - (k - 2 - i), at));
+      prev = at;
+      this.num.set(this.sol[at], i + 1);
+    }
+    // hard: a couple of walls, only ever between squares the answer doesn't step across
+    this.walls = new Set();
+    if (this.d >= 3) {
+      const step = new Set(); for (let i = 1; i < N; i++) step.add(Walkies.key(this.sol[i - 1], this.sol[i]));
+      const cand = [];
+      for (let c = 0; c < N; c++) { if (c % n < n - 1) cand.push([c, c + 1]); if (c + n < N) cand.push([c, c + n]); }
+      for (const [a, b] of cand.sort(() => Math.random() - 0.5)) {
+        if (this.walls.size >= 2) break;
+        if (!step.has(Walkies.key(a, b))) this.walls.add(Walkies.key(a, b));
+      }
+    }
+    this.path = []; this.next = 1;
+    this.sx = null; this.sy = null; this.face = 'swipeup'; this.walkT = 0;
+  }
+  static key(a, b) { return Math.min(a, b) + '-' + Math.max(a, b); }
+  // random depth-first walk that backs up when stuck; tiny boards, so it's instant
+  static route(n) {
+    const N = n * n;
+    for (;;) {
+      const seen = new Array(N).fill(false), path = [Math.floor(Math.random() * N)];
+      seen[path[0]] = true;
+      const go = () => {
+        if (path.length === N) return true;
+        const c = path[path.length - 1], r = Math.floor(c / n), q = c % n;
+        const nb = [[r - 1, q], [r + 1, q], [r, q - 1], [r, q + 1]].filter(([a, b]) => a >= 0 && b >= 0 && a < n && b < n)
+          .map(([a, b]) => a * n + b).filter(x => !seen[x]).sort(() => Math.random() - 0.5);
+        for (const x of nb) { seen[x] = true; path.push(x); if (go()) return true; path.pop(); seen[x] = false; }
+        return false;
+      };
+      if (go()) return path;
+    }
+  }
+  cell(x, y) {
+    const q = Math.floor((x - this.bx) / this.cs), r = Math.floor((y - this.by) / this.cs);
+    return q >= 0 && r >= 0 && q < this.n && r < this.n ? r * this.n + q : -1;
+  }
+  centre(c) { return [this.bx + (c % this.n + 0.5) * this.cs, this.by + (Math.floor(c / this.n) + 0.5) * this.cs]; }
+  near(a, b) {
+    const n = this.n, d = Math.abs(a - b);
+    return (d === n || (d === 1 && Math.floor(a / n) === Math.floor(b / n))) && !this.walls.has(Walkies.key(a, b));
+  }
+  update(dt, input) {
+    const N = this.n * this.n;
+    if (input.down) {
+      const c = this.cell(input.x, input.y);
+      if (c >= 0) {
+        if (!this.path.length) { if (this.num.get(c) === 1) { this.path.push(c); this.next = 2; Sfx.boop(); } }
+        else {
+          const end = this.path[this.path.length - 1];
+          if (this.path.length > 1 && c === this.path[this.path.length - 2]) {            // back up a step
+            const gone = this.path.pop(); if (this.num.has(gone)) this.next = this.num.get(gone);
+            Sfx.tick();
+          } else if (c !== end && this.near(end, c) && !this.path.includes(c)) {
+            const m = this.num.get(c);
+            const ok = !m || (m === this.next && (m < this.k || this.path.length === N - 1));   // last number ends the walk
+            if (ok) {
+              this.path.push(c);
+              if (m) { this.next = m + 1; Sfx.boop(); FX.hit(...this.centre(c), PAL.accent); buzz(15); }
+              else Sfx.step(Math.min(7, this.path.length % 8));
+              if (this.path.length === N && !this.finished) { Sfx.bark(); this.succeed(); }
+            }
+          }
+        }
+      }
+    }
+    // the shiba trots after the head of the path, facing the way it's going
+    if (this.path.length) {
+      const [tx, ty] = this.centre(this.path[this.path.length - 1]);
+      if (this.sx === null) { this.sx = tx; this.sy = ty; }
+      const dx = tx - this.sx, dy = ty - this.sy;
+      if (Math.abs(dx) + Math.abs(dy) > 1) {
+        this.face = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'swiperight' : 'swipeleft') : (dy > 0 ? 'swipeup' : 'swipedown');
+        this.walkT += dt;
+      }
+      const k = Math.min(1, dt * 14); this.sx += dx * k; this.sy += dy * k;
+    }
+  }
+  draw(g) {
+    g.clear();
+    const n = this.n, cs = this.cs, bx = this.bx, by = this.by, W2 = cs * n;
+    // the board: a pale card on the lawn, with grid lines
+    g.rect(bx - 4, by - 4, W2 + 8, W2 + 8, PAL.bg);
+    g.rect(bx, by, W2, W2, SCENE.dayCloud);
+    const vis = new Set(this.path);
+    ctx.globalAlpha = 0.35; for (const c of vis) { const [x, y] = this.centre(c); g.rect(x - cs / 2, y - cs / 2, cs, cs, PAL.accent); } ctx.globalAlpha = 1;
+    for (let i = 1; i < n; i++) { g.rect(bx + i * cs, by, 1, W2, PAL.mid); g.rect(bx, by + i * cs, W2, 1, PAL.mid); }
+    // the trail so far
+    if (this.path.length > 1) {
+      ctx.strokeStyle = PAL.accent; ctx.lineWidth = cs * 0.34; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      ctx.beginPath(); this.path.forEach((c, i) => { const [x, y] = this.centre(c); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.stroke();
+    }
+    // walls: thick black bars on the grid line between two squares
+    for (const w of this.walls) {
+      const [a, b] = w.split('-').map(Number), [ax, ay] = this.centre(a);
+      if (b - a === 1) g.rect(ax + cs / 2 - 2, ay - cs / 2 - 1, 5, cs + 2, PAL.bg);
+      else g.rect(ax - cs / 2 - 1, ay + cs / 2 - 2, cs + 2, 5, PAL.bg);
+    }
+    // the numbers are the game's treat bone: the next one to fetch wiggles,
+    // and they go grey once the shiba has walked over and picked them up
+    const bw = cs * 0.84, fs = Math.round(Math.max(8, cs * 0.3));
+    for (const [c, m] of this.num) {
+      const [x, y] = this.centre(c), got = m < this.next, nxt = m === this.next;
+      ctx.save(); ctx.translate(x, y); if (nxt) ctx.rotate(Math.sin(this.t * 9) * 0.14);
+      g.bone(0, 0, bw, got ? PAL.mid : PAL.accent);
+      g.text(String(m), 0, fs * 0.36, fs, PAL.bg);
+      ctx.restore();
+    }
+    // the shiba walking the route
+    if (this.sx !== null) g.sprite(this.face, this.sx, this.sy - cs * 0.12, { w: cs * 1.05, h: cs * 1.05, frame: Math.floor(this.walkT * 14) % 9 });
+    const left = n * n - this.path.length;
+    g.text(this.path.length ? (left ? left + ' TO GO' : 'GOOD WALK!') : 'START AT 1', CX, by - 12, 9, PAL.ink);
+  }
+}
+
 const POOL = [
   TapBug, CatchCoin, RubClean, PullTissue, SodaShake, SwipeArrow, PatShiba, HoldRelease, DontTap,
   StopBar, FollowDot, TapOrder, OddOneOut, FeedDog, WhackMole, PumpBalloon, CutRope,
@@ -4139,7 +4275,7 @@ const POOL = [
   Flappy, Crossy, Doodle, PianoTiles, DinoRun, KnockStack, MoveCam, DryShiba, LeanDodge,
   FreezeStatue, SwatFly, HideLens, DanceBeat,
   BalanceBall, PourCup, SteerRun, BlowCandles, Dandelion, StackBlocks, SortTreats,
-  BeachDig
+  BeachDig, Walkies
 ];
 const BOSSES = [Dodge, Squeeze, RedLight, Juggle, SquidDoll, WakeUp, BathTime];
 
