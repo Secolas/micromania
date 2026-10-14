@@ -88,9 +88,11 @@ Games play in a place, not on black: a game names a backdrop with `env` in its
 meta — `lawn`, `sky`, `bath`, `snow`, `field@Y` (horizon/ground at Y), `room@Y`
 or `wall@Y` (floor at Y), and four bright ones: `sunny@Y` (PUFF), `beach@Y`
 (FETCH), `park@Y` (LEAP) and `nature@Y` (SWAT — the sunny day with far mountains
-and a pine forest, so the winged shiba buzzes around open sky). They use a small set of dark, muted scenery colours
+and a pine forest, so the winged shiba buzzes around open sky). DANCE has a
+`disco@Y` club with a mirror ball and floor tiles that flash on the beat, and
+HIDE plays `night@Y` — moon, stars, a fence and a house with one lit window. They use a small set of dark, muted scenery colours
 (`SCENE`) so the sprites and play colours stay on top; each is painted once and
-cached. Most camera games keep the plain dark screen so the live view stays the focus.
+cached. Every game has a scene now; the live camera view sits in the black shelf below it.
 
 ## Fake-outs and sounds
 
