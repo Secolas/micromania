@@ -4382,17 +4382,35 @@ const Run = {
   // art is [sprite, frame, scale?] — scale for sheets with roomy frames, like
   // the 120px runners; GOLDEN BONE draws its own bone
   TREATS: [
-    { id: 'zoom',  name: 'ZOOMIES',     tag: 'ZOOM', art: ['swiperight', 0, 1.6], price: 5, lines: ['DRAG GAMES', '+20 CHIPS'] },
-    { id: 'star',  name: 'CAMERA STAR', tag: 'STAR', art: ['flydog', 3],     price: 6, lines: ['MOVE GAMES', 'x2 CHIPS'] },
-    { id: 'lung',  name: 'BIG LUNGS',   tag: 'LUNG', art: ['pumpdog', 6],    price: 5, lines: ['BLOW + SHAKE', '+4 MULT'] },
+    // one treat per group of games (see group() below)
+    { id: 'paws',  name: 'QUICK PAWS',  tag: 'PAWS', art: ['whack', 0],      price: 4, group: 'TAP',    lines: ['TAP GAMES', '+15 CHIPS'] },
+    { id: 'zoom',  name: 'ZOOMIES',     tag: 'ZOOM', art: ['swiperight', 0, 1.6], price: 5, group: 'DRAG', lines: ['DRAG GAMES', '+20 CHIPS'] },
+    { id: 'star',  name: 'CAMERA STAR', tag: 'STAR', art: ['flydog', 3],     price: 6, group: 'CAMERA', lines: ['CAMERA GAMES', 'x2 CHIPS'] },
+    { id: 'lung',  name: 'BIG LUNGS',   tag: 'LUNG', art: ['pumpdog', 6],    price: 5, group: 'BLOW',   lines: ['BLOW GAMES', '+4 MULT'] },
+    { id: 'wiggle', name: 'WIGGLE BUTT', tag: 'WIGL', art: ['dryshake', 0],  price: 5, group: 'SHAKE',  lines: ['SHAKE GAMES', '+4 MULT'] },
     { id: 'hot',   name: 'HOT STREAK',  tag: 'HOT',  art: ['face', 0],       price: 6, lines: ['STREAK MULT', 'COUNTS x2'] },
     { id: 'good',  name: 'GOOD BOY',    tag: 'GOOD', art: ['shiba', 3],      price: 5, lines: ['1ST FAIL EACH', 'STAGE IS FREE'] },
     { id: 'fast',  name: 'SPEEDY',      tag: 'FAST', art: ['runjump', 2],    price: 4, lines: ['SPEED BONUS', 'x2'] },
     { id: 'gold',  name: 'GOLDEN BONE', tag: 'GOLD', art: null,              price: 4, lines: ['+3 BONES', 'EVERY STAGE'] },
     { id: 'chonk', name: 'CHONK',       tag: 'CHNK', art: ['shaketable', 0], price: 4, lines: ['+1 GAME/STAGE', '-1 SLOT'] },
   ],
-  // which games a treat counts, by their control pictogram
-  DRAG: ['drag', 'trace', 'flick'], MOVE: ['move', 'still', 'cover'], LUNG: ['blow', 'shake'],
+  // Every microgame belongs to one group, by what you actually do with the
+  // phone — not by its pictogram, which says MOVE for tilting too:
+  //   BLOW    the mic (blow, shout)        SHAKE   the phone itself (shake, tilt)
+  //   CAMERA  your body in front of it     DRAG    finger along the glass (drag, swipe, rub)
+  //   TAP     everything else on the glass (tap, mash, hold, wait)
+  // A game can name its own with meta.group.
+  group(m) {
+    if (m.group) return m.group;
+    const how = typeof m.how === 'object' && m.how ? m.how : {};
+    if (how.mic) return 'BLOW';
+    if (how.tilt || how.motion) return 'SHAKE';
+    if (how.cam || m.cam) return 'CAMERA';
+    if (['drag', 'trace', 'flick', 'swipe', 'rub'].includes(m.hint)) return 'DRAG';
+    return 'TAP';
+  },
+  // owned treats that boost this game's group
+  boosts(m) { const g = this.group(m); return this.TREATS.filter(t => t.group === g && this.has(t.id)); },
 
   world: 1, stage: 0, bones: 0, treats: [], score: 0, left: 0, played: 0, streak: 0,
   freeFail: false, last: null, payout: [], shop: [], reroll: 2,
@@ -4448,11 +4466,14 @@ const Run = {
     let bonus = m.winOnTimeout ? 10 : Math.round(25 * remain);
     if (this.has('fast')) bonus *= 2;
     if (bonus) { chips += bonus; rows.push([this.has('fast') ? 'SPEEDY' : 'SPEED', '+' + bonus, this.has('fast') ? PAL.accent : PAL.ink]); }
-    if (this.has('zoom') && this.DRAG.includes(m.hint)) { chips += 20; rows.push(['ZOOMIES', '+20', PAL.accent]); }
-    if (this.has('star') && this.MOVE.includes(m.hint)) { chips *= 2; rows.push(['CAMERA STAR', 'x2 CHIPS', PAL.accent]); }
+    const grp = this.group(m);
+    if (this.has('paws') && grp === 'TAP')  { chips += 15; rows.push(['QUICK PAWS', '+15', PAL.accent]); }
+    if (this.has('zoom') && grp === 'DRAG') { chips += 20; rows.push(['ZOOMIES', '+20', PAL.accent]); }
+    if (this.has('star') && grp === 'CAMERA') { chips *= 2; rows.push(['CAMERA STAR', 'x2 CHIPS', PAL.accent]); }
     let mult = 1 + this.streak * (this.has('hot') ? 2 : 1);
     if (this.streak) rows.push([this.has('hot') ? 'HOT STREAK' : 'STREAK', '+' + (mult - 1) + ' MULT', this.has('hot') ? PAL.accent : PAL.bad]);
-    if (this.has('lung') && this.LUNG.includes(m.hint)) { mult += 4; rows.push(['BIG LUNGS', '+4 MULT', PAL.accent]); }
+    if (this.has('lung') && grp === 'BLOW')  { mult += 4; rows.push(['BIG LUNGS', '+4 MULT', PAL.accent]); }
+    if (this.has('wiggle') && grp === 'SHAKE') { mult += 4; rows.push(['WIGGLE BUTT', '+4 MULT', PAL.accent]); }
     this.streak++;
     const points = chips * mult;
     this.last = { won, rows, chips, mult, points, from: this.score };
@@ -5370,6 +5391,10 @@ const Engine = {
       g.rect(0, CY - 34, W, 44, this.isBoss ? PAL.ink : PAL.accent);
       g.text(m.prompt, CX, CY - 4, m.prompt.length > 9 ? 13 : m.prompt.length > 6 ? 18 : 22, PAL.bg);
       g.hint(m.hint, CX, CY + 40);
+      if (this.mode === 'run') {
+        const b = Run.boosts(m), y = this.isBoss ? CY - 66 : CY - 46;
+        g.text(Run.group(m) + ' GAME' + (b.length ? '  ·  ' + b.map(t => t.name).join(' + ') + '!' : ''), CX, y, 8, b.length ? PAL.accent : PAL.ink);
+      }
       this.howTo(m).split('\n').forEach((line, i) => g.text(line, CX, CY + 72 + i * 13, 9, PAL.ink));
       this.drawHud();
       return;
