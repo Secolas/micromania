@@ -4412,6 +4412,97 @@ class SliceTreats extends Microgame {
   }
 }
 
+// 53. YES OR NO — the shiba asks; nod for yes, shake your head for no. A nod
+// moves the camera's centre of motion up and down, a head shake side to side.
+class YesNo extends Microgame {
+  static meta = { id: 'yesno', env: 'room@236', cam: true, prompt: 'YES OR NO?', hint: 'move', duration: 5.4, minDuration: 4.4,
+    photo: true, photoCap: 'GOOD ANSWER!',
+    how: { cam: 'NOD FOR YES\nSHAKE YOUR HEAD FOR NO', touch: 'TAP YES OR NO' } };
+  static Q = [
+    ['TREAT?', true, 'bone'], ['WALKIES?', true, 'paw'], ['PLAY BALL?', true, 'ball'], ['BELLY RUB?', true, 'paw'],
+    ['BATH TIME?', false, 'tub'], ['CHOCOLATE?', false, 'choc'], ['VET VISIT?', false, 'cross'], ['NAIL TRIM?', false, 'cross'],
+  ];
+  init() {
+    Input.enableCam();
+    this.paused = Input.camPending; this.wait = 0;
+    this.need = this.byD(1, 2, 2); this.done = 0;
+    this.used = new Set(); this.ask();
+  }
+  ask() {
+    let q; do { q = YesNo.Q[Math.floor(Math.random() * YesNo.Q.length)]; } while (this.used.has(q[0]) && this.used.size < YesNo.Q.length);
+    this.used.add(q[0]); this.q = q;
+    this.sx = 0; this.sy = 0; this.px = null; this.cool = 0.35; this.said = null; this.sayT = 0;
+  }
+  answer(yes) {
+    this.said = yes; this.sayT = 0.5;
+    if (yes !== this.q[1]) { Sfx.growl(); buzz(90); FX.shake(4); this.lose(); return; }
+    this.done++; Sfx.bark(); buzz(20); FX.hit(CX, CY - 4, PAL.accent);
+    if (this.done >= this.need && !this.finished) this.succeed();
+  }
+  update(dt, input) {
+    if (this.paused) { this.wait += dt; if (!Input.camPending || this.wait > 1.5) this.paused = false; return; }
+    if (this.sayT > 0) { this.sayT -= dt; if (this.sayT <= 0 && !this.finished) this.ask(); return; }
+    if (this.cool > 0) { this.cool -= dt; this.px = null; return; }
+    if (!Input.camReady) {                       // no camera: two buttons do it
+      for (const tp of input.taps) if (tp.y > BOT - 40 && tp.y < BOT - 10) { this.answer(tp.x < CX); return; }
+      return;
+    }
+    // add up how far the centre of motion travels across and down while you
+    // move; whichever way dominates is the answer, once there's been enough
+    this.sx *= 0.985; this.sy *= 0.985;
+    if (input.motion > 0.06) {
+      if (this.px) { this.sx += Math.abs(input.motionX - this.px[0]); this.sy += Math.abs(input.motionY - this.px[1]); }
+      this.px = [input.motionX, input.motionY];
+    } else this.px = null;
+    if (this.sx + this.sy > 0.55) {
+      // clearly one way or the other: waving in circles answers nothing
+      if (this.sy > this.sx * 1.8) this.answer(true);
+      else if (this.sx > this.sy * 1.8) this.answer(false);
+    }
+  }
+  icon(kind, x, y) {
+    if (kind === 'bone') g.bone(x, y, 24);
+    else if (kind === 'ball') g.tennis(x, y, 8);
+    else if (kind === 'choc') g.choc(x, y, 22);
+    else if (kind === 'paw') g.paw(x, y, 20, PAL.bad);
+    else if (kind === 'tub') { g.rect(x - 12, y - 3, 24, 10, PAL.mid); g.rect(x - 14, y - 5, 28, 3, PAL.mid); for (let i = 0; i < 3; i++) g.circle(x - 7 + i * 7, y - 7, 3, SCENE.dayCloud); }
+    else { g.rect(x - 3, y - 10, 6, 20, PAL.bad); g.rect(x - 10, y - 3, 20, 6, PAL.bad); }   // a first-aid cross
+  }
+  draw(g) {
+    g.clear();
+    if (this.paused) { g.text('ALLOW CAMERA…', CX, CY - 6, 11, PAL.ink); g.text('(then nod or shake)', CX, CY + 12, 7, PAL.mid); return; }
+    // the question, in a speech bubble over the shiba's head
+    const by = TOP + 30;
+    g.rect(CX - 62, by, 124, 50, PAL.ink); g.rect(CX - 6, by + 50, 12, 6, PAL.ink); g.rect(CX - 3, by + 56, 6, 4, PAL.ink);
+    this.icon(this.q[2], CX - 40, by + 25);
+    g.text(this.q[0], CX + 14, by + 29, this.q[0].length > 9 ? 9 : 11, PAL.bg);
+    // the shiba, head tilted, waiting; it beams or sulks at your answer
+    const happy = this.said !== null && this.said === this.q[1];
+    const tilt = this.said === null ? Math.sin(this.t * 3) * 0.12 : 0;
+    ctx.save(); ctx.translate(CX, CY + 22); ctx.rotate(tilt);
+    g.sprite('face', 0, 0, { w: 70, h: 72, frame: this.said === null ? 2 : happy ? 0 : 5 });
+    ctx.restore();
+    if (this.said !== null) g.text(this.said ? 'YES!' : 'NO!', CX, CY + 76, 14, happy ? PAL.accent : PAL.bad);
+    if (Input.camReady) {
+      // which way you're moving: a nod fills YES, a head shake fills NO
+      const k = Math.min(1, (this.sx + this.sy) / 0.55), yv = this.sy / (this.sx + this.sy + 1e-6);
+      g.text('NOD', 26, BOT - 40, 8, PAL.ink); g.line(26, BOT - 34, 26, BOT - 14, PAL.ink, 2);
+      g.line(22, BOT - 30, 26, BOT - 34, PAL.ink, 2); g.line(30, BOT - 30, 26, BOT - 34, PAL.ink, 2);
+      g.line(22, BOT - 18, 26, BOT - 14, PAL.ink, 2); g.line(30, BOT - 18, 26, BOT - 14, PAL.ink, 2);
+      g.text('YES', 26, BOT - 2, 7, PAL.accent);
+      g.text('SHAKE', W - 26, BOT - 40, 8, PAL.ink); g.line(W - 40, BOT - 24, W - 12, BOT - 24, PAL.ink, 2);
+      g.line(W - 36, BOT - 28, W - 40, BOT - 24, PAL.ink, 2); g.line(W - 36, BOT - 20, W - 40, BOT - 24, PAL.ink, 2);
+      g.line(W - 16, BOT - 28, W - 12, BOT - 24, PAL.ink, 2); g.line(W - 16, BOT - 20, W - 12, BOT - 24, PAL.ink, 2);
+      g.text('NO', W - 26, BOT - 2, 7, PAL.bad);
+      g.bar(46, BOT - 26, 36, 5, k * yv, PAL.accent); g.bar(W - 82, BOT - 26, 36, 5, k * (1 - yv), PAL.bad);
+    } else {
+      g.rect(CX - 70, BOT - 38, 64, 26, PAL.accent); g.text('YES', CX - 38, BOT - 20, 11, PAL.bg);
+      g.rect(CX + 6, BOT - 38, 64, 26, PAL.bad); g.text('NO', CX + 38, BOT - 20, 11, PAL.ink);
+    }
+    for (let i = 0; i < this.need; i++) g.rect(W - 10 - i * 9, TOP + 6, 6, 6, i < this.done ? PAL.accent : PAL.mid);
+  }
+}
+
 const POOL = [
   TapBug, CatchCoin, RubClean, PullTissue, SodaShake, SwipeArrow, PatShiba, HoldRelease, DontTap,
   StopBar, FollowDot, TapOrder, OddOneOut, FeedDog, WhackMole, PumpBalloon, CutRope,
@@ -4419,7 +4510,7 @@ const POOL = [
   Flappy, Crossy, Doodle, PianoTiles, DinoRun, KnockStack, MoveCam, DryShiba, LeanDodge,
   FreezeStatue, SwatFly, HideLens, DanceBeat,
   BalanceBall, PourCup, SteerRun, BlowCandles, Dandelion, StackBlocks, SortTreats,
-  BeachDig, Walkies, BarkJump, SliceTreats
+  BeachDig, Walkies, BarkJump, SliceTreats, YesNo
 ];
 const BOSSES = [Dodge, Squeeze, RedLight, Juggle, SquidDoll, WakeUp, BathTime];
 
