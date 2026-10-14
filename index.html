@@ -4268,6 +4268,149 @@ class Walkies extends Microgame {
   }
 }
 
+// 51. BARK — the shiba runs, and shouting makes it jump: a bark clears a low
+// hurdle, a real shout the tall ones (the voice-controlled runner genre)
+class BarkJump extends Microgame {
+  static meta = { id: 'bark', env: 'park@266', prompt: 'BARK TO JUMP!', hint: 'shout', duration: 5.4, winOnTimeout: true, minDuration: 4.0,
+    photo: true, photoCap: 'WHAT A BARK!',
+    how: { mic: 'SHOUT TO JUMP!\nLOUDER JUMPS HIGHER', touch: 'TAP TO JUMP\nOVER THE HURDLES' } };
+  init() {
+    Input.enableMic(); Input.enableCam();
+    this.paused = Input.micPending; this.wait = 0;
+    this.ground = 266; this.dogW = 30; this.dogH = 28; this.px = 42;
+    this.y = 0; this.vy = 0; this.grav = 620; this.onGround = true; this.legT = 0;
+    this.boostT = 0; this.woof = 0; this.woofK = 0;
+    this.speed = this.byD(105, 125, 145);
+    this.need = this.byD(2, 3, 4); this.cleared = 0;
+    // low hurdles take any bark, tall ones a proper shout; never two tall in a row
+    this.obs = []; let x = W + 30, tall = false;
+    for (let i = 0; i < this.need; i++) {
+      tall = !tall && i > 0 && Math.random() < this.byD(0.35, 0.5, 0.6);
+      this.obs.push({ x, h: tall ? this.byD(25, 30, 30) + Math.random() * 3 : 12 + Math.random() * 4, tall, passed: false });
+      x += 0.9 * this.speed + 60 + Math.random() * 30;
+    }
+  }
+  update(dt, input) {
+    if (this.paused) { this.wait += dt; if (!Input.micPending || this.wait > 1.2) this.paused = false; return; }
+    this.legT += dt; if (this.woof > 0) this.woof -= dt;
+    const mic = Input.micReady;
+    // a bark lifts it off the ground; for the next moment, the louder you keep
+    // going the higher it carries — so a short yelp hops, a shout soars
+    if (this.onGround && (mic ? input.loud > 0.18 : input.justDown)) {
+      this.vy = mic ? 140 : 250; this.onGround = false; this.boostT = mic ? 0.15 : 0;
+      this.woof = 0.35; this.woofK = mic ? input.loud : 0.7; Sfx.bark(); buzz(15);
+    }
+    if (this.boostT > 0) { this.boostT -= dt; this.vy += input.loud * 900 * dt; this.woofK = Math.max(this.woofK, input.loud); }
+    this.vy -= this.grav * dt; this.y += this.vy * dt;
+    if (this.y <= 0) { this.y = 0; this.vy = 0; this.onGround = true; }
+    for (const o of this.obs) {
+      o.x -= this.speed * dt;
+      if (Math.abs(o.x - this.px) < this.dogW / 2 - 2 && this.y < o.h - 2) { buzz(80); FX.shake(4); Sfx.thud(); this.lose(); return; }
+      if (!o.passed && o.x < this.px - this.dogW / 2) { o.passed = true; this.cleared++; Sfx.tick(); FX.hit(this.px, this.ground - 4, PAL.accent); }
+    }
+    if (this.cleared >= this.need && !this.finished) this.succeed();
+  }
+  draw(g) {
+    g.clear();
+    if (this.paused) { g.text('ALLOW MIC…', CX, CY - 6, 11, PAL.bg); g.text('(then bark!)', CX, CY + 12, 7, PAL.bg); return; }
+    // hurdles: striped bars on two posts; the tall ones wear a red flag
+    for (const o of this.obs) {
+      if (o.x < -14) continue;
+      const top = this.ground - o.h;
+      g.rect(o.x - 8, top, 3, o.h, PAL.bg); g.rect(o.x + 5, top, 3, o.h, PAL.bg);
+      for (let i = 0; i < 4; i++) g.rect(o.x - 8 + i * 4, top, 4, 6, i % 2 ? PAL.bad : PAL.ink);
+      if (o.tall) { g.rect(o.x + 6, top - 10, 1, 10, PAL.bg); g.rect(o.x + 7, top - 10, 6, 5, PAL.bad); }
+    }
+    const drawY = this.ground - this.dogH / 2 - this.y;
+    if (this.onGround) g.sprite('swiperight', this.px, drawY, { w: this.dogW * 2, h: this.dogH * 2, frame: Math.floor(this.legT * 14) % 9 });
+    else g.sprite('runjump', this.px, drawY, { w: this.dogW * 2, h: this.dogH * 2, frame: this.vy > 60 ? 2 : this.vy < -60 ? 4 : 3 });
+    // the bark itself, bigger the louder it was
+    if (this.woof > 0) {
+      const k = 0.6 + this.woofK * 0.8, a = Math.min(1, this.woof * 4);
+      ctx.globalAlpha = a; g.text('WOOF!', this.px + 34, drawY - 14, Math.round(9 * k + 4), PAL.bg); ctx.globalAlpha = 1;
+    }
+    g.text(Input.micReady ? 'BARK TO JUMP!' : 'TAP TO JUMP!', CX - 12, TOP + 26, 9, PAL.bg);   // clear of the sun
+    if (Input.micReady) g.bar(30, TOP + 34, 90, 4, Input.loud, Input.loud > 0.55 ? PAL.bad : PAL.accent);
+    for (let i = 0; i < this.need; i++) g.rect(CX - this.need * 5 + i * 10, BOT - 6, 7, 4, i < this.cleared ? PAL.accent : PAL.bg);
+  }
+}
+
+// 52. SLICE — treats are tossed up: swipe through the bones, never the chocolate
+class SliceTreats extends Microgame {
+  static meta = { id: 'slice', env: 'room@268', prompt: 'SLICE!', hint: 'swipe', duration: 4.6,
+    how: 'SWIPE THROUGH THE BONES\nNOT THE CHOCOLATE' };
+  init() {
+    this.need = this.byD(3, 4, 5); this.sliced = 0;
+    this.items = []; this.bits = []; this.trail = [];
+    this.spawnT = 0.1; this.every = this.byD(0.55, 0.46, 0.4);
+    this.chocP = this.byD(0.2, 0.3, 0.38); this.chocRun = 0; this.bonesOut = 0;
+    this.lx = null; this.ly = null; this.grav = 520;
+  }
+  toss() {
+    const x = 30 + Math.random() * (W - 60);
+    // chocolate now and then, never three in a row, and always enough bones
+    const late = this.t > this.timeLimit * 0.5 && this.bonesOut < this.need + 1;
+    const choc = !late && this.chocRun < 2 && Math.random() < this.chocP;
+    this.chocRun = choc ? this.chocRun + 1 : 0; if (!choc) this.bonesOut++;
+    this.items.push({ x, y: BOT + 12, vx: (CX - x) * 0.45 + (Math.random() - 0.5) * 30, vy: -(420 + Math.random() * 50),
+                      rot: Math.random() * 6, spin: (Math.random() - 0.5) * 6, choc, cut: false });
+  }
+  update(dt, input) {
+    this.spawnT -= dt;
+    if (this.spawnT <= 0) { this.spawnT = this.every * (0.8 + Math.random() * 0.4); this.toss(); if (Math.random() < 0.25) this.toss(); }
+    for (const it of this.items) { it.x += it.vx * dt; it.y += it.vy * dt; it.vy += this.grav * dt; it.rot += it.spin * dt; }
+    this.items = this.items.filter(it => !it.cut && !(it.vy > 0 && it.y > BOT + 30));
+    for (const b of this.bits) { b.x += b.vx * dt; b.y += b.vy * dt; b.vy += this.grav * dt; b.rot += b.spin * dt; b.t += dt; }
+    this.bits = this.bits.filter(b => b.t < 0.8);
+    for (const p of this.trail) p.t += dt;
+    this.trail = this.trail.filter(p => p.t < 0.14);
+    if (!input.down) { this.lx = null; return; }
+    const x = input.x, y = input.y;
+    this.trail.push({ x, y, t: 0 });
+    if (this.lx !== null && Math.hypot(x - this.lx, y - this.ly) > 3) {
+      // anything the blade's segment this step passes within reach of is cut
+      for (const it of this.items) {
+        if (it.cut || this.segDist(it.x, it.y, this.lx, this.ly, x, y) > 12) continue;
+        it.cut = true;
+        if (it.choc) { Sfx.growl(); buzz(90); FX.shake(4); FX.flash(PAL.bad, 0.4); this.lose(); return; }
+        this.sliced++; Sfx.crunch(); buzz(15); FX.hit(it.x, it.y, PAL.accent);
+        const dx = x - this.lx, dy = y - this.ly, n = Math.hypot(dx, dy) || 1;
+        for (const side of [-1, 1]) this.bits.push({ x: it.x, y: it.y, vx: it.vx * 0.4 + side * -dy / n * 70, vy: it.vy * 0.3 + side * dx / n * 70 - 40,
+                                                     rot: it.rot, spin: side * 8, side, t: 0 });
+        if (this.sliced >= this.need && !this.finished) { this.succeed(); return; }
+      }
+    }
+    this.lx = x; this.ly = y;
+  }
+  segDist(px, py, ax, ay, bx, by) {
+    const dx = bx - ax, dy = by - ay, L = dx * dx + dy * dy || 1;
+    const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / L));
+    return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+  }
+  draw(g) {
+    g.clear();
+    for (const it of this.items) {
+      ctx.save(); ctx.translate(it.x, it.y); ctx.rotate(it.rot);
+      if (it.choc) g.choc(0, 0, 22); else g.bone(0, 0, 24);
+      ctx.restore();
+    }
+    // the two halves of each cut bone, tumbling apart
+    for (const b of this.bits) {
+      ctx.save(); ctx.globalAlpha = Math.min(1, (0.8 - b.t) * 3);
+      ctx.translate(b.x, b.y); ctx.rotate(b.rot);
+      ctx.beginPath(); ctx.rect(b.side < 0 ? -16 : 0, -10, 16, 20); ctx.clip();
+      g.bone(0, 0, 24); ctx.restore();
+    }
+    // the swipe: a white streak that thins out behind the finger
+    for (let i = 1; i < this.trail.length; i++) {
+      const a = this.trail[i - 1], b = this.trail[i];
+      g.line(a.x, a.y, b.x, b.y, PAL.ink, Math.max(1, 4 * (1 - b.t / 0.14)));
+    }
+    g.text('SLICE THE BONES!', CX, TOP + 26, 9, PAL.ink);
+    for (let i = 0; i < this.need; i++) g.rect(CX - this.need * 5 + i * 10, TOP + 34, 7, 7, i < this.sliced ? PAL.accent : PAL.mid);
+  }
+}
+
 const POOL = [
   TapBug, CatchCoin, RubClean, PullTissue, SodaShake, SwipeArrow, PatShiba, HoldRelease, DontTap,
   StopBar, FollowDot, TapOrder, OddOneOut, FeedDog, WhackMole, PumpBalloon, CutRope,
@@ -4275,7 +4418,7 @@ const POOL = [
   Flappy, Crossy, Doodle, PianoTiles, DinoRun, KnockStack, MoveCam, DryShiba, LeanDodge,
   FreezeStatue, SwatFly, HideLens, DanceBeat,
   BalanceBall, PourCup, SteerRun, BlowCandles, Dandelion, StackBlocks, SortTreats,
-  BeachDig, Walkies
+  BeachDig, Walkies, BarkJump, SliceTreats
 ];
 const BOSSES = [Dodge, Squeeze, RedLight, Juggle, SquidDoll, WakeUp, BathTime];
 
