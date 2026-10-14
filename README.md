@@ -160,11 +160,24 @@ lives run). RUN is Balatro-style scoring over the same microgames:
 - Clearing a stage pays **bones**: 3 (5 for a boss stage), +1 per unused game,
   and interest of 1 per 5 saved (max 5).
 - Between stages the **treat shop** sells perks (5 slots) that bend the sum:
-  ZOOMIES, CAMERA STAR, BIG LUNGS, HOT STREAK, GOOD BOY, SPEEDY, GOLDEN BONE,
-  CHONK. Tap to buy; REROLL costs 2 and goes up each time. Tap one of
+  QUICK PAWS, ZOOMIES, CAMERA STAR, BIG LUNGS, WIGGLE BUTT, HOT STREAK,
+  GOOD BOY, SPEEDY, GOLDEN BONE, CHONK. Tap to buy; REROLL costs 2 and goes up each time. Tap one of
   **your** treats (in the shop or on the stage intro) to read what it does;
   in the shop its card has a SELL button for half its price, which is how a
   full row makes room.
+- Every game belongs to one **group**, by what you do with the phone
+  (`Run.group`), and five treats each boost one group:
+
+  | group | games | treat |
+  |---|---|---|
+  | TAP (17) | TAP, PAT, CHARGE, SHH, LEAP, IN ORDER, ODD ONE, BOOP, PUMP, GRAB 3, FLAP, CROSS, PAWS, JUMP, STACK, RED LIGHT, JUGGLE | QUICK PAWS +15 chips |
+  | DRAG (16) | CATCH, RUB, PULL DOWN, SWIPE, LASER, FEED, CUT, WALK, FETCH, HOP, KNOCK IT, SORT, DIG, WALKIES, DODGE, SQUEEZE | ZOOMIES +20 chips |
+  | CAMERA (7) | MOVE, DRY OFF, LEAN, FREEZE, HIDE, DANCE, RUN & FREEZE | CAMERA STAR x2 chips |
+  | BLOW (4) | BLOW (bubble), CANDLES, PUFF, WAKE UP | BIG LUNGS +4 mult |
+  | SHAKE (6) | SHAKE, SWAT, BALANCE, POUR, SLED, BATH TIME | WIGGLE BUTT +4 mult |
+
+  In RUN mode each game's card says its group, lit up with the treat's name
+  when one you own boosts it.
 - Inside a stage it is the same game-after-game rush; all the choosing happens
   between stages. Everything lives in the `Run` object in `index.html`.
 
