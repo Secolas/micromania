@@ -1,6 +1,6 @@
 # MICROMANIA
 
-A WarioWare-style microgame collection — 50 fast microgames in a single
+A WarioWare-style microgame collection — 52 fast microgames in a single
 self-contained HTML file. Portrait, mobile-first, starring a pixel-art shiba inu.
 
 ## Play
@@ -171,13 +171,18 @@ lives run). RUN is Balatro-style scoring over the same microgames:
   | group | games | treat |
   |---|---|---|
   | TAP (17) | TAP, PAT, CHARGE, SHH, LEAP, IN ORDER, ODD ONE, BOOP, PUMP, GRAB 3, FLAP, CROSS, PAWS, JUMP, STACK, RED LIGHT, JUGGLE | QUICK PAWS +15 chips |
-  | DRAG (16) | CATCH, RUB, PULL DOWN, SWIPE, LASER, FEED, CUT, WALK, FETCH, HOP, KNOCK IT, SORT, DIG, WALKIES, DODGE, SQUEEZE | ZOOMIES +20 chips |
+  | DRAG (17) | CATCH, RUB, PULL DOWN, SWIPE, LASER, FEED, CUT, WALK, FETCH, HOP, KNOCK IT, SORT, DIG, WALKIES, SLICE, DODGE, SQUEEZE | ZOOMIES +20 chips |
   | CAMERA (7) | MOVE, DRY OFF, LEAN, FREEZE, HIDE, DANCE, RUN & FREEZE | CAMERA STAR x2 chips |
-  | BLOW (4) | BLOW (bubble), CANDLES, PUFF, WAKE UP | BIG LUNGS +4 mult |
+  | BLOW (5) | BLOW (bubble), CANDLES, PUFF, BARK TO JUMP, WAKE UP | BIG LUNGS +4 mult |
   | SHAKE (6) | SHAKE, SWAT, BALANCE, POUR, SLED, BATH TIME | WIGGLE BUTT +4 mult |
 
   In RUN mode each game's card says its group, lit up with the treat's name
   when one you own boosts it.
+- Games are only dealt if you can play them (`Engine.playable`): block the mic
+  and no BLOW games come up at all (rather than turning into tapping), block
+  the camera and no CAMERA games, and on a device with no motion sensor (a
+  desktop) no SHAKE games. The shop leaves out treats for groups that can't
+  come up. The `?dev` menu can still force any game.
 - Inside a stage it is the same game-after-game rush; all the choosing happens
   between stages. Everything lives in the `Run` object in `index.html`.
 
@@ -200,6 +205,10 @@ drag one route from 1 through every square, fetching the numbered treat bones in
 last number has to be the last square), and the shiba walks it, facing the way
 it's heading. 3x3 on easy, 4x4 after, with two walls on hard; each board is
 built from a random route that covers it, so there is always an answer.
+BARK TO JUMP! is a voice-controlled runner: shout to jump the hurdles, and keep
+shouting for a moment to carry higher — a yelp clears the low ones, the tall
+flagged ones need a real shout (no mic: tap to jump). SLICE! tosses bones and
+chocolate up the screen: swipe through the bones, never the chocolate.
 
 ## Structure
 
