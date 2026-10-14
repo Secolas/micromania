@@ -1053,6 +1053,46 @@ const PhotoFX = {
 };
 
 
+/* ── ALBUM ────────────────────────────────────────────────────────────────────
+   Every action shot you win is kept on this phone (localStorage, as small
+   JPEGs), newest last, so the best moments outlive the run they came from.
+   Nothing is uploaded; SHARE hands one picture to the phone's share sheet. */
+const Album = {
+  KEY: 'micromania.album', MAX: 30,
+  items: null, imgs: {},
+  load() {
+    if (this.items) return this.items;
+    try { this.items = JSON.parse(localStorage.getItem(this.KEY) || '[]'); } catch (e) { this.items = []; }
+    if (!Array.isArray(this.items)) this.items = [];
+    return this.items;
+  },
+  add(canvas, cap, game) {
+    this.load();
+    let src;
+    try { src = canvas.toDataURL('image/jpeg', 0.85); } catch (e) { return; }
+    const last = this.items[this.items.length - 1];
+    const at = Math.max(Date.now(), last ? last.at + 1 : 0);   // unique: it keys the decoded image
+    this.items.push({ src, cap, game, at });
+    while (this.items.length > this.MAX) this.items.shift();
+    this.save();
+  },
+  remove(i) { this.load(); this.items.splice(i, 1); this.save(); },
+  // storage full: drop the oldest until it fits, rather than lose the new one
+  save() {
+    for (;;) {
+      try { localStorage.setItem(this.KEY, JSON.stringify(this.items)); return; }
+      catch (e) { if (!this.items.length) return; this.items.shift(); }
+    }
+  },
+  // a decoded picture for an entry, or null while it is still decoding
+  img(it) {
+    let im = this.imgs[it.at];
+    if (!im) { im = this.imgs[it.at] = new Image(); im.src = it.src; }
+    return im.complete && im.naturalWidth ? im : null;
+  },
+  newest(k) { const a = this.load(); return a[a.length - 1 - k]; }
+};
+
 /* ── SCENERY ──────────────────────────────────────────────────────────────────
    Backdrops behind the microgames, so each one reads as a place — a lawn, a
    living room, the sky — rather than shapes on black. They use a small extra
@@ -4423,8 +4463,8 @@ const Engine = {
     const s = this.state;
 
     // starting a run is handled in release(), inside the tap itself
-    if (s === 'TITLE' || s === 'GAMEOVER') {
-      Mascot.set(s === 'TITLE' ? 'watch' : 'sad');
+    if (s === 'TITLE' || s === 'GAMEOVER' || s === 'ALBUM') {
+      Mascot.set(s === 'GAMEOVER' ? 'sad' : 'watch');
       return;
     }
 
@@ -4505,6 +4545,7 @@ const Engine = {
               if (this.game.stampPhoto) this.game.stampPhoto(shot);
               this.snap = Engine.lastPhoto = shot;
               this.album.push(shot); if (this.album.length > 4) this.album.shift();
+              Album.add(shot, this.game.meta.photoCap || 'NICE MOVES!', this.game.meta.prompt);
             }
           }
           FX.flash(PAL.accent, 0.45);
@@ -4592,6 +4633,12 @@ const Engine = {
   PERM_SKIP:  { x: CX - 50, y: CY + 54, w: 100, h: 24 },
   BTN_RUN:     { x: CX - 50, y: CY + 36, w: 100, h: 26 },
   BTN_CLASSIC: { x: CX - 50, y: CY + 70, w: 100, h: 22 },
+  BTN_ALBUM:   { x: CX - 50, y: CY + 96, w: 100, h: 16 },
+  ALB_BACK:    { x: 4, y: TOP + 4, w: 40, h: 16 },
+  ALB_PREV:    { x: 8, y: BOT - 26, w: 30, h: 20 },
+  ALB_NEXT:    { x: W - 38, y: BOT - 26, w: 30, h: 20 },
+  ALB_SHARE:   { x: CX - 50, y: BOT - 46, w: 100, h: 20 },
+  ALB_DEL:     { x: CX - 30, y: BOT - 21, w: 60, h: 16 },
   BTN_SHARE:   { x: CX - 50, y: CY + 66, w: 100, h: 22 },
   hit(b, p) { return p.x >= b.x && p.x < b.x + b.w && p.y >= b.y && p.y < b.y + b.h; },
 
@@ -4602,6 +4649,12 @@ const Engine = {
 
   release(p) {
     const s = this.state;
+    if (s === 'TITLE' && this.timer <= 0 && this.hit(this.BTN_ALBUM, p)) {
+      Sfx.unlock(); Sfx.tap();
+      this.state = 'ALBUM'; this.albumPage = 0; this.albumSel = -1; this.albumDel = false;
+      return;
+    }
+    if (s === 'ALBUM') { this.albumRelease(p); return; }
     if (s === 'TITLE' && this.timer <= 0) {
       const mode = this.hit(this.BTN_RUN, p) ? 'run' : this.hit(this.BTN_CLASSIC, p) ? 'classic' : null;
       if (!mode) return;
@@ -4651,9 +4704,10 @@ const Engine = {
     return c;
   },
 
-  share() {
-    const c = this.shareCard(), url = c.toDataURL('image/png');
-    const words = this.mode === 'run' ? 'I reached ' + Run.label() + ' in MICROMANIA RUN mode!' : 'I scored ' + this.score + ' in MICROMANIA!';
+  share(c, words) {
+    c = c || this.shareCard();
+    const url = c.toDataURL('image/png');
+    words = words || (this.mode === 'run' ? 'I reached ' + Run.label() + ' in MICROMANIA RUN mode!' : 'I scored ' + this.score + ' in MICROMANIA!');
     try {
       // the phone's own share sheet, with the picture attached
       const bin = atob(url.split(',')[1]), buf = new Uint8Array(bin.length);
@@ -4673,6 +4727,104 @@ const Engine = {
     const B = this.BTN_SHARE;
     g.rect(B.x, B.y, B.w, B.h, PAL.accent); g.text('SHARE', CX, B.y + 15, 10, PAL.bg);
     if (Math.floor(this.time * 2) % 2) g.text('TAP ELSEWHERE TO CONTINUE', CX, CY + 104, 7, PAL.mid);
+  },
+
+  // ── ALBUM SCREEN ───────────────────────────────────────────────────────────
+  // A grid of polaroids, six to a page, newest first; tap one to see it big,
+  // share it, or delete it (a second tap confirms).
+  ALB_PER: 6,
+  albumCell(k) {   // centre of grid slot k on a page: three across, two down
+    return { x: CX + (k % 3 - 1) * 56, y: TOP + 74 + Math.floor(k / 3) * 92 };
+  },
+  albumRelease(p) {
+    const n = Album.load().length, pages = Math.max(1, Math.ceil(n / this.ALB_PER));
+    if (this.hit(this.ALB_BACK, p)) {
+      Sfx.tap();
+      if (this.albumSel >= 0) { this.albumSel = -1; this.albumDel = false; }
+      else { this.state = 'TITLE'; this.timer = 0.2; }
+      return;
+    }
+    if (this.albumSel >= 0) {
+      const it = Album.newest(this.albumSel);
+      if (!it) { this.albumSel = -1; return; }
+      if (this.hit(this.ALB_SHARE, p)) {
+        Sfx.tap();
+        const im = Album.img(it);
+        if (im) this.share(this.photoCard(im, it), 'My shiba moment in MICROMANIA: ' + it.cap);
+      } else if (this.hit(this.ALB_DEL, p)) {
+        if (!this.albumDel) { this.albumDel = true; Sfx.tap(); return; }
+        Album.remove(Album.load().length - 1 - this.albumSel);
+        Sfx.thud(); this.albumSel = -1; this.albumDel = false;
+        this.albumPage = Math.min(this.albumPage, Math.max(0, Math.ceil(Album.load().length / this.ALB_PER) - 1));
+      } else this.albumDel = false;
+      return;
+    }
+    if (this.hit(this.ALB_PREV, p) && this.albumPage > 0) { this.albumPage--; Sfx.tap(); return; }
+    if (this.hit(this.ALB_NEXT, p) && this.albumPage < pages - 1) { this.albumPage++; Sfx.tap(); return; }
+    for (let k = 0; k < this.ALB_PER; k++) {
+      const i = this.albumPage * this.ALB_PER + k; if (i >= n) break;
+      const c = this.albumCell(k);
+      if (Math.abs(p.x - c.x) < 28 && Math.abs(p.y - c.y) < 40) { this.albumSel = i; this.albumDel = false; Sfx.tap(); return; }
+    }
+  },
+  drawAlbumScreen() {
+    const items = Album.load(), n = items.length;
+    const B = this.ALB_BACK;
+    g.box(B.x, B.y, B.w, B.h, PAL.mid); g.text('BACK', B.x + B.w / 2, B.y + 11, 7, PAL.ink);
+    if (this.albumSel >= 0) {
+      const it = Album.newest(this.albumSel); if (!it) return;
+      const im = Album.img(it);
+      if (im) this.drawPolaroid(im, CX, CY - 36, 100, -0.03);
+      g.text(it.cap, CX, CY + 52, 11, PAL.accent);
+      const d = new Date(it.at);
+      g.text((it.game || '') + '  ·  ' + d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }).toUpperCase(), CX, CY + 66, 7, PAL.mid);
+      const S = this.ALB_SHARE, D = this.ALB_DEL;
+      g.rect(S.x, S.y, S.w, S.h, PAL.accent); g.text('SHARE', CX, S.y + 14, 10, PAL.bg);
+      g.box(D.x, D.y, D.w, D.h, this.albumDel ? PAL.bad : PAL.mid);
+      g.text(this.albumDel ? 'SURE?' : 'DELETE', CX, D.y + 12, 7, this.albumDel ? PAL.bad : PAL.mid);
+      return;
+    }
+    g.text('ALBUM', CX, TOP + 16, 12, PAL.accent);
+    g.text(n + (n === 1 ? ' PHOTO' : ' PHOTOS'), W - 6, TOP + 15, 7, PAL.mid, 'right');
+    if (!n) {
+      g.sprite('face', CX, CY - 18, { w: 46, h: 46, frame: 5 });
+      g.text('NO PHOTOS YET', CX, CY + 22, 10, PAL.ink);
+      g.text('WIN A CAMERA GAME AND', CX, CY + 40, 7, PAL.mid);
+      g.text('YOUR ACTION SHOT LANDS HERE', CX, CY + 50, 7, PAL.mid);
+      return;
+    }
+    const pages = Math.ceil(n / this.ALB_PER);
+    for (let k = 0; k < this.ALB_PER; k++) {
+      const i = this.albumPage * this.ALB_PER + k; if (i >= n) break;
+      const it = Album.newest(i), im = Album.img(it), c = this.albumCell(k);
+      if (im) this.drawPolaroid(im, c.x, c.y, 52, (i % 3 - 1) * 0.05);
+      else g.rect(c.x - 20, c.y - 26, 40, 52, PAL.mid);
+    }
+    if (pages > 1) {
+      const P = this.ALB_PREV, N = this.ALB_NEXT;
+      if (this.albumPage > 0) { g.box(P.x, P.y, P.w, P.h, PAL.mid); g.text('<', P.x + P.w / 2, P.y + 14, 10, PAL.ink); }
+      if (this.albumPage < pages - 1) { g.box(N.x, N.y, N.w, N.h, PAL.mid); g.text('>', N.x + N.w / 2, N.y + 14, 10, PAL.ink); }
+      g.text((this.albumPage + 1) + ' / ' + pages, CX, BOT - 12, 8, PAL.mid);
+    }
+  },
+  // one photo as a shareable card: the polaroid big, its caption, the game
+  photoCard(im, it) {
+    const c = document.createElement('canvas'); c.width = 720; c.height = 960;
+    const x = c.getContext('2d'); x.imageSmoothingEnabled = false;
+    const text = (str, tx, ty, size, col) => {
+      x.fillStyle = col; x.font = 'bold ' + size + 'px ui-monospace, monospace';
+      x.textAlign = 'center'; x.fillText(str, tx, ty);
+    };
+    x.fillStyle = PAL.bg; x.fillRect(0, 0, 720, 960);
+    text('MICRO', 360, 100, 72, PAL.ink); text('MANIA', 360, 170, 72, PAL.accent);
+    const a = im.width / im.height, size = 520, w = a < 1 ? size * a : size, h = a < 1 ? size : size / a, b = size / 16;
+    x.save(); x.translate(360, 500); x.rotate(-0.03);
+    x.fillStyle = PAL.ink; x.fillRect(-w / 2 - b, -h / 2 - b, w + b * 2, h + b * 4);
+    x.drawImage(im, -w / 2, -h / 2, w, h);
+    x.restore();
+    text(it.cap, 360, 860, 52, PAL.accent);
+    text(location.host || 'MICROMANIA', 360, 920, 26, TEXT_MID);
+    return c;
   },
 
   // The sensors screen eats its presses (see press), so its buttons are
@@ -4791,12 +4943,16 @@ const Engine = {
       const R = this.BTN_RUN, C = this.BTN_CLASSIC;
       g.rect(R.x, R.y, R.w, R.h, PAL.accent); g.text('RUN', CX, R.y + 18, 13, PAL.bg);
       g.box(C.x, C.y, C.w, C.h, PAL.mid); g.text('CLASSIC', CX, C.y + 15, 9, PAL.ink);
+      const A = this.BTN_ALBUM, na = Album.load().length;
+      g.box(A.x, A.y, A.w, A.h, PAL.mid); g.text('ALBUM' + (na ? ' (' + na + ')' : ''), CX, A.y + 12, 8, PAL.ink);
       const best = [];
       if (Run.best) best.push('RUN ' + Run.label(Run.best));
       if (this.best) best.push('CLASSIC ' + this.best);
       if (best.length) g.text('BEST  ' + best.join('  ·  '), CX, BOT - 6, 7, PAL.mid);
       return;
     }
+
+    if (s === 'ALBUM') { this.drawAlbumScreen(); return; }
 
     if (s === 'PERMS') {
       g.text('CAMERA + MIC', CX, CY - 62, 12, PAL.accent);

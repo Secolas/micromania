@@ -82,6 +82,14 @@ actually has — a camera game on touch says "TAP FAST". The first time a game
 comes up in a session the card stays up an extra second so it can be read.
 Set it with `how` in a game's meta.
 
+## Photo album
+
+Every action shot you win is saved on the phone (`Album`, in localStorage as
+small JPEGs, up to 30, oldest dropped first). **ALBUM** on the title screen
+shows them six to a page, newest first; tap one to see it big with its caption,
+game and date, **SHARE** it on its own card, or **DELETE** it (tap twice).
+Nothing leaves the phone unless you share it.
+
 ## Scenery
 
 Games play in a place, not on black: a game names a backdrop with `env` in its
