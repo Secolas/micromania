@@ -4251,12 +4251,16 @@ class Walkies extends Microgame {
       if (b - a === 1) g.rect(ax + cs / 2 - 2, ay - cs / 2 - 1, 5, cs + 2, PAL.bg);
       else g.rect(ax - cs / 2 - 1, ay + cs / 2 - 2, cs + 2, 5, PAL.bg);
     }
-    // the numbers, the next one ringed
-    const r = Math.max(7, cs * 0.24);
+    // the numbers are the game's treat bone: the next one to fetch wiggles,
+    // and they go grey once the shiba has walked over and picked them up
+    const bw = cs * 0.84, fs = Math.round(Math.max(8, cs * 0.3));
     for (const [c, m] of this.num) {
-      const [x, y] = this.centre(c);
-      if (m === this.next) { ctx.strokeStyle = PAL.bad; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x, y, r + 3 + Math.sin(this.t * 8), 0, 6.2832); ctx.stroke(); }
-      g.circle(x, y, r, PAL.bg); g.text(String(m), x, y + r * 0.42, Math.round(r * 1.15), PAL.ink);
+      const [x, y] = this.centre(c), got = m < this.next, nxt = m === this.next;
+      ctx.save(); ctx.translate(x, y); if (nxt) ctx.rotate(Math.sin(this.t * 9) * 0.14);
+      for (const [ox, oy] of [[-2, 0], [2, 0], [0, -2], [0, 2], [-1.5, -1.5], [1.5, -1.5], [-1.5, 1.5], [1.5, 1.5]]) g.bone(ox, oy, bw, PAL.bg);   // dark rim
+      g.bone(0, 0, bw, got ? PAL.mid : PAL.accent);
+      g.text(String(m), 0, fs * 0.36, fs, PAL.bg);
+      ctx.restore();
     }
     // the shiba walking the route
     if (this.sx !== null) g.sprite(this.face, this.sx, this.sy - cs * 0.12, { w: cs * 1.05, h: cs * 1.05, frame: Math.floor(this.walkT * 14) % 9 });

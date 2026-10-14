@@ -183,7 +183,7 @@ back up).
 
 BEACH DIG is a regular game on the beach: swipe again and again to dig where
 the X is until the bone turns up. WALKIES! is a pocket one-line path puzzle:
-drag one route from 1 through every square, hitting the numbers in order (the
+drag one route from 1 through every square, fetching the numbered treat bones in order (the
 last number has to be the last square), and the shiba walks it, facing the way
 it's heading. 3x3 on easy, 4x4 after, with two walls on hard; each board is
 built from a random route that covers it, so there is always an answer.
