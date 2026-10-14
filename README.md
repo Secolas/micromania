@@ -1,6 +1,6 @@
 # MICROMANIA
 
-A WarioWare-style microgame collection — 52 fast microgames in a single
+A WarioWare-style microgame collection — 53 fast microgames in a single
 self-contained HTML file. Portrait, mobile-first, starring a pixel-art shiba inu.
 
 ## Play
@@ -172,7 +172,7 @@ lives run). RUN is Balatro-style scoring over the same microgames:
   |---|---|---|
   | TAP (17) | TAP, PAT, CHARGE, SHH, LEAP, IN ORDER, ODD ONE, BOOP, PUMP, GRAB 3, FLAP, CROSS, PAWS, JUMP, STACK, RED LIGHT, JUGGLE | QUICK PAWS +15 chips |
   | DRAG (17) | CATCH, RUB, PULL DOWN, SWIPE, LASER, FEED, CUT, WALK, FETCH, HOP, KNOCK IT, SORT, DIG, WALKIES, SLICE, DODGE, SQUEEZE | ZOOMIES +20 chips |
-  | CAMERA (7) | MOVE, DRY OFF, LEAN, FREEZE, HIDE, DANCE, RUN & FREEZE | CAMERA STAR x2 chips |
+  | CAMERA (8) | MOVE, DRY OFF, LEAN, FREEZE, HIDE, DANCE, YES OR NO, RUN & FREEZE | CAMERA STAR x2 chips |
   | BLOW (5) | BLOW (bubble), CANDLES, PUFF, BARK TO JUMP, WAKE UP | BIG LUNGS +4 mult |
   | SHAKE (6) | SHAKE, SWAT, BALANCE, POUR, SLED, BATH TIME | WIGGLE BUTT +4 mult |
 
@@ -209,6 +209,10 @@ BARK TO JUMP! is a voice-controlled runner: shout to jump the hurdles, and keep
 shouting for a moment to carry higher — a yelp clears the low ones, the tall
 flagged ones need a real shout (no mic: tap to jump). SLICE! tosses bones and
 chocolate up the screen: swipe through the bones, never the chocolate.
+YES OR NO? is a camera game: the shiba asks (TREAT? BATH TIME?) and you nod
+for yes or shake your head for no — read from which way the camera's centre
+of motion travels, so waving in circles answers nothing. With no camera it
+shows YES / NO buttons.
 
 ## Structure
 
