@@ -178,6 +178,11 @@ lives run). RUN is Balatro-style scoring over the same microgames:
 
   In RUN mode each game's card says its group, lit up with the treat's name
   when one you own boosts it.
+- Games are only dealt if you can play them (`Engine.playable`): block the mic
+  and no BLOW games come up at all (rather than turning into tapping), block
+  the camera and no CAMERA games, and on a device with no motion sensor (a
+  desktop) no SHAKE games. The shop leaves out treats for groups that can't
+  come up. The `?dev` menu can still force any game.
 - Inside a stage it is the same game-after-game rush; all the choosing happens
   between stages. Everything lives in the `Run` object in `index.html`.
 

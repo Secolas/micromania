@@ -391,7 +391,7 @@ const Beat = {
 const Input = {
   x: CX, y: CY, down: false, justDown: false, justUp: false,
   dx: 0, dy: 0, moveDist: 0, holdTime: 0,
-  taps: [], swipe: null, shake: 0, blow: 0, loud: 0,
+  taps: [], swipe: null, shake: 0, blow: 0, loud: 0, motionReady: false,
   _rawDx: 0, _rawDy: 0, _sx: 0, _sy: 0, _st: 0, _travel: 0,
   _pendingTaps: [], _pendingSwipe: null, _shakeRaw: 0, _lastAcc: null,
   _mic: null, _micData: null, _blowRaw: 0, micReady: false, micDenied: false, micPending: false, blowOk: false,
@@ -665,6 +665,7 @@ const Input = {
         if (spin > 25) this.gyroReady = true;      // real readings are arriving
       }
       const a = e.accelerationIncludingGravity; if (!a) return;
+      if (a.x != null) this.motionReady = true;   // a real sensor is reporting (desktops never do)
       if (this._lastAcc) {
         const d = Math.abs(a.x - this._lastAcc.x) + Math.abs(a.y - this._lastAcc.y) + Math.abs(a.z - this._lastAcc.z);
         this._shakeRaw += d;
@@ -4668,7 +4669,10 @@ const Run = {
   openShop() { this.reroll = 2; this.stock(); Engine.state = 'SHOP'; Engine.timer = 0.3; },
 
   stock() {
-    const pool = this.TREATS.filter(t => !this.has(t.id)).map(t => t.id);
+    // no BIG LUNGS for a player whose mic is blocked: only treats for groups
+    // that can actually come up
+    const live = new Set([...POOL, ...BOSSES].filter(C => Engine.playable(C)).map(C => this.group(C.meta)));
+    const pool = this.TREATS.filter(t => !this.has(t.id) && (!t.group || live.has(t.group))).map(t => t.id);
     for (let i = pool.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [pool[i], pool[j]] = [pool[j], pool[i]]; }
     this.shop = pool.slice(0, 3);
   },
@@ -4907,7 +4911,26 @@ const Engine = {
     this.lastId = null;
   },
 
+  // Can this game be played with what the player has allowed? A game that
+  // needs a sensor (its how-to lists one besides touch) is only dealt when at
+  // least one of those sensors is live or still being asked for — a blocked
+  // mic means no blowing games at all, not blowing games played by tapping.
+  playable(C) {
+    const how = C.meta.how;
+    const needs = how && typeof how === 'object' ? Object.keys(how).filter(k => k !== 'touch') : [];
+    if (!needs.length) return true;
+    const live = {
+      mic: Input.micReady || Input.micPending,
+      cam: Input.camReady || Input.camPending,
+      tilt: Input.tiltReady,
+      motion: Input.motionReady,
+    };
+    return needs.some(k => live[k]);
+  },
+
   pick(list) {
+    const ok = list.filter(C => this.playable(C));
+    if (ok.length) list = ok;
     let cand = list.filter(C => C.meta.id !== this.lastId);
     if (!cand.length) cand = list;
     return cand[Math.floor(Math.random() * cand.length)];
