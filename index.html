@@ -2927,7 +2927,7 @@ class MoveCam extends Microgame {
     const frame = m > 0.05 ? Math.floor(this.legT) % 9 : 0;
     g.sprite('swiperight', rx, gy - 22, { w: 64, h: 64, frame });
     g.text(Input.camReady ? 'WAVE TO RUN!' : 'TAP TO RUN!', CX - 12, TOP + 26, 9, PAL.bg);   // clear of the sun
-    if (this.flash > 0) { this.flash -= STEP; g.rect(0, 0, W, H, PAL.ink); }
+    if (this.flash > 0 && Engine.state === 'PLAYING') { this.flash -= STEP; g.rect(0, 0, W, H, PAL.ink); }
   }
 
 }
@@ -4000,6 +4000,54 @@ const BOSSES = [Dodge, Squeeze, RedLight, Juggle, SquidDoll];
    mascot cannot cover a target or steal a tap, and microgames need no special
    handling for it.
 ─────────────────────────────────────────────────────────────────────────────── */
+// ── WIPE ─────────────────────────────────────────────────────────────────────
+/* Between microgames the screen closes down to a shiba-head-shaped window,
+   holds a beat on black while the shiba winks, then opens again on the next
+   game. The state switch happens at the shut moment (run's callback), and
+   the engine stands still until then so nothing advances twice. */
+const Wipe = {
+  CLOSE: 0.22, HOLD: 0.14, OPEN: 0.24, BIG: 680,
+  t: -1, cb: null, fired: false,
+  run(cb) { this.t = 0; this.cb = cb; this.fired = false; },
+  get busy() { return this.t >= 0 && !this.fired; },   // still closing or shut
+  update(dt) {
+    if (this.t < 0) return;
+    this.t += dt;
+    if (!this.fired && this.t >= this.CLOSE) { this.fired = true; Sfx.boop(); const cb = this.cb; this.cb = null; cb(); }
+    if (this.t >= this.CLOSE + this.HOLD + this.OPEN) this.t = -1;
+  },
+  // a smooth shiba head (ears, cheeks, chin) as a path, height h at (cx, cy)
+  head(cx, cy, h) {
+    const P = (u, v) => [cx + u * h, cy + v * h];
+    const q = (a, b, u, v) => ctx.quadraticCurveTo(...P(a, b), ...P(u, v));
+    const c = (a, b, d, e, u, v) => ctx.bezierCurveTo(...P(a, b), ...P(d, e), ...P(u, v));
+    ctx.moveTo(...P(0, -0.24));
+    q(0.1, -0.26, 0.17, -0.31); ctx.lineTo(...P(0.31, -0.47)); q(0.36, -0.53, 0.39, -0.46);   // right ear
+    q(0.47, -0.3, 0.46, -0.12);
+    c(0.56, 0.04, 0.53, 0.27, 0.3, 0.39); q(0.15, 0.48, 0, 0.48);                            // cheek, chin
+    q(-0.15, 0.48, -0.3, 0.39); c(-0.53, 0.27, -0.56, 0.04, -0.46, -0.12);
+    q(-0.47, -0.3, -0.39, -0.46); q(-0.36, -0.53, -0.31, -0.47); ctx.lineTo(...P(-0.17, -0.31));   // left ear
+    q(-0.1, -0.26, 0, -0.24);
+    ctx.closePath();
+  },
+  draw() {
+    if (this.t < 0) return;
+    const t = this.t, A = this.CLOSE, B = A + this.HOLD;
+    let h = 0;
+    if (t < A) h = this.BIG * Math.pow(1 - t / A, 2);           // closing in
+    else if (t >= B) h = this.BIG * Math.pow((t - B) / this.OPEN, 2);   // opening out
+    ctx.save();
+    ctx.beginPath(); ctx.rect(0, 0, W, H);
+    if (h > 0.5) this.head(CX, CY, h);
+    ctx.fillStyle = PAL.bg; ctx.fill('evenodd');
+    ctx.restore();
+    if (t >= A && t < B) {                                       // shut: the shiba winks
+      const k = (t - A) / this.HOLD, pop = 1 + Math.sin(k * Math.PI) * 0.18;
+      g.sprite('face', CX, CY, { w: 56 * pop, h: 58 * pop, frame: 5 });
+    }
+  }
+};
+
 const Mascot = {
   SW: 35, SH: 37,
   x: W - 20,
@@ -4457,6 +4505,8 @@ const Engine = {
     this.time += dt;
     // a PLAYING game may request a pause (e.g. blow waiting on mic permission);
     // freeze the round clock so it can't be lost while blocked
+    Wipe.update(dt);
+    if (Wipe.busy) { Mascot.update(dt); return; }   // closing on the last game: hold everything
     const paused = this.state === 'PLAYING' && this.game && this.game.paused;
     if (!paused) this.timer -= dt;
     Mascot.update(dt);
@@ -4532,7 +4582,8 @@ const Engine = {
       const out = this.timer <= 0;
       this.timer_ = this.timer;   // round clock left, for RUN's speed bonus
       if (out && !this.game.finished) {
-        if (this.game.meta.winOnTimeout) this.game.succeed(); else this.game.lose();
+        if (this.game.meta.winOnTimeout) this.game.succeed();
+        else { this.game.lose(); FX.burst(12, H - 9, PAL.bad, 18, 90); Sfx.noise(0.3, 0.09, 120); }   // the bomb goes off
       }
       if (this.game.finished) {
         if (this.game.won) {
@@ -4857,7 +4908,8 @@ const Engine = {
   // After a round's result (and its photo, if any): game over, a speed-up, or
   // straight on. Shared so a photo win can't skip the speed-up — SQUID is a
   // boss on a multiple of SPEEDUP_EVERY, so that used to happen every run.
-  advance() {
+  advance() { Wipe.run(() => this.advanceNow()); },
+  advanceNow() {
     // test mode: replay the same game forever, never lose lives or advance
     if (this.testClass) { this.lives = 4; this.startRound(this.testClass, this.testDiff); return; }
     if (this.mode === 'run') { Run.after(); return; }
@@ -4874,15 +4926,11 @@ const Engine = {
     this.drawScene();
     Mascot.draw(g);
     if (this.state === 'PLAYING') {
-      const pct = Math.max(0, this.timer / this.duration);
-      // timer bar pulses in the final second
-      let c = pct < 0.25 ? PAL.bad : PAL.accent;
-      if (pct < 0.25 && Math.floor(this.time * 12) % 2) c = PAL.ink;
-      g.rect(0, H - 6, W * pct, 6, c);
+      this.drawFuse(Math.max(0, this.timer / this.duration));
       // DEBUG: what the camera is actually reading, for tuning thresholds on a
       // real phone — a real lens reads nothing like a webcam test pattern
       const hint = this.game.meta.hint;
-      const dx = Input.camReady ? 12 + Math.round(32 * Input.camAspect()) : 2;   // clear of the live view
+      const dx = Input.camReady ? 34 + Math.round(32 * Input.camAspect()) : 26;   // clear of the bomb and live view
       if (DEBUG && ['move', 'still', 'cover'].includes(hint)) {
         const cam = Input.camReady ? 'cam' : Input.camDenied ? 'NOCAM' : '…';
         const tl = Input.tiltReady ? ' T' + Input.tiltX.toFixed(2) + '/' + Input.tiltY.toFixed(2) : ' notilt';
@@ -4896,19 +4944,37 @@ const Engine = {
       }
     }
     FX.post();
-    this.drawMute();
     this.drawCamView();
+    Wipe.draw();
+    this.drawMute();
   },
 
   // In a camera game the shelf shows what the camera sees, mirrored like a
   // mirror, with a blinking REC dot — so the player knows it is watching and
   // can see themselves move, instead of guessing whether it is working.
+  // The round clock as a lit fuse burning toward a bomb in the bottom-left
+  // corner. The last quarter the bomb flashes red and the spark spits harder.
+  drawFuse(pct) {
+    const bx = 12, by = H - 9, end = bx + 12 + (W - bx - 18) * pct, late = pct < 0.25;
+    for (let x = bx + 12; x < end; x += 3) g.rect(x, H - 6 + ((x / 3) % 2), 3, 3, (x / 3) % 2 ? TEXT_MID : PAL.ink);   // twisted cord
+    const t = this.time, flick = Math.floor(t * 20) % 2;
+    g.circle(end, H - 5, late ? 6 : 5, PAL.bad); g.circle(end, H - 5, flick ? 2.5 : 3, PAL.accent);
+    for (let i = 0; i < (late ? 10 : 6); i++) {
+      const a = i * 0.9 + t * 11, r = 6 + (i % 3) * (late ? 3 : 2);
+      g.rect(end + Math.cos(a) * r, H - 5 + Math.sin(a) * r * 0.8, 2, 2, i % 2 ? PAL.accent : PAL.ink);
+    }
+    const hot = late && Math.floor(t * 8) % 2;
+    g.circle(bx, by, 10, PAL.ink); g.circle(bx, by, 9, hot ? PAL.bad : PAL.mid);
+    g.circle(bx - 3, by - 3, 2.5, TEXT_MID);
+    g.rect(bx + 5, by - 11, 6, 5, PAL.ink);
+  },
+
   drawCamView() {
     if (this.state !== 'PROMPT' && this.state !== 'PLAYING') return;
     const gm = this.game; if (!gm || !Input.camReady) return;
     const on = 'usesCam' in gm ? gm.usesCam : (gm.meta.cam || gm.meta.photo);
     if (!on) return;
-    const a = Input.camAspect(), h = 32, w = Math.round(h * a), x = 6, y = BOT + 3;
+    const a = Input.camAspect(), h = 32, w = Math.round(h * a), x = 28, y = BOT + 3;   // right of the bomb
     g.rect(x - 1, y - 1, w + 2, h + 2, PAL.ink);
     if (!Input.drawLive(ctx, x, y, w, h)) g.rect(x, y, w, h, PAL.mid);
     if (Math.floor(this.time * 2) % 2) g.circle(x + 4, y + 4, 2, PAL.bad);
@@ -5004,6 +5070,8 @@ const Engine = {
 
     if (s === 'PROMPT') {
       const m = this.game.meta;
+      // a dimmed look at where the next game happens, behind its instructions
+      if (m.env) { Env.paint(m.env); ctx.globalAlpha = 0.62; g.rect(0, 0, W, H, PAL.bg); ctx.globalAlpha = 1; }
       if (this.isBoss) {
         g.rect(0, 0, W, H, PAL.bad);
         g.text('BOSS', CX, CY - 46, 20, PAL.ink);
@@ -5028,7 +5096,10 @@ const Engine = {
 
     if (s === 'RESULT') {
       const win = this.result === 'WIN';
-      g.clear(win ? PAL.bg : PAL.bad);
+      // the game's last frame stays behind the verdict, dimmed — so the wipe
+      // closes on the place you just played, not on a blank screen
+      g.env = this.game.meta.env || null; this.game.draw(g); g.env = null;
+      ctx.globalAlpha = win ? 0.6 : 0.7; g.rect(0, 0, W, H, win ? PAL.bg : PAL.bad); ctx.globalAlpha = 1;
       g.text(win ? 'GOOD!' : 'FAIL!', CX, CY - 6, 24, win ? PAL.accent : PAL.ink);
       if (win && this.combo > 1) g.text('x' + this.combo + ' STREAK', CX, CY + 18, 9, PAL.mid);
       // photo games get the big polaroid next; the rest show their candid here

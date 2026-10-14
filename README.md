@@ -82,6 +82,16 @@ actually has — a camera game on touch says "TAP FAST". The first time a game
 comes up in a session the card stays up an extra second so it can be read.
 Set it with `how` in a game's meta.
 
+## Between games
+
+Each round's clock is a **lit fuse** burning along the bottom toward a bomb in
+the corner; the last quarter the bomb flashes red, and if time runs out on a
+game you had to finish, it goes off. Between games the screen closes down to
+a **shiba-head-shaped window** (`Wipe`), holds a beat on black while the shiba
+winks, then opens on the next game — whose scene shows, dimmed, behind its
+instructions. The verdict (GOOD! / FAIL!) is drawn over the game you just
+played, so the wipe closes on that place rather than a blank screen.
+
 ## Photo album
 
 Every action shot you win is saved on the phone (`Album`, in localStorage as
