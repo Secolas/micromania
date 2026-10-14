@@ -1069,6 +1069,7 @@ const PhotoFX = {
      'nature@Y' the sunny day with far mountains and a pine forest, meadow from Y
      'disco@Y'  a dark club: light beams, a mirror ball, a checkered dance floor from Y
      'night@Y'  outside at night: moon, stars, a house with a lit window, grass from Y
+     'bedroom@Y' the living room after dark: dimmed, a window with the moon in it
    Each is painted once into a 180x320 canvas and blitted after that, so it
    costs nothing per frame; only the clouds, surf, disco lights and stars are drawn live.
 ─────────────────────────────────────────────────────────────────────────────── */
@@ -1212,7 +1213,7 @@ const Env = {
       R(0, y, W, BOT - y, SCENE.grass);
       R(0, y, W, 2, SCENE.grassHi);
       tufts(y + 3, BOT, Math.max(4, (BOT - y) / 2));
-    } else if (kind === 'room' || kind === 'wall') {
+    } else if (kind === 'room' || kind === 'wall' || kind === 'bedroom') {
       // striped wallpaper, skirting, floorboards. (A little framed picture
       // used to hang here; at this size it read as a stray UI box.)
       for (let i = 0; i < W; i += 12) R(i, TOP, 6, y - TOP, SCENE.wall), R(i + 6, TOP, 6, y - TOP, SCENE.wallHi);
@@ -1221,6 +1222,19 @@ const Env = {
       for (let fy = y + 7, row = 0; fy < BOT; fy += 7, row++) {
         R(0, fy, W, 1, SCENE.floorLo);
         for (let fx = (row % 2) * 22; fx < W; fx += 44) R(fx, fy - 7, 1, 7, SCENE.floorLo);
+      }
+      if (kind === 'bedroom') {
+        // lights out: dim the whole room, then a window onto the night
+        x.globalAlpha = 0.45; R(0, TOP, W, BOT - TOP, PAL.bg); x.globalAlpha = 1;
+        const wx = 124, wy = TOP + 40, ww = 40, wh = 44;
+        R(wx - 3, wy - 3, ww + 6, wh + 6, SCENE.skirt);                         // frame
+        R(wx, wy, ww, wh, SCENE.night1);
+        R(wx, wy, ww, wh / 2, SCENE.night0);
+        x.fillStyle = PAL.ink; x.beginPath(); x.arc(wx + 27, wy + 13, 7, 0, 6.2832); x.fill();
+        x.fillStyle = SCENE.night0; x.beginPath(); x.arc(wx + 30, wy + 10, 6, 0, 6.2832); x.fill();
+        for (const [sx, sy] of [[6, 6], [14, 26], [33, 32], [8, 37]]) R(wx + sx, wy + sy, 1, 1, PAL.ink);
+        R(wx + ww / 2 - 1, wy, 2, wh, SCENE.skirt); R(wx, wy + wh / 2 - 1, ww, 2, SCENE.skirt);   // glazing bars
+        R(wx - 6, wy + wh + 3, ww + 12, 3, SCENE.skirt);                        // sill
       }
     } else if (kind === 'sunny' || kind === 'park' || kind === 'nature') {
       const bands = 8, h = (y - TOP) / bands;
@@ -3022,7 +3036,7 @@ function sleepFace() {
 
 // 33. FREEZE — hold perfectly still so you don't wake the sleeping shiba
 class FreezeStatue extends Microgame {
-  static meta = { id: 'freeze', env: 'sunny@196', cam: true, prompt: 'FREEZE!', hint: 'still', duration: 4.6, minDuration: 3.8, winOnTimeout: true, photo: true, photoCap: 'SLEEPY TIME!',
+  static meta = { id: 'freeze', env: 'bedroom@214', cam: true, prompt: 'FREEZE!', hint: 'still', duration: 4.6, minDuration: 3.8, winOnTimeout: true, photo: true, photoCap: 'SLEEPY TIME!',
     how: { cam: "HOLD STILL OR YOU'LL\nWAKE THE SHIBA", touch: "DON'T TOUCH OR YOU'LL\nWAKE THE SHIBA" } };
   init() {
     Input.enableCam();
@@ -3086,9 +3100,10 @@ class FreezeStatue extends Microgame {
   stampPhoto(c) { PhotoFX.sleepy(c); }
   draw(g) {
     g.clear();
-    if (this.paused) { g.text('ALLOW CAMERA…', CX, CY - 6, 11, PAL.bg); g.text('(then hold still)', CX, CY + 12, 7, PAL.bg); return; }
-    // a picnic blanket on the meadow
-    for (let r = 0; r < 4; r++) for (let c = 0; c < 12; c++) g.rect(CX - 48 + c * 8, 204 + r * 8, 8, 8, (r + c) % 2 ? PAL.bad : PAL.ink);
+    if (this.paused) { g.text('ALLOW CAMERA…', CX, CY - 6, 11, PAL.ink); g.text('(then hold still)', CX, CY + 12, 7, PAL.mid); return; }
+    // a round dog bed on the bedroom floor
+    ctx.fillStyle = SCENE.trunk; ctx.beginPath(); ctx.ellipse(CX, 222, 56, 16, 0, 0, 6.2832); ctx.fill();
+    ctx.fillStyle = PAL.bad; ctx.beginPath(); ctx.ellipse(CX, 220, 46, 10, 0, 0, 6.2832); ctx.fill();
     // the sleeper: both eyes shut, breathing slowly; it twitches and peeks
     // one eye open when you move, and is wide awake once you've woken it
     const j = (Math.random() - 0.5) * this.wob * 6;
@@ -3104,12 +3119,11 @@ class FreezeStatue extends Microgame {
     else for (let i = 0; i < 3; i++) {            // Zzz drifting up while it sleeps
       const k = (this.t * 0.6 + i / 3) % 1;
       ctx.globalAlpha = 1 - k;
-      g.text('Z', CX + 26 + k * 24 + i * 4, 160 - k * 50, 9 + i * 3, PAL.bg);
+      g.text('Z', CX + 26 + k * 24 + i * 4, 160 - k * 50, 9 + i * 3, PAL.ink);
       ctx.globalAlpha = 1;
     }
-    // under the sun, not across it
-    if (this.grace > 0) g.text('GET READY…', CX, TOP + 70, 9, PAL.bg);
-    else g.text(Input.camReady ? "SHHH… DON'T MOVE" : "SHHH… DON'T TOUCH", CX, TOP + 70, 9, this.hp < 0.4 ? PAL.bad : PAL.bg);
+    if (this.grace > 0) g.text('GET READY…', CX, TOP + 26, 9, PAL.mid);
+    else g.text(Input.camReady ? "SHHH… DON'T MOVE" : "SHHH… DON'T TOUCH", CX, TOP + 26, 9, this.hp < 0.4 ? PAL.bad : PAL.ink);
     // live motion, with a tick at the line that starts waking it — you can
     // see the camera reacting, so a still round never feels like luck
     const mw = W - 60;
