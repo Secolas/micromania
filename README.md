@@ -1,6 +1,6 @@
 # MICROMANIA
 
-A WarioWare-style microgame collection — 46 fast microgames in a single
+A WarioWare-style microgame collection — 49 fast microgames in a single
 self-contained HTML file. Portrait, mobile-first, starring a pixel-art shiba inu.
 
 ## Play
@@ -175,7 +175,14 @@ DODGE and SQUEEZE (drag to survive), JUGGLE (tap to keep every ball off the
 floor), RED LIGHT (the tap boss — mash on green to fill the bar, stop the
 instant it turns red or you're caught, and sit through the reds), and SQUID
 (its camera twin — move your head to run to the goal while the doll's back is
-turned, freeze the instant it faces you).
+turned, freeze the instant it faces you), WAKE UP! (a giant shiba asleep in its
+bed — shout into the mic to wake it before time's up; quiet lets it drift back
+off; with no mic, tap as fast as you can) and BATH TIME! (shake the phone to
+fling the suds off a soapy shiba in the tub; stop and the bubble bath foams
+back up).
+
+BEACH DIG is a regular game on the beach: swipe again and again to dig where
+the X is until the bone turns up.
 
 ## Structure
 
