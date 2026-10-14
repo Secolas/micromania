@@ -4257,7 +4257,6 @@ class Walkies extends Microgame {
     for (const [c, m] of this.num) {
       const [x, y] = this.centre(c), got = m < this.next, nxt = m === this.next;
       ctx.save(); ctx.translate(x, y); if (nxt) ctx.rotate(Math.sin(this.t * 9) * 0.14);
-      for (const [ox, oy] of [[-2, 0], [2, 0], [0, -2], [0, 2], [-1.5, -1.5], [1.5, -1.5], [-1.5, 1.5], [1.5, 1.5]]) g.bone(ox, oy, bw, PAL.bg);   // dark rim
       g.bone(0, 0, bw, got ? PAL.mid : PAL.accent);
       g.text(String(m), 0, fs * 0.36, fs, PAL.bg);
       ctx.restore();
