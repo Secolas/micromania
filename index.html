@@ -300,6 +300,7 @@ const Sfx = {
   roll(k)  { this.noise(0.05, 0.01 + k * 0.04, 260); },                    // a ball rolling, k = speed 0..1
   sniff()  { this.noise(0.04, 0.035, 3200); setTimeout(() => this.noise(0.05, 0.03, 3200), 90); },
   heart()  { this.slide(110, 55, 0.09, 'sine', 0.13); setTimeout(() => this.slide(95, 50, 0.08, 'sine', 0.09), 150); },
+  snore()  { this.slide(92, 70, 0.45, 'sawtooth', 0.03); },
   // tonal, not noise, so a blow game's mic can't take it for another puff
   poof()   { this.slide(760, 210, 0.13, 'sine', 0.05); },
   // one note of a rising major scale, step 0..7 — progress you can hear
@@ -1027,31 +1028,27 @@ const PhotoFX = {
     ring(w * 0.7, h * 0.78, w * 0.15); ring(w * 0.14, h * 0.72, w * 0.06); ring(w * 0.5, h * 0.1, w * 0.05);
   },
 
-  // A plinth and a laurel, for FREEZE. The person is left in their own colours
-  // — the marble is the props, not a grey wash over somebody's face.
-  statue(c) {
+  // Zzz rising off you and a crescent moon, for FREEZE — you held so still
+  // the shiba slept right through it.
+  sleepy(c) {
     const x = c.getContext('2d'), w = c.width, h = c.height;
     const box = (a, b, ww, hh, col) => { x.fillStyle = col; x.fillRect(Math.round(a), Math.round(b), Math.round(ww), Math.round(hh)); };
-    // plinth across the bottom, stepped like cut stone
-    const pw = Math.round(w * 0.62), px0 = Math.round((w - pw) / 2), ph = Math.round(h * 0.23);
-    const py0 = h - ph;
-    box(px0 - 6, py0, pw + 12, 3, PAL.ink);                  // cap
-    box(px0, py0 + 3, pw, ph - 3, PAL.mid);                  // body
-    box(px0 + 4, py0 + 7, pw - 8, ph - 12, PAL.ink);         // inset panel
-    // block letters, drawn as bars — a real font would not survive this size
-    const word = Math.round(pw * 0.62), wx = Math.round((w - word) / 2), wy = py0 + Math.round(ph * 0.42);
-    for (let i = 0; i < 5; i++) box(wx + i * Math.round(word / 5), wy, Math.round(word / 7), 5, PAL.mid);
-    // laurel arcing over the head
-    const lr = Math.round(w * 0.3), ly = Math.round(h * 0.30);
-    for (let i = 0; i <= 12; i++) {
-      const a = Math.PI + (i / 12) * Math.PI;                // left to right, over the top
-      const lx = w / 2 + Math.cos(a) * lr, lyy = ly + Math.sin(a) * lr * 0.5;
-      box(lx - 1, lyy - 1, 3, 3, PAL.ink);
-      if (i % 2) box(lx - 2, lyy - 4, 2, 3, PAL.accent);     // leaves
-    }
-    // chipped corners, so it reads as old stone
-    box(2, 2, 7, 3, PAL.ink); box(2, 2, 3, 7, PAL.ink);
-    box(w - 9, 2, 7, 3, PAL.ink); box(w - 5, 2, 3, 7, PAL.ink);
+    // Zzz in a bold face with a dark rim, so it reads on any photo
+    const z = (zx, zy, sz) => {
+      x.font = 'bold ' + Math.round(sz) + 'px ui-monospace, monospace'; x.textAlign = 'center';
+      x.lineWidth = Math.max(2, sz / 7); x.strokeStyle = PAL.bg; x.strokeText('Z', zx, zy);
+      x.fillStyle = PAL.ink; x.fillText('Z', zx, zy);
+    };
+    const s0 = w * 0.11;
+    z(w * 0.66, h * 0.36, s0); z(w * 0.77, h * 0.25, s0 * 1.35); z(w * 0.88, h * 0.12, s0 * 1.75);
+    // a crescent moon in the top corner
+    const mr = Math.round(w * 0.08), mx = Math.round(w * 0.14), my = Math.round(h * 0.12);
+    const m = document.createElement('canvas'); m.width = m.height = mr * 2 + 2;   // cut on its own canvas,
+    const mc = m.getContext('2d');                                                // not out of the photo
+    mc.fillStyle = PAL.accent; mc.beginPath(); mc.arc(mr + 1, mr + 1, mr, 0, 6.2832); mc.fill();
+    mc.globalCompositeOperation = 'destination-out';
+    mc.beginPath(); mc.arc(mr * 1.5 + 1, mr * 0.65 + 1, mr * 0.85, 0, 6.2832); mc.fill();
+    x.drawImage(m, mx - mr - 1, my - mr - 1);
   }
 };
 
@@ -2822,12 +2819,13 @@ class KnockStack extends Microgame {
   }
 }
 
-// 30. MOVE — wave your body at the camera to fill the meter; snaps a photo on win
+// 30. MOVE — wave your body at the camera and the shiba runs for the finish flag
 class MoveCam extends Microgame {
   static meta = { id: 'move', env: 'park@250', cam: true, prompt: 'MOVE!', hint: 'move', duration: 5.0, minDuration: 4.0, photo: true,
-    how: { cam: 'MOVE YOUR BODY\nIN FRONT OF THE CAMERA', touch: 'TAP FAST' } };
+    how: { cam: 'MOVE YOUR BODY TO MAKE\nTHE SHIBA RUN', touch: 'TAP FAST TO MAKE\nTHE SHIBA RUN' } };
   init() {
     this.fill = 0;
+    this.legT = 0; this.dust = [];
     this.need = this.byD(1.0, 1.4, 1.8);
     Input.enableCam();
     this.paused = Input.camPending;
@@ -2842,6 +2840,11 @@ class MoveCam extends Microgame {
       return;
     }
     this.fill += input.motion * dt * 1.4;
+    // legs go as fast as you move; kick up dust while it's really running
+    this.legT += dt * input.motion * 30;
+    if (input.motion > 0.15 && Math.random() < input.motion) this.dust.push({ x: this.runX() - 14, y: 246, t: 0 });
+    for (const d of this.dust) { d.t += dt; d.x -= 18 * dt; d.y -= 6 * dt; }
+    this.dust = this.dust.filter(d => d.t < 0.4);
     const n = Math.floor(Math.min(1, this.fill / this.need) * 8);   // a rising scale as the meter fills
     if (n > this.note) { this.note = n; Sfx.step(n - 1); }
     if (this.fill >= this.need && !this.finished) {
@@ -2849,22 +2852,30 @@ class MoveCam extends Microgame {
       this.succeed();
     }
   }
+  runX() { return 22 + Math.min(1, this.fill / this.need) * (W - 58); }
   draw(g) {
     g.clear();
     if (this.paused) {
       g.text('ALLOW CAMERA…', CX, CY - 6, 11, PAL.bg);
-      g.text('(then move to fill it)', CX, CY + 12, 7, PAL.bg);
+      g.text('(then move to make it run)', CX, CY + 12, 7, PAL.bg);
       return;
     }
-    // live motion feedback: a pulsing ring that grows with how much you're moving
-    const m = Input.motion;
-    g.circle(CX, CY - 6, 16 + m * 30, PAL.bg);                       // dark rim so it reads on the sky
-    g.circle(CX, CY - 6, 14 + m * 30, m > 0.4 ? PAL.accent : PAL.mid);
-    g.circle(CX, CY - 6, 10, PAL.ink);
-    g.text(Input.camReady ? 'WAVE!' : 'TAP FAST!', CX, TOP + 26, 9, PAL.bg);
-    g.bar(30, BOT - 18, W - 60, 8, this.fill / this.need);
+    const m = Input.motion, gy = 250;
+    // the race lane, and the finish flag waiting at the far end
+    for (let x = 22; x < W - 26; x += 8) g.rect(x, gy + 10, 4, 1, PAL.ink);
+    const fx = W - 18;
+    g.rect(fx, gy - 34, 2, 34, PAL.bg);
+    for (let r = 0; r < 3; r++) for (let c = 0; c < 4; c++) g.rect(fx + 2 + c * 4, gy - 34 + r * 4, 4, 4, (r + c) % 2 ? PAL.bg : PAL.ink);
+    // dust behind its paws, speed lines when it's flat out
+    for (const d of this.dust) { ctx.globalAlpha = 1 - d.t / 0.4; g.rect(d.x, d.y, 3, 3, PAL.mid); ctx.globalAlpha = 1; }
+    const rx = this.runX();
+    if (m > 0.4) for (let i = 0; i < 3; i++) g.rect(rx - 34 - i * 5, gy - 30 + i * 9, 12 + i * 3, 2, PAL.bg);
+    const frame = m > 0.05 ? Math.floor(this.legT) % 9 : 0;
+    g.sprite('swiperight', rx, gy - 22, { w: 64, h: 64, frame });
+    g.text(Input.camReady ? 'WAVE TO RUN!' : 'TAP TO RUN!', CX - 12, TOP + 26, 9, PAL.bg);   // clear of the sun
     if (this.flash > 0) { this.flash -= STEP; g.rect(0, 0, W, H, PAL.ink); }
   }
+
 }
 
 // 31. DRY OFF — big separate shakes at the camera, like a wet dog (Snapped! homage)
@@ -2986,10 +2997,33 @@ class LeanDodge extends Microgame {
    so they stay in the pool on a desktop with no webcam.
 ─────────────────────────────────────────────────────────────────────────────── */
 
-// 33. FREEZE — hold perfectly still until the clock runs out
+// The face sheet has a wink but no both-eyes-shut frame, so build one: copy
+// the wink, paint fur over both eyes and draw two little closed-eye curves.
+function sleepFace() {
+  if (Assets.cache.sleepface || !Assets.get('face')) return;
+  const a = Assets.get('face'), c = document.createElement('canvas');
+  c.width = a.fw; c.height = a.fh;
+  const x = c.getContext('2d');
+  x.drawImage(a.img, 5 * a.fw, 0, a.fw, a.fh, 0, 0, a.fw, a.fh);
+  const d = x.getImageData(0, 0, a.fw, a.fh);
+  const px = (i, y) => { const k = (y * a.fw + i) * 4; return [d.data[k], d.data[k + 1], d.data[k + 2], d.data[k + 3]]; };
+  const put = (i, y, v) => { const k = (y * a.fw + i) * 4; for (let n = 0; n < 4; n++) d.data[k + n] = v[n]; };
+  const ink = px(21, 16);                                   // the wink's dark line
+  for (const [l, r] of [[6, 11], [18, 24]]) {
+    for (let y = 14; y <= 17; y++) for (let i = l; i <= r; i++) put(i, y, px(i, 13));   // fur from just above
+  }
+  for (const cx of [8, 21]) {                               // ‿ shut eyes
+    put(cx - 2, 15, ink); put(cx + 2, 15, ink);
+    put(cx - 1, 16, ink); put(cx, 16, ink); put(cx + 1, 16, ink);
+  }
+  x.putImageData(d, 0, 0);
+  Assets.cache.sleepface = { img: c, fw: a.fw, fh: a.fh, frames: 1, fps: 1 };
+}
+
+// 33. FREEZE — hold perfectly still so you don't wake the sleeping shiba
 class FreezeStatue extends Microgame {
-  static meta = { id: 'freeze', env: 'sunny@180', cam: true, prompt: 'FREEZE!', hint: 'still', duration: 4.6, minDuration: 3.8, winOnTimeout: true, photo: true, photoCap: 'PERFECT STATUE!',
-    how: { cam: 'HOLD STILL IN FRONT\nOF THE CAMERA', touch: "DON'T TOUCH\nANYTHING" } };
+  static meta = { id: 'freeze', env: 'sunny@196', cam: true, prompt: 'FREEZE!', hint: 'still', duration: 4.6, minDuration: 3.8, winOnTimeout: true, photo: true, photoCap: 'SLEEPY TIME!',
+    how: { cam: "HOLD STILL OR YOU'LL\nWAKE THE SHIBA", touch: "DON'T TOUCH OR YOU'LL\nWAKE THE SHIBA" } };
   init() {
     Input.enableCam();
     this.paused = Input.camPending; this.wait = 0;
@@ -3001,15 +3035,17 @@ class FreezeStatue extends Microgame {
     this.base = this.byD(0.09, 0.065, 0.05);
     this.thr = this.base;
     this.noise = 1;                            // quietest motion while settling
-    this.ox = 0; this.oy = 0;                  // where the statue has been nudged
-    this.hp = 1;                               // wobble meter — empty and you're caught
+    this.ox = 0; this.oy = 0;                  // how far the sleeper has shuffled
+    this.hp = 1;                               // sleep meter — empty and it wakes up
     this.wob = 0;
-    this.cracks = [];
-    this.beatT = 0.3;
+    this.stirs = 0;                            // each one is a "huh?" and a twitch
+    this.snoreT = 0.3;
+    this.woke = false;
+    sleepFace();
   }
   update(dt, input) {
     if (this.paused) { this.wait += dt; if (!Input.camPending || this.wait > 1.5) this.paused = false; return; }
-    // the statue mirrors you: the head snaps toward wherever the camera sees
+    // the sleeper mirrors you: its head shuffles toward wherever the camera sees
     // movement (fast, so it tracks your face left/right/up) and eases back to
     // facing you when you hold still, so "you are moving" is unmistakable.
     if (input.motion > 0.04) {
@@ -3038,45 +3074,51 @@ class FreezeStatue extends Microgame {
       this.hp -= (0.8 + over * 12) * dt;
       this.wob = Math.min(1, this.wob + over * dt * 6);
       const want = Math.min(6, 6 - Math.ceil(this.hp * 6));
-      if (this.cracks.length < want) Sfx.crunch();   // the statue cracks as you move
-      while (this.cracks.length < want) this.cracks.push({ a: Math.random() * 6.2832, r: 17 + Math.random() * 5, l: 7 + Math.random() * 12 });
-      if (this.hp <= 0) { FX.shake(4); this.lose(); return; }
+      if (this.stirs < want) { this.stirs = want; Sfx.squeak(); }   // it stirs: "huh?"
+      if (this.hp <= 0) { this.woke = true; Sfx.bark(); FX.shake(4); this.lose(); return; }
     } else {
-      this.beatT -= dt;                               // a slow heartbeat while you hold still
-      if (this.beatT <= 0) { Sfx.heart(); this.beatT = 0.9; }
+      this.snoreT -= dt;                              // a soft snore while you hold still
+      if (this.snoreT <= 0) { Sfx.snore(); this.snoreT = 1.1; }
       this.wob = Math.max(0, this.wob - dt * 2);
       this.hp = Math.min(1, this.hp + dt * 0.04);   // very slow refill — stillness is the only real recovery
     }
   }
-  stampPhoto(c) { PhotoFX.statue(c); }
+  stampPhoto(c) { PhotoFX.sleepy(c); }
   draw(g) {
     g.clear();
     if (this.paused) { g.text('ALLOW CAMERA…', CX, CY - 6, 11, PAL.bg); g.text('(then hold still)', CX, CY + 12, 7, PAL.bg); return; }
-    const j = (Math.random() - 0.5) * this.wob * 7;
-    // plinth stays put — the statue shifting off it is the tell that you moved
-    g.rect(CX - 28, CY + 22, 56, 5, PAL.mid);
-    g.rect(CX - 22, CY + 27, 44, 4, PAL.mid);
-    const hx = CX + this.ox + j, hy = CY - 6 + this.oy;
-    // flat face that slides and leans the way you move — the tell that you moved
+    // a picnic blanket on the meadow
+    for (let r = 0; r < 4; r++) for (let c = 0; c < 12; c++) g.rect(CX - 48 + c * 8, 204 + r * 8, 8, 8, (r + c) % 2 ? PAL.bad : PAL.ink);
+    // the sleeper: both eyes shut, breathing slowly; it twitches and peeks
+    // one eye open when you move, and is wide awake once you've woken it
+    const j = (Math.random() - 0.5) * this.wob * 6;
+    const breath = Math.sin(this.t * 2.6) * 2;
+    const stirring = this.wob > 0.15 || this.hp < 0.35;
     ctx.save();
-    ctx.translate(hx, hy);
-    ctx.rotate(Math.max(-0.25, Math.min(0.25, this.ox * 0.010)));
-    g.sprite('face', 0, 0, { w: 46, h: 46, frame: 0 });
+    ctx.translate(CX - 4 + this.ox * 0.25 + j, 192 - breath * 0.5 + this.oy * 0.15);
+    ctx.rotate(this.woke ? 0 : -0.35 + Math.max(-0.15, Math.min(0.15, this.ox * 0.004)));
+    g.sprite(this.woke ? 'face' : stirring ? 'face' : 'sleepface', 0, 0, { w: 70, h: 72 + breath, frame: this.woke ? 0 : stirring ? 5 : 0 });
     ctx.restore();
-    for (const c of this.cracks) {
-      g.line(hx + Math.cos(c.a) * c.r, hy + Math.sin(c.a) * c.r,
-             hx + Math.cos(c.a) * (c.r + c.l), hy + Math.sin(c.a) * (c.r + c.l), PAL.bad, 1);
+    if (this.woke) g.text('!', CX + 30, 150, 18, PAL.bad);
+    else if (stirring) { g.text('?', CX + 28, 156 + Math.sin(this.t * 12) * 2, 14, PAL.bad); }
+    else for (let i = 0; i < 3; i++) {            // Zzz drifting up while it sleeps
+      const k = (this.t * 0.6 + i / 3) % 1;
+      ctx.globalAlpha = 1 - k;
+      g.text('Z', CX + 26 + k * 24 + i * 4, 160 - k * 50, 9 + i * 3, PAL.bg);
+      ctx.globalAlpha = 1;
     }
-    if (this.grace > 0) g.text('GET READY…', CX, TOP + 26, 9, PAL.bg);
-    else g.text(Input.camReady ? 'DO NOT MOVE' : "DON'T TAP", CX, TOP + 26, 9, this.hp < 0.4 ? PAL.bad : PAL.bg);
-    // live motion, with a tick at the line that starts draining the meter —
-    // you can see the camera reacting, so a still round never feels like luck
+    // under the sun, not across it
+    if (this.grace > 0) g.text('GET READY…', CX, TOP + 70, 9, PAL.bg);
+    else g.text(Input.camReady ? "SHHH… DON'T MOVE" : "SHHH… DON'T TOUCH", CX, TOP + 70, 9, this.hp < 0.4 ? PAL.bad : PAL.bg);
+    // live motion, with a tick at the line that starts waking it — you can
+    // see the camera reacting, so a still round never feels like luck
     const mw = W - 60;
     g.rect(30, BOT - 30, mw, 3, PAL.mid);
     g.rect(30, BOT - 30, Math.min(1, Input.motion / 0.6) * mw, 3, Input.motion > this.thr ? PAL.bad : PAL.ink);
     g.rect(30 + Math.min(1, this.thr / 0.6) * mw, BOT - 33, 1, 9, PAL.accent);
     g.bar(30, BOT - 18, mw, 8, this.hp, this.hp < 0.4 ? PAL.bad : PAL.accent);
   }
+
 }
 
 // 34. SWAT — put your hand where the fly is; the camera tracks where you moved

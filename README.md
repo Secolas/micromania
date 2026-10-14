@@ -19,10 +19,10 @@ middle of the top bar mutes sound, and the choice is remembered.
 
 | game | what the camera reads | touch fallback |
 |---|---|---|
-| MOVE | how much you move | tap fast |
+| MOVE | how much you move — the shiba runs for the flag | tap fast |
 | DRY | how much you move | tap fast |
 | LEAN | which half you moved in | tap that side |
-| FREEZE | the *absence* of movement | don't tap |
+| FREEZE | the *absence* of movement — don't wake the sleeping shiba | don't tap |
 | SWAT | where the movement is | move your finger, tap |
 | HIDE | frame brightness — a hand over the lens | hold the screen |
 | DANCE | movement in time with a beat | tap on the beat |
@@ -54,7 +54,7 @@ read as pixel art on a photograph rather than a grade over someone's face:
 
 - `cake` — BLOW: a birthday cake with the candles just blown out
 - `dodge` — LEAN: a brick hurtling past the ear you leaned away from
-- `statue` — FREEZE: a marble plinth and a laurel over your head
+- `sleepy` — FREEZE: Zzz rising off you and a crescent moon — the shiba slept through it
 
 **BLOW** is the only game that uses the **microphone** — it measures the
 low-frequency energy of a puff, and falls back to fast tapping if the mic is
@@ -104,8 +104,8 @@ A game opts in with `this.fakeOut(chance, prompt, how)` in `init()`.
 `crunch`, `chomp`, `splash`, `whoosh`, `thud`, `fizz`, `roll`, `sniff`,
 `heart`, `poof`, `step` (a rising scale for progress) and the SPEED UP
 fanfare — all synthesised, no samples. Every game makes a sound while you play:
-the sensor games say what is happening (the soda fizzes harder, the statue's
-heartbeat, a crack when you twitch, the shiba sniffing for you while HIDE's lens
+the sensor games say what is happening (the soda fizzes harder, the sleeping
+shiba snores and goes "huh?" when you twitch, the shiba sniffing for you while HIDE's lens
 is uncovered).
 
 `Beat` is the backing loop — kick, snare, hats and a bass line, scheduled
