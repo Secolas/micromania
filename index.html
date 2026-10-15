@@ -1764,38 +1764,67 @@ class HoldRelease extends Microgame {
     this.zone = this.byD(0.22, 0.16, 0.11);
     this.zoneAt = 0.35 + Math.random() * 0.4;
     this.armed = false;
+    this.jumpT = -1;                         // seconds into the jump, -1 = still on the floor
+  }
+  // the meter and couch layout, shared by update and draw
+  geo() {
+    const x = 14, w = 12, y = CY - 70, h = 140, floor = y + h, cx0 = 92, cw = 74;
+    const seat = y + (1 - this.zoneAt) * h, th = Math.max(8, this.zone * h);
+    return { x, w, y, h, floor, cx0, cw, seat, th };
   }
   update(dt, input) {
+    if (this.jumpT >= 0) {                   // in the air: play the leap out, then score it
+      this.jumpT += dt;
+      if (this.jumpT >= 0.6) { if (this.ok) { Sfx.boop(); this.succeed(); } else { Sfx.thud(); buzz(60); FX.shake(3); this.lose(); } }
+      return;
+    }
     if (input.down) {
       this.armed = true;
       this.p += this.dir * this.speed * dt;
       if (this.p > 1) { this.p = 1; this.dir = -1; }
       if (this.p < 0) { this.p = 0; this.dir = 1; }
     } else if (this.armed) {
-      if (Math.abs(this.p - this.zoneAt) < this.zone / 2) { Sfx.whoosh(); this.succeed(); } else { Sfx.thud(); this.lose(); }
+      // let go: the shiba leaps as high as you charged — onto the cushion if
+      // that's the couch's height, else it bonks the front and drops back
+      this.ok = Math.abs(this.p - this.zoneAt) < this.zone / 2;
+      this.jumpT = 0; this.playingOut = true; this.armed = false; Sfx.whoosh(); buzz(15);
     }
   }
   draw(g) {
     g.clear();
     // the jump meter on the left: how high the shiba will go
-    const x = 14, w = 12, y = CY - 70, h = 140, floor = y + h;
+    const { x, w, y, h, floor, cx0, cw, seat, th } = this.geo();
     g.rect(x, y, w, h, PAL.mid);
     g.rect(x, y + (1 - this.zoneAt - this.zone / 2) * h, w, this.zone * h, PAL.accent);
     const py = y + (1 - this.p) * h;
     g.rect(x - 3, py - 2, w + 6, 4, PAL.ink);
     // the couch, its seat at the height the zone marks
-    const seat = y + (1 - this.zoneAt) * h, cx0 = 92, cw = 74, th = Math.max(8, this.zone * h);
     g.rect(cx0, seat - th / 2, cw, th, PAL.bad);                    // cushion
     g.rect(cx0 + cw - 10, seat - th / 2 - 26, 10, 26 + th, PAL.bad); // armrest/back
     g.rect(cx0, seat + th / 2, cw, floor - seat - th / 2, PAL.mid);  // base down to the floor
     g.rect(cx0 + 2, seat - th / 2, cw - 14, 2, PAL.ink);             // cushion highlight
     // the aim line: where the jump tops out right now
     ctx.globalAlpha = 0.5; g.rect(x + w + 4, py - 1, 64, 2, PAL.ink); ctx.globalAlpha = 1;
-    // the shiba crouched on the floor, winding up while you hold
-    const fr = this.armed ? (Math.floor(this.t * 10) % 2) : 0;
     g.rect(0, floor, W, 2, PAL.mid);
-    g.sprite('runjump', 52, floor - 22, { w: 56, h: 56, frame: fr });
-    g.text(this.armed ? 'LET GO AT THE COUCH!' : 'HOLD TO CHARGE', CX, BOT - 6, 8, this.armed ? PAL.accent : PAL.mid);
+    // the shiba: crouched on the floor winding up, then leaping. Its feet sit
+    // a quarter of the sprite below its centre, so floor - 14 stands it on the floor.
+    const S = 56, foot = 0.25 * S;
+    if (this.jumpT < 0) {
+      const fr = this.armed ? (Math.floor(this.t * 10) % 2) : 0;
+      g.sprite('runjump', 52, floor - foot, { w: S, h: S, frame: fr });
+    } else {
+      // a hop from the floor that tops out where the meter was, landing on
+      // the cushion — or short of the couch, back on the floor
+      const k = Math.min(1, this.jumpT / 0.6), top = y + (1 - this.p) * h;
+      const x1 = this.ok ? cx0 + 22 : cx0 - 10, y1 = this.ok ? seat - th / 2 : floor;
+      const y0 = floor, mid = Math.min(top, y1, y0) - 4;
+      const px = 52 + (x1 - 52) * k;
+      const up = k < 0.5 ? k / 0.5 : 1, down = k < 0.5 ? 0 : (k - 0.5) / 0.5;
+      const py = k < 0.5 ? y0 + (mid - y0) * (1 - (1 - up) * (1 - up)) : mid + (y1 - mid) * down * down;
+      g.sprite('runjump', px, py - foot, { w: S, h: S, frame: k < 0.4 ? 2 : k < 0.6 ? 3 : 4 });
+    }
+    g.text(this.jumpT >= 0 ? (this.ok ? 'UP ON THE COUCH!' : 'BONK!') : this.armed ? 'LET GO AT THE COUCH!' : 'HOLD TO CHARGE',
+           CX, BOT - 6, 8, this.jumpT >= 0 ? (this.ok ? PAL.accent : PAL.bad) : this.armed ? PAL.accent : PAL.mid);
   }
 }
 
@@ -1851,7 +1880,7 @@ class Dodge extends Microgame {
 class DontTap extends Microgame {
   static meta = { id: 'dont', env: 'room@205', prompt: 'SHH!', hint: 'wait', duration: 3.0, winOnTimeout: true,
     how: "IT'S SLEEPING.\nDON'T WAKE IT!" };
-  init() { this.woke = 0; }
+  init() { this.woke = 0; sleepFace(); }
   update(dt, input) {
     if (input.justDown) { this.woke = 1; Sfx.bark(); buzz(60); FX.shake(3); this.lose(); }
   }
@@ -1863,7 +1892,7 @@ class DontTap extends Microgame {
     // the calm eyes-shut face, head tipped onto the cushion, breathing slowly
     const breath = Math.sin(this.t * 3) * 2;
     ctx.save(); ctx.translate(CX - 4, CY + 10 - breath * 0.5); ctx.rotate(this.woke ? 0 : -0.35);
-    g.sprite('face', 0, 0, { w: 78, h: 80 + breath, frame: this.woke ? 0 : 5 });
+    g.sprite(this.woke ? 'face' : 'sleepface', 0, 0, { w: 78, h: 80 + breath, frame: 0 });   // both eyes shut
     ctx.restore();
     for (let i = 0; i < 3; i++) {
       const k = (this.t * 0.6 + i / 3) % 1;
@@ -1899,7 +1928,7 @@ class StopBar extends Microgame {
     if (this.p > 1) { this.p = 1; this.dir = -1; }
     if (this.p < 0) { this.p = 0; this.dir = 1; }
     if (input.justDown) {
-      this.jump = 0;
+      this.jump = 0; this.playingOut = true;
       this.caught = Math.abs(this.p - this.at) < this.band / 2;
       Sfx.whoosh();
       if (this.caught) setTimeout(() => Sfx.bark(), 200); else buzz(40);
@@ -4528,11 +4557,10 @@ const BOSSES = [Dodge, Squeeze, RedLight, Juggle, SquidDoll, WakeUp, BathTime];
 ─────────────────────────────────────────────────────────────────────────────── */
 // ── WIPE ─────────────────────────────────────────────────────────────────────
 /* Between microgames the screen closes down to a shiba-head-shaped window,
-   holds a beat on black while the shiba winks, then opens again on the next
-   game. The state switch happens at the shut moment (run's callback), and
+   holds a beat on black, then opens again on the next game. The state switch happens at the shut moment (run's callback), and
    the engine stands still until then so nothing advances twice. */
 const Wipe = {
-  CLOSE: 0.22, HOLD: 0.14, OPEN: 0.24, BIG: 680,
+  CLOSE: 0.42, HOLD: 0.1, OPEN: 0.42, BIG: 680,
   t: -1, cb: null, fired: false,
   run(cb) { this.t = 0; this.cb = cb; this.fired = false; },
   get busy() { return this.t >= 0 && !this.fired; },   // still closing or shut
@@ -4567,10 +4595,6 @@ const Wipe = {
     if (h > 0.5) this.head(CX, CY, h);
     ctx.fillStyle = PAL.bg; ctx.fill('evenodd');
     ctx.restore();
-    if (t >= A && t < B) {                                       // shut: the shiba winks
-      const k = (t - A) / this.HOLD, pop = 1 + Math.sin(k * Math.PI) * 0.18;
-      g.sprite('face', CX, CY, { w: 56 * pop, h: 58 * pop, frame: 5 });
-    }
   }
 };
 
@@ -5150,7 +5174,7 @@ const Engine = {
       this.trackShot();
       const out = this.timer <= 0;
       this.timer_ = this.timer;   // round clock left, for RUN's speed bonus
-      if (out && !this.game.finished) {
+      if (out && !this.game.finished && !this.game.playingOut) {   // a jump in the air gets to land
         if (this.game.meta.winOnTimeout) this.game.succeed();
         else { this.game.lose(); FX.burst(12, H - 9, PAL.bad, 18, 90); Sfx.noise(0.3, 0.09, 120); }   // the bomb goes off
       }
