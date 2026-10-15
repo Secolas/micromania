@@ -1135,6 +1135,8 @@ const SCENE = {
   leaf: '#2f7a3a', leafHi: '#3f9449', trunk: '#6b4a2e',
   // the open countryside, for SWAT: far blue mountains and a pine forest edge
   mount: '#5f88b6', mountHi: '#e6f0fa', forest: '#2a6634',
+  // the couch in CHARGE: shade and shine on the red upholstery
+  couchLo: '#b8332a', couchHi: '#ff8a7a',
   // the disco, for DANCE: a dark club, a checkered floor
   club: '#1a1426', clubHi: '#241b36', tileA: '#2e2246', tileB: '#3d2d5c',
   // a night outside, for HIDE
@@ -1766,6 +1768,41 @@ class HoldRelease extends Microgame {
     this.armed = false;
     this.jumpT = -1;                         // seconds into the jump, -1 = still on the floor
   }
+  // A plump red couch seen from the side, its seat cushion exactly th thick at
+  // seat — the band you have to land in. Legs on the floor, an armrest at the
+  // near end, a tall tufted back at the far end, and a bone-print pillow.
+  static couch(x0, w, seat, th, floor) {
+    const red = PAL.bad, dark = SCENE.couchLo, lite = SCENE.couchHi, wood = SCENE.trunk;
+    const rr = (x, y, ww, hh, r, c) => {
+      r = Math.max(0, Math.min(r, ww / 2, hh / 2));
+      ctx.fillStyle = c; ctx.beginPath();
+      ctx.moveTo(x + r, y); ctx.arcTo(x + ww, y, x + ww, y + hh, r); ctx.arcTo(x + ww, y + hh, x, y + hh, r);
+      ctx.arcTo(x, y + hh, x, y, r); ctx.arcTo(x, y, x + ww, y, r); ctx.closePath(); ctx.fill();
+    };
+    const top = seat - th / 2, base = floor - 4;
+    // little wooden legs
+    g.rect(x0 + 4, base, 4, 4, wood); g.rect(x0 + w - 8, base, 4, 4, wood);
+    // the body under the seat, and its shadow line
+    rr(x0 + 2, top + th - 2, w - 4, base - top - th + 2, 4, dark);
+    g.rect(x0 + 6, base - 3, w - 12, 1, PAL.bg);
+    // tall back at the far end, tufted with buttons
+    const bh = Math.max(30, th + 26), bx = x0 + w - 16;
+    rr(bx, top - bh + th, 16, base - (top - bh + th), 6, red);
+    rr(bx + 2, top - bh + th + 2, 4, base - (top - bh + th) - 8, 2, lite);
+    for (let yy = top - bh + th + 8; yy < top - 2; yy += 9) g.rect(bx + 9, yy, 2, 2, dark);
+    // the seat cushion: the landing band, with seams and a soft highlight
+    rr(x0 + 8, top, w - 22, th, Math.min(5, th / 2), red);
+    g.rect(x0 + 11, top + 1, w - 30, Math.max(1, Math.min(2, th / 4)), lite);
+    const seamX = x0 + 8 + (w - 22) / 2;
+    g.rect(seamX, top + 2, 1, th - 3, dark);
+    // a bone-print pillow leaning on the back
+    rr(bx - 11, top - 13, 13, 14, 4, PAL.ink);
+    g.bone(bx - 5, top - 6, 8, PAL.accent);
+    // armrest at the near end: a rounded roll a little above the seat
+    rr(x0, top - 8, 12, base - top + 8, 6, red);
+    rr(x0 + 2, top - 6, 4, 6, 2, lite);
+  }
+
   // the meter and couch layout, shared by update and draw
   geo() {
     const x = 14, w = 12, y = CY - 70, h = 140, floor = y + h, cx0 = 92, cw = 74;
@@ -1799,10 +1836,7 @@ class HoldRelease extends Microgame {
     const py = y + (1 - this.p) * h;
     g.rect(x - 3, py - 2, w + 6, 4, PAL.ink);
     // the couch, its seat at the height the zone marks
-    g.rect(cx0, seat - th / 2, cw, th, PAL.bad);                    // cushion
-    g.rect(cx0 + cw - 10, seat - th / 2 - 26, 10, 26 + th, PAL.bad); // armrest/back
-    g.rect(cx0, seat + th / 2, cw, floor - seat - th / 2, PAL.mid);  // base down to the floor
-    g.rect(cx0 + 2, seat - th / 2, cw - 14, 2, PAL.ink);             // cushion highlight
+    HoldRelease.couch(cx0, cw, seat, th, floor);
     // the aim line: where the jump tops out right now
     ctx.globalAlpha = 0.5; g.rect(x + w + 4, py - 1, 64, 2, PAL.ink); ctx.globalAlpha = 1;
     g.rect(0, floor, W, 2, PAL.mid);
