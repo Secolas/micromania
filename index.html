@@ -495,10 +495,22 @@ const Input = {
   },
   CAM_SPEC: { facingMode: 'user', width: 320, height: 240 },
   _useCam(stream) {
+    // A video that isn't in the page gets paused by phones when the tab or app
+    // is backgrounded, and nothing restarts it: the feed froze on its last
+    // frame and motion read 0 for good. So it lives in the page (invisible),
+    // and a watchdog in _sampleMotion restarts it if frames stop arriving.
+    if (this._camVideo) this._camVideo.remove();
     const v = document.createElement('video');
     v.autoplay = true; v.playsInline = true; v.muted = true;
+    v.setAttribute('playsinline', ''); v.setAttribute('muted', '');
+    v.style.cssText = 'position:fixed;left:0;top:0;width:2px;height:2px;opacity:0;pointer-events:none;z-index:-1';
+    document.body.appendChild(v);
     v.srcObject = stream;
     v.play().catch(() => {});
+    this._camLastT = -1; this._camStuck = 0;
+    // the phone can end the camera outright (another app took it, the screen
+    // locked); get it back rather than sit on a dead stream
+    try { stream.getVideoTracks()[0].addEventListener('ended', () => this.restartCam()); } catch (e) {}
     const cc = document.createElement('canvas');
     cc.width = this.camW; cc.height = this.camH;
     this._cam = stream; this._camVideo = v;
@@ -509,6 +521,31 @@ const Input = {
     } catch (e) {}
     this._camCanvas = cc; this._camCtx = cc.getContext('2d', { willReadFrequently: true });
     this.camReady = true; this.camPending = false;
+  },
+
+  // Drop a dead camera stream and ask for a fresh one. Permission is already
+  // granted by now, so phones hand it straight back with no popup.
+  restartCam() {
+    if (this._camRestarting || this.camDenied) return;
+    this._camRestarting = true;
+    try { this._cam && this._cam.getTracks().forEach(t => t.stop()); } catch (e) {}
+    this._cam = null; this.camReady = false; this._prevFrame = null;
+    this.enableCam();
+    setTimeout(() => { this._camRestarting = false; }, 1500);
+  },
+  // Coming back to the game: wake the camera and the audio up again.
+  wake() {
+    const v = this._camVideo;
+    if (v && this._cam) {
+      const tr = this._cam.getVideoTracks()[0];
+      if (!tr || tr.readyState === 'ended') this.restartCam();
+      else if (v.paused) v.play().catch(() => {});
+      this._camLastT = -1; this._camStuck = 0;
+    }
+    if (Sfx.ac && Sfx.ac.state === 'suspended') Sfx.ac.resume().catch(() => {});
+    // the mic too: if the phone ended it while we were away, ask again
+    const mt = this._micStream && this._micStream.getAudioTracks()[0];
+    if (mt && mt.readyState === 'ended' && !this.micDenied) { this._mic = null; this.micReady = false; this.enableMic(); }
   },
 
   // Camera and mic in one request, so the player sees one popup on the sensors
@@ -538,7 +575,18 @@ const Input = {
   // (motion), which half you moved in (motionL/R), where the movement was
   // (motionX/Y) and how bright the frame is (bright).
   _sampleMotion() {
-    if (!this.camReady || !this._camVideo || this._camVideo.readyState < 2) return;
+    if (!this.camReady || !this._camVideo) return;
+    // watchdog: the video clock should always be moving. Stuck for a second,
+    // nudge it to play; still stuck after 2.5s, get a fresh camera stream.
+    const v = this._camVideo;
+    if (!document.hidden) {
+      if (v.currentTime === this._camLastT) {
+        this._camStuck += STEP;
+        if (this._camStuck > 1 && v.paused) v.play().catch(() => {});
+        if (this._camStuck > 2.5) { this._camStuck = 0; this.restartCam(); return; }
+      } else { this._camStuck = 0; this._camLastT = v.currentTime; }
+    }
+    if (v.readyState < 2) return;
     const cx = this._camCtx, w = this.camW, h = this.camH;
     cx.drawImage(this._camVideo, 0, 0, w, h);
     const cur = cx.getImageData(0, 0, w, h).data;
@@ -615,6 +663,7 @@ const Input = {
     const ac = Sfx.ac || new (window.AudioContext || window.webkitAudioContext)();
     Sfx.ac = ac;
     if (ac.state === 'suspended') ac.resume();  // iOS: context starts suspended
+    this._micStream = stream;
     const src = ac.createMediaStreamSource(stream);
     const an = ac.createAnalyser();
     an.fftSize = 256;
@@ -5828,6 +5877,7 @@ function frame(t) {
 document.addEventListener('visibilitychange', () => {
   running = !document.hidden;
   last = 0; acc = 0;
+  if (running) Input.wake();          // the camera and audio paused while we were away
   if (running && Engine.state === 'PLAYING') { Engine.state = 'PROMPT'; Engine.timer = 0.6; }
 });
 
