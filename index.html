@@ -281,121 +281,250 @@ const Sfx = {
     // touch re-resumes it, not just the first one
     if (this.ac) { if (this.ac.state === 'suspended') this.ac.resume(); return; }
     const AC = window.AudioContext || window.webkitAudioContext;
-    if (AC) this.ac = new AC();
+    if (AC) { this.ac = new AC(); this.wire(); }
   },
-  blip(freq, dur = 0.07, type = 'square', vol = 0.05) {
-    if (!this.ac || this.muted) return;
-    const o = this.ac.createOscillator(), gn = this.ac.createGain();
-    o.type = type; o.frequency.value = freq;
-    gn.gain.value = vol;
-    gn.gain.exponentialRampToValueAtTime(0.0001, this.ac.currentTime + dur);
-    o.connect(gn).connect(this.ac.destination);
-    o.start(); o.stop(this.ac.currentTime + dur);
+  // The mix: effects and music each into the master, through a compressor so
+  // a busy moment never clips, with a little room (a short reverb) on both.
+  wire() {
+    const ac = this.ac;
+    const comp = ac.createDynamicsCompressor();
+    comp.threshold.value = -14; comp.knee.value = 8; comp.ratio.value = 4; comp.attack.value = 0.003; comp.release.value = 0.15;
+    comp.connect(ac.destination);
+    this.master = ac.createGain(); this.master.gain.value = 0.9; this.master.connect(comp);
+    const len = Math.floor(ac.sampleRate * 0.45), ir = ac.createBuffer(2, len, ac.sampleRate);
+    for (let ch = 0; ch < 2; ch++) { const d = ir.getChannelData(ch); for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3); }
+    this.verb = ac.createConvolver(); this.verb.buffer = ir;
+    const wet = ac.createGain(); wet.gain.value = 0.2; this.verb.connect(wet).connect(this.master);
+    this.out = ac.createGain(); this.out.connect(this.master);
+    const send = ac.createGain(); send.gain.value = 0.22; this.out.connect(send).connect(this.verb);
+    const n = ac.sampleRate;
+    this.noiseBuf = ac.createBuffer(1, n, ac.sampleRate);
+    const d = this.noiseBuf.getChannelData(0);
+    for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
   },
-  // a tone that slides between two pitches — yips, boops, squeaks
-  slide(f0, f1, dur = 0.1, type = 'square', vol = 0.05) {
-    if (!this.ac || this.muted) return;
-    const o = this.ac.createOscillator(), gn = this.ac.createGain(), t = this.ac.currentTime;
-    o.type = type; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + dur);
-    gn.gain.setValueAtTime(vol, t); gn.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    o.connect(gn).connect(this.ac.destination); o.start(t); o.stop(t + dur);
+  // ── the two building blocks ─────────────────────────────────────────────────
+  // a note: oscillator f (Hz), optional slide to f1, vibrato, filter, a quick
+  // attack and an exponential fade over dur; t = when (audio clock), bus = where
+  tone(o) {
+    if (!this.ac || this.muted || !this.out) return;
+    const ac = this.ac, t = o.t != null ? o.t : ac.currentTime, dur = o.dur || 0.1, a = o.a || 0.004, vol = o.vol == null ? 0.05 : o.vol;
+    const osc = ac.createOscillator(), g = ac.createGain();
+    osc.type = o.type || 'square';
+    osc.frequency.setValueAtTime(o.f, t);
+    if (o.f1) osc.frequency.exponentialRampToValueAtTime(o.f1, t + (o.slide || dur));
+    if (o.detune) osc.detune.value = o.detune;
+    if (o.vib) {
+      const l = ac.createOscillator(), lg = ac.createGain();
+      l.frequency.value = o.vibRate || 6; lg.gain.value = o.f * o.vib;
+      l.connect(lg).connect(osc.frequency); l.start(t); l.stop(t + dur + 0.05);
+    }
+    let node = osc;
+    if (o.lp || o.bp || o.hp) {
+      const f = ac.createBiquadFilter();
+      f.type = o.lp ? 'lowpass' : o.bp ? 'bandpass' : 'highpass';
+      f.frequency.setValueAtTime(o.lp || o.bp || o.hp, t);
+      if (o.ff) f.frequency.exponentialRampToValueAtTime(o.ff, t + dur);
+      f.Q.value = o.q || 1; node.connect(f); node = f;
+    }
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + a); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    node.connect(g).connect(o.bus || this.out);
+    osc.start(t); osc.stop(t + dur + 0.03);
   },
-  // a burst of filtered noise — crunches, splashes, whooshes
-  noise(dur = 0.08, vol = 0.06, hp = 800) {
-    if (!this.ac || this.muted) return;
-    const n = Math.floor(this.ac.sampleRate * dur), buf = this.ac.createBuffer(1, n, this.ac.sampleRate);
-    const d = buf.getChannelData(0);
-    for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / n);
-    const src = this.ac.createBufferSource(), f = this.ac.createBiquadFilter(), gn = this.ac.createGain();
-    src.buffer = buf; f.type = 'highpass'; f.frequency.value = hp; gn.gain.value = vol;
-    src.connect(f).connect(gn).connect(this.ac.destination); src.start();
+  // filtered noise: hits, hats, crunches, splashes, whooshes (ff = sweep to)
+  hiss(o) {
+    if (!this.ac || this.muted || !this.out) return;
+    const ac = this.ac, t = o.t != null ? o.t : ac.currentTime, dur = o.dur || 0.08, vol = o.vol == null ? 0.05 : o.vol;
+    const src = ac.createBufferSource(), f = ac.createBiquadFilter(), g = ac.createGain();
+    src.buffer = this.noiseBuf;
+    f.type = o.lp ? 'lowpass' : o.bp ? 'bandpass' : 'highpass';
+    f.frequency.setValueAtTime(o.lp || o.bp || o.hp || 800, t);
+    if (o.ff) f.frequency.exponentialRampToValueAtTime(o.ff, t + dur);
+    f.Q.value = o.q || 0.8;
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + (o.a || 0.002)); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    src.connect(f).connect(g).connect(o.bus || this.out);
+    src.start(t, Math.random() * 0.5); src.stop(t + dur + 0.02);
   },
-  bark()   { this.slide(720, 380, 0.09, 'square', 0.06); setTimeout(() => this.slide(640, 340, 0.08, 'square', 0.05), 110); },
-  growl()  { this.slide(150, 105, 0.28, 'sawtooth', 0.05); },
-  boop()   { this.slide(320, 960, 0.08, 'sine', 0.09); },
-  squeak() { this.slide(1300, 1800, 0.05, 'sine', 0.035); },
-  crunch() { this.noise(0.06, 0.07, 1600); setTimeout(() => this.noise(0.05, 0.05, 2600), 45); },
-  chomp()  { this.noise(0.05, 0.07, 500); setTimeout(() => this.noise(0.05, 0.07, 500), 95); },
-  splash() { this.noise(0.2, 0.05, 350); },
-  whoosh() { this.noise(0.14, 0.04, 2200); },
-  thud()   { this.slide(140, 60, 0.12, 'sine', 0.12); },
-  fizz(k)  { this.noise(0.07, 0.012 + k * 0.035, 2600 + k * 3400); },     // soda pressure, k 0..1
-  roll(k)  { this.noise(0.05, 0.01 + k * 0.04, 260); },                    // a ball rolling, k = speed 0..1
-  sniff()  { this.noise(0.04, 0.035, 3200); setTimeout(() => this.noise(0.05, 0.03, 3200), 90); },
-  heart()  { this.slide(110, 55, 0.09, 'sine', 0.13); setTimeout(() => this.slide(95, 50, 0.08, 'sine', 0.09), 150); },
-  snore()  { this.slide(92, 70, 0.45, 'sawtooth', 0.03); },
+  now() { return this.ac ? this.ac.currentTime : 0; },
+  hz(name) {   // 'C5', 'F#4', 'Bb3' -> Hz
+    const m = /^([A-G])([#b]?)(-?\d)$/.exec(name); if (!m) return 0;
+    const n = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 }[m[1]] + (m[2] === '#' ? 1 : m[2] === 'b' ? -1 : 0) + (+m[3] + 1) * 12;
+    return 440 * Math.pow(2, (n - 69) / 12);
+  },
+  // a bright little run of notes (the jingles): [name, at, dur] each
+  run(notes, o = {}) {
+    const t0 = this.now();
+    for (const [n, at, dur] of notes) {
+      const f = this.hz(n);
+      this.tone({ f, t: t0 + at, dur, type: o.type || 'square', vol: o.vol || 0.045, lp: o.lp || 5000, vib: o.vib, vibRate: 6 });
+      if (o.fat) this.tone({ f: f / 2, t: t0 + at, dur, type: 'triangle', vol: (o.vol || 0.045) * 1.4 });
+    }
+  },
+  // the old calls, kept: games use these directly
+  blip(freq, dur = 0.07, type = 'square', vol = 0.05) { this.tone({ f: freq, dur, type, vol, lp: 6000 }); },
+  slide(f0, f1, dur = 0.1, type = 'square', vol = 0.05) { this.tone({ f: f0, f1, dur, type, vol, lp: 6000 }); },
+  noise(dur = 0.08, vol = 0.06, hp = 800) { this.hiss({ dur, vol, hp }); },
+
+  // ── the sounds ──────────────────────────────────────────────────────────────
+  // a shiba "wuf-wuf": a buzzy voice dropping in pitch through a mouth-shaped
+  // band, with a puff of breath on each
+  bark() {
+    const t = this.now();
+    for (const [at, k] of [[0, 1], [0.13, 0.85]]) {
+      this.tone({ t: t + at, f: 620 * k, f1: 300 * k, dur: 0.12, type: 'sawtooth', vol: 0.11, bp: 1050, q: 1.6 });
+      this.tone({ t: t + at, f: 300 * k, f1: 190 * k, dur: 0.1, type: 'square', vol: 0.035, lp: 900 });
+      this.hiss({ t: t + at, dur: 0.06, vol: 0.05, bp: 1700, q: 1.2 });
+    }
+  },
+  growl()  { this.tone({ f: 125, f1: 95, dur: 0.38, type: 'sawtooth', vol: 0.14, lp: 650, vib: 0.12, vibRate: 28 }); },
+  boop()   { this.tone({ f: 330, f1: 990, dur: 0.11, type: 'sine', vol: 0.12, vib: 0.02 }); this.tone({ f: 660, f1: 1980, dur: 0.06, type: 'triangle', vol: 0.03 }); },
+  squeak() { this.tone({ f: 1350, f1: 2100, dur: 0.08, type: 'sine', vol: 0.12, vib: 0.05, vibRate: 30 }); },
+  crunch() { const t = this.now(); for (const [at, f, v] of [[0, 2200, 0.22], [0.045, 3200, 0.16], [0.09, 1800, 0.13]]) this.hiss({ t: t + at, dur: 0.045, vol: v, bp: f, q: 1.4 }); },
+  chomp()  { const t = this.now(); for (const at of [0, 0.1]) { this.hiss({ t: t + at, dur: 0.05, vol: 0.12, lp: 900 }); this.tone({ t: t + at, f: 230, f1: 120, dur: 0.05, type: 'sine', vol: 0.06 }); } },
+  splash() { this.hiss({ dur: 0.32, vol: 0.22, bp: 900, ff: 280, q: 0.7 }); this.hiss({ dur: 0.2, vol: 0.06, hp: 3000 }); },
+  whoosh() { this.hiss({ dur: 0.18, vol: 0.2, bp: 500, ff: 3500, q: 0.8 }); },
+  thud()   { this.tone({ f: 170, f1: 48, dur: 0.17, type: 'sine', vol: 0.2 }); this.hiss({ dur: 0.06, vol: 0.06, lp: 400 }); },
+  fizz(k)  { this.hiss({ dur: 0.07, vol: 0.012 + k * 0.035, hp: 2600 + k * 3400 }); },     // soda pressure, k 0..1
+  roll(k)  { this.hiss({ dur: 0.05, vol: 0.015 + k * 0.05, hp: 260 }); },                    // a ball rolling, k = speed 0..1
+  sniff()  { const t = this.now(); this.hiss({ t, dur: 0.05, vol: 0.09, bp: 3200, ff: 4200 }); this.hiss({ t: t + 0.09, dur: 0.06, vol: 0.08, bp: 3200, ff: 4600 }); },
+  heart()  { const t = this.now(); this.tone({ t, f: 110, f1: 55, dur: 0.1, type: 'sine', vol: 0.16 }); this.tone({ t: t + 0.15, f: 95, f1: 50, dur: 0.09, type: 'sine', vol: 0.11 }); },
+  snore()  { this.tone({ f: 92, f1: 70, dur: 0.48, type: 'sawtooth', vol: 0.07, lp: 500, vib: 0.06, vibRate: 22 }); },
   // tonal, not noise, so a blow game's mic can't take it for another puff
-  poof()   { this.slide(760, 210, 0.13, 'sine', 0.05); },
-  // one note of a rising major scale, step 0..7 — progress you can hear
-  step(i)  { this.blip(523 * [1, 9/8, 5/4, 4/3, 3/2, 5/3, 15/8, 2][Math.max(0, Math.min(7, i))], 0.07, 'square', 0.035); },
-  speedup() { [523, 659, 784, 1047].forEach((f, i) => setTimeout(() => this.blip(f, 0.07, 'square', 0.045), i * 70)); },
-  tap()  { this.blip(660, 0.05); },
-  win()  { this.blip(880, 0.08); setTimeout(() => this.blip(1320, 0.10), 70); },
-  fail() { this.blip(180, 0.20, 'sawtooth'); },
-  tick() { this.blip(1200, 0.02, 'square', 0.03); }
+  poof()   { this.tone({ f: 760, f1: 210, dur: 0.14, type: 'sine', vol: 0.14 }); },
+  // one note of a rising major scale, step 0..7: a marimba, progress you can hear
+  step(i) {
+    const f = 523 * [1, 9 / 8, 5 / 4, 4 / 3, 3 / 2, 5 / 3, 15 / 8, 2][Math.max(0, Math.min(7, i))];
+    this.tone({ f, dur: 0.14, type: 'sine', vol: 0.14 }); this.tone({ f: f * 4, dur: 0.035, type: 'sine', vol: 0.03 });
+  },
+  tap()  { this.tone({ f: 880, f1: 1320, dur: 0.05, type: 'sine', vol: 0.16 }); this.tone({ f: 1760, dur: 0.015, type: 'square', vol: 0.025 }); },
+  tick() { this.tone({ f: 1700, dur: 0.03, type: 'sine', vol: 0.14 }); this.hiss({ dur: 0.02, vol: 0.07, bp: 2500 }); },   // a woodblock
+  // WarioWare stings ───────────────────────────────────────────────────────────
+  // a win: "ding-ding-DING!" up the chord, the last one ringing
+  win() {
+    this.run([['C6', 0, 0.09], ['E6', 0.06, 0.09], ['G6', 0.12, 0.1]], { vol: 0.06 });
+    this.run([['C7', 0.18, 0.38]], { vol: 0.09, vib: 0.012, type: 'triangle' });
+    this.tone({ f: this.hz('C7'), t: this.now() + 0.18, dur: 0.3, type: 'square', vol: 0.018, lp: 5000 });
+    this.hiss({ t: this.now() + 0.18, dur: 0.22, vol: 0.02, hp: 6500 });
+  },
+  // a fail: the "bwom-bwom" buzzer
+  fail() {
+    const t = this.now();
+    this.tone({ t, f: 196, f1: 185, dur: 0.18, type: 'sawtooth', vol: 0.09, lp: 900, vib: 0.03, vibRate: 8 });
+    this.tone({ t: t + 0.2, f: 147, f1: 104, dur: 0.38, type: 'sawtooth', vol: 0.1, lp: 750, vib: 0.03, vibRate: 7 });
+  },
+  // the "get ready" lick before every game (a growl of drums for a boss)
+  prompt(boss) {
+    if (boss) { this.run([['A2', 0, 0.12], ['A2', 0.14, 0.12], ['F2', 0.28, 0.12], ['E2', 0.42, 0.4]], { type: 'sawtooth', vol: 0.07, lp: 900, fat: true }); return; }
+    this.run([['G5', 0, 0.05], ['A5', 0.06, 0.05], ['B5', 0.12, 0.05], ['D6', 0.18, 0.14]], { vol: 0.04 });
+    this.hiss({ t: this.now() + 0.18, dur: 0.05, vol: 0.04, hp: 7000 });
+  },
+  // the countdown's GO!: a chord stab and a cymbal
+  go() {
+    this.run([['C5', 0, 0.28], ['E5', 0, 0.28], ['G5', 0, 0.28], ['C6', 0, 0.3]], { vol: 0.035, fat: true });
+    this.hiss({ dur: 0.6, vol: 0.06, hp: 4000 });
+  },
+  // SPEED UP!: a siren up, then a fanfare
+  speedup() {
+    this.tone({ f: 392, f1: 1568, slide: 0.42, dur: 0.46, type: 'square', vol: 0.045, lp: 4000, vib: 0.03, vibRate: 12 });
+    this.run([['G5', 0.46, 0.08], ['C6', 0.54, 0.08], ['E6', 0.62, 0.08], ['G6', 0.7, 0.3]], { vol: 0.045 });
+  },
+  // STAGE CLEAR: a proper fanfare
+  clear() {
+    this.run([['C5', 0, 0.1], ['E5', 0.09, 0.1], ['G5', 0.18, 0.1], ['C6', 0.27, 0.16], ['G5', 0.45, 0.08], ['C6', 0.54, 0.5]], { vol: 0.045, fat: true });
+    this.run([['E6', 0.54, 0.5], ['G6', 0.54, 0.5]], { vol: 0.025 });
+    this.hiss({ t: this.now() + 0.54, dur: 0.7, vol: 0.06, hp: 3500 });
+  },
+  // GAME OVER: the sad slide down
+  gameover() {
+    this.run([['G4', 0, 0.2], ['F#4', 0.22, 0.2], ['F4', 0.44, 0.2]], { type: 'triangle', vol: 0.09 });
+    this.run([['E4', 0.66, 0.9]], { type: 'triangle', vol: 0.1, vib: 0.02 });
+    this.run([['C3', 0.66, 0.9]], { type: 'square', vol: 0.03, lp: 600 });
+  }
 };
 
-// ── BEAT ─────────────────────────────────────────────────────────────────────
-/* A little backing loop: kick, snare, hats and a bouncy bass line, synthesised
-   and scheduled a beat ahead on the audio clock so it never drifts with the
-   frame rate. Its tempo follows Engine.speed, so it quickens with every SPEED
-   UP. It runs through its own gain bus, which mute and stop fade to silence,
-   and it goes quiet during mic games so the speaker can't read as a blow. */
-const Beat = {
-  BPM: 116, VOL: 0.14,          // sits under the sound effects, not over them
-  bus: null, buf: null, on: false, next: 0, i: 0,
-  // eighth-note steps over two bars: bass note (Hz, 0 = rest)
-  BASS: [131, 0, 262, 131, 196, 0, 220, 196,  175, 0, 349, 175, 196, 0, 247, 196],
+// ── MUSIC ────────────────────────────────────────────────────────────────────
+/* Chiptune songs, WarioWare-style: a bouncy title tune, a funky groove under
+   the microgames that speeds up with every SPEED UP, a darker boss theme and a
+   laid-back shop. Each song is written as 16th-note steps per part:
+     note (C5, F#4, Bb3) = play  ·  '-' = hold the note before  ·  '.' = rest
+   drums: k kick, s snare, h hat, o open hat, c crash. chords: a chord per bar
+   and a rhythm of x's. Parts loop independently, so a one-bar drum line runs
+   under a four-bar melody. Notes are scheduled a beat ahead on the audio clock,
+   so it never drifts with the frame rate, through a gain bus that fades on
+   and off. It goes quiet during mic games, so the speaker can't read as a blow. */
+const Music = {
+  VOL: 0.2,   // under the effects, not over them
+  bus: null, on: false, track: null, next: 0, i: 0,
+  SONGS: {
+    menu: { bpm: 104, lead: 'square', bass: 'triangle',
+      L: 'E5 . G5 . C6 . G5 . A5 - G5 . E5 . D5 . | C5 . E5 . A5 . E5 . G5 - E5 . C5 . D5 . | F5 . A5 . C6 . A5 . G5 - F5 . E5 . D5 . | D5 . G5 . B5 . G5 . F5 - E5 . D5 - - .',
+      B: 'C3 . . C3 G2 . . . C3 . . C3 G2 . E2 . | A2 . . A2 E2 . . . A2 . . A2 E2 . C3 . | F2 . . F2 C3 . . . F2 . . F2 C3 . A2 . | G2 . . G2 D3 . . . G2 . . G2 D3 . B2 .',
+      D: 'k . h . s . h . k . h k s . h .',
+      C: ['C', 'Am', 'F', 'G'], X: '. . . . x . . . . . . . x . . .' },
+    game: { bpm: 120, speedy: true, lead: 'square', bass: 'square', bassLp: 700,
+      L: 'G4 . Bb4 C5 . . Bb4 . G4 . F4 . G4 - - . | . . Eb5 . D5 . C5 . Bb4 . G4 . C5 - - . | C5 . Eb5 F5 . . Eb5 . C5 . Bb4 . C5 - - . | . . G5 . F5 . Eb5 . D5 . Bb4 . C5 - - .',
+      B: 'C2 . C3 . . C2 Eb2 . F2 . . F2 G2 . Bb2 C3 | C2 . C3 . . C2 Eb2 . F2 . F3 . Eb3 . C3 Bb2',
+      D: 'k . h . s . h k . k h . s . o .',
+      C: ['Cm7', 'F7'], X: '. . x . . . x . . x . . x . . .' },
+    boss: { bpm: 132, speedy: true, lead: 'sawtooth', leadLp: 1800, bass: 'square', bassLp: 500,
+      L: 'A4 - - - C5 - B4 - A4 - - - E4 - - - | F4 - - - A4 - G#4 - E4 - - - - - - -',
+      B: 'A1 . A2 . A1 . A2 . A1 . A2 . G2 . A2 . | F1 . F2 . F1 . F2 . E1 . E2 . G#2 . E2 .',
+      D: 'k . . k s . . . k . k . s . . s' },
+    shop: { bpm: 92, lead: 'triangle', bass: 'triangle', drumVol: 0.5,
+      L: 'A5 - - - G5 . F5 . E5 - - - . . . . | G5 - - - F5 . E5 . D5 - - - . . . . | F5 - - - E5 . D5 . C5 - - - . . . . | E5 - - - D5 . C5 . Bb4 - - - C5 . . .',
+      B: 'F2 . . . A2 . . . C3 . . . A2 . . . | E2 . . . G2 . . . B2 . . . G2 . . . | D2 . . . F2 . . . A2 . . . F2 . . . | C2 . . . E2 . . . G2 . . . Bb2 . . .',
+      D: 'k . h . s . h . k . h . s . h h',
+      C: ['Fmaj7', 'Em7', 'Dm7', 'C7'], X: 'x . . . . . x . . . x . . . . .' },
+  },
+  parse(str) { return str.split(/\s+/).filter(s => s && s !== '|'); },
+  chord(name) {   // 'Cm7' -> note names around octave 4
+    const m = /^([A-G][#b]?)(maj7|m7|m|7)?$/.exec(name), root = Sfx.hz(m[1] + '4');
+    const iv = { undefined: [0, 4, 7], m: [0, 3, 7], '7': [0, 4, 7, 10], m7: [0, 3, 7, 10], maj7: [0, 4, 7, 11] }[m[2]];
+    return iv.map(s => root * Math.pow(2, s / 12));
+  },
   setup() {
     const ac = Sfx.ac;
-    if (!ac || this.bus) return !!this.bus;
-    this.bus = ac.createGain(); this.bus.gain.value = 0; this.bus.connect(ac.destination);
-    const n = Math.floor(ac.sampleRate * 0.2);
-    this.buf = ac.createBuffer(1, n, ac.sampleRate);
-    const d = this.buf.getChannelData(0);
-    for (let k = 0; k < n; k++) d[k] = Math.random() * 2 - 1;
+    if (!ac || !Sfx.master) return false;
+    if (this.bus) return true;
+    this.bus = ac.createGain(); this.bus.gain.value = 0; this.bus.connect(Sfx.master);
+    for (const s of Object.values(this.SONGS)) { s.l = this.parse(s.L); s.b = this.parse(s.B); s.d = this.parse(s.D); s.x = s.X ? this.parse(s.X) : null; }
     return true;
   },
-  // called every frame with whether the beat should be heard right now
-  update(want) {
+  // called every frame with the song that should be playing now (or null)
+  update(track) {
     if (!this.setup()) return;
     const ac = Sfx.ac, now = ac.currentTime;
-    want = want && !Sfx.muted && Prefs.music;
+    if (Sfx.muted || !Prefs.music) track = null;
+    const want = !!track;
     if (want !== this.on) {
       this.on = want;
       this.bus.gain.cancelScheduledValues(now);
-      this.bus.gain.setTargetAtTime(want ? this.VOL : 0, now, want ? 0.05 : 0.04);
-      if (want && this.next < now) { this.next = now + 0.05; this.i = 0; }
+      this.bus.gain.setTargetAtTime(want ? this.VOL : 0, now, want ? 0.05 : 0.06);
     }
-    if (!this.on) return;
-    const step = 30 / (this.BPM * Math.min(2, Engine.speed || 1));   // an eighth note
-    if (this.next < now - 0.2) this.next = now + 0.02;               // tab was asleep: don't burst
-    while (this.next < now + 0.12) { this.play(this.i, this.next, step); this.next += step; this.i = (this.i + 1) % 16; }
+    if (!want) { this.track = null; return; }
+    if (track !== this.track) { this.track = track; this.i = 0; this.next = now + 0.06; }
+    const S = this.SONGS[track];
+    const step = 15 / (S.bpm * (S.speedy ? Math.min(2, Engine.speed || 1) : 1));   // a 16th note
+    if (this.next < now - 0.2) this.next = now + 0.02;   // the tab was asleep: don't burst
+    while (this.next < now + 0.12) { this.play(S, this.i, this.next, step); this.next += step; this.i++; }
   },
-  play(i, t, step) {
-    if (i % 4 === 0) this.kick(t);
-    if (i % 4 === 2) this.hit(t, 0.09, 0.22, 1400);                   // snare
-    if (i % 2 === 1) this.hit(t, 0.03, 0.07, 7000);                   // hat
-    const f = this.BASS[i];
-    if (f) this.tone(t, f, step * 0.8, 'triangle', 0.16);
-  },
-  kick(t) {
-    const ac = Sfx.ac, o = ac.createOscillator(), gn = ac.createGain();
-    o.frequency.setValueAtTime(130, t); o.frequency.exponentialRampToValueAtTime(45, t + 0.12);
-    gn.gain.setValueAtTime(0.5, t); gn.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
-    o.connect(gn).connect(this.bus); o.start(t); o.stop(t + 0.17);
-  },
-  hit(t, dur, vol, hp) {
-    const ac = Sfx.ac, src = ac.createBufferSource(), f = ac.createBiquadFilter(), gn = ac.createGain();
-    src.buffer = this.buf; f.type = 'highpass'; f.frequency.value = hp;
-    gn.gain.setValueAtTime(vol, t); gn.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    src.connect(f).connect(gn).connect(this.bus); src.start(t); src.stop(t + dur + 0.01);
-  },
-  tone(t, freq, dur, type, vol) {
-    const ac = Sfx.ac, o = ac.createOscillator(), gn = ac.createGain();
-    o.type = type; o.frequency.value = freq;
-    gn.gain.setValueAtTime(vol, t); gn.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    o.connect(gn).connect(this.bus); o.start(t); o.stop(t + dur + 0.01);
+  // how long the note at k lasts: itself plus every '-' after it
+  len(part, k) { let n = 1; while (part[(k + n) % part.length] === '-') n++; return n; },
+  play(S, i, t, step) {
+    const bus = this.bus;
+    const l = S.l[i % S.l.length];
+    if (l !== '.' && l !== '-') Sfx.tone({ t, f: Sfx.hz(l), dur: step * this.len(S.l, i % S.l.length) * 0.92, type: S.lead, vol: S.lead === 'triangle' ? 0.12 : 0.05, lp: S.leadLp || 3600, vib: 0.006, vibRate: 5.5, bus });
+    const b = S.b[i % S.b.length];
+    if (b !== '.' && b !== '-') Sfx.tone({ t, f: Sfx.hz(b), dur: step * this.len(S.b, i % S.b.length) * 0.9, type: S.bass, vol: S.bass === 'triangle' ? 0.22 : 0.09, lp: S.bassLp, bus });
+    if (S.x && S.x[i % S.x.length] === 'x') {
+      const bar = Math.floor(i / 16) % S.C.length;
+      for (const f of this.chord(S.C[bar])) Sfx.tone({ t, f, dur: step * 1.6, type: 'square', vol: 0.016, lp: 2200, bus });
+    }
+    const dv = S.drumVol || 1, d = S.d[i % S.d.length];
+    if (d === 'k') Sfx.tone({ t, f: 150, f1: 45, dur: 0.15, type: 'sine', vol: 0.5 * dv, bus });
+    else if (d === 's') { Sfx.hiss({ t, dur: 0.12, vol: 0.22 * dv, bp: 1800, bus }); Sfx.tone({ t, f: 230, f1: 170, dur: 0.06, type: 'triangle', vol: 0.08 * dv, bus }); }
+    else if (d === 'h') Sfx.hiss({ t, dur: 0.03, vol: 0.06 * dv, hp: 8000, bus });
+    else if (d === 'o') Sfx.hiss({ t, dur: 0.14, vol: 0.05 * dv, hp: 7000, bus });
+    else if (d === 'c') Sfx.hiss({ t, dur: 0.6, vol: 0.06 * dv, hp: 3500, bus });
   }
 };
 
@@ -4105,24 +4234,33 @@ class StackBlocks extends Microgame {
   }
 }
 
-// SWIPE — bones to the dog, chocolate in the bin
+// DRAG — bones to the dog, chocolate in the bin
 class SortTreats extends Microgame {
-  static meta = { id: 'sort', env: 'wall@250', prompt: 'SORT!', hint: 'swipe', duration: 5.0, minDuration: 4.2,
-    how: 'BONES TO THE DOG\nCHOCOLATE IN THE BIN' };
+  static meta = { id: 'sort', env: 'wall@250', prompt: 'SORT!', hint: 'drag', duration: 5.0, minDuration: 4.2,
+    how: 'DRAG BONES TO THE DOG\nCHOCOLATE TO THE BIN' };
   init() {
     this.need = this.byD(2, 3, 4); this.done = 0;
     this.dogSide = Math.random() < 0.5 ? 'left' : 'right';   // which side the dog sits, this round
     this.newTreat();
   }
   // bones go to the dog; chocolate is bad for dogs, so it goes in the bin
-  newTreat() { this.bone = Math.random() < 0.55; this.pop = 0; }
+  newTreat() { this.bone = Math.random() < 0.55; this.pop = 0; this.dx = 0; this.held = false; }
   want() { return this.bone ? this.dogSide : (this.dogSide === 'left' ? 'right' : 'left'); }
+  // The treat follows your finger and counts on the side you let it go, at any
+  // speed (it used to need a swipe under half a second, so a careful drag to
+  // the bin did nothing). A quick flick still works the same way.
   update(dt, input) {
     if (this.pop > 0) this.pop -= dt;
-    const sw = input.swipe;
-    if (sw && (sw.dir === 'left' || sw.dir === 'right')) {
-      if (sw.dir === this.want()) {
-        this.done++; buzz(12); FX.hit(sw.dir === 'left' ? 28 : W - 28, CY + 20, PAL.accent); this.pop = 0.15;
+    if (input.justDown) { this.held = true; this.x0 = input.x - this.dx; }
+    if (this.held && input.down) this.dx = Math.max(-CX + 20, Math.min(CX - 20, input.x - this.x0));
+    if (this.held && !input.down) {
+      this.held = false;
+      const sw = input.swipe;   // a flick quicker than a frame never moved it: go by the swipe
+      if (Math.abs(this.dx) < 24 && sw && (sw.dir === 'left' || sw.dir === 'right')) this.dx = sw.dir === 'left' ? -40 : 40;
+      if (Math.abs(this.dx) < 24) { this.dx = 0; return; }   // not far enough: back to the middle
+      const side = this.dx < 0 ? 'left' : 'right';
+      if (side === this.want()) {
+        this.done++; buzz(12); FX.hit(side === 'left' ? 28 : W - 28, CY + 20, PAL.accent); this.pop = 0.15;
         if (this.bone) Sfx.chomp(); else Sfx.thud();
         if (this.done >= this.need) { this.succeed(); return; }
         this.newTreat();
@@ -4142,9 +4280,10 @@ class SortTreats extends Microgame {
     g.text('BIN', bx, CY - 26, 8, PAL.ink);
     // the treat in the middle
     const s = 1 + this.pop * 1.5;
-    if (this.bone) g.bone(CX, CY - 40, 30 * s); else g.choc(CX, CY - 40, 26 * s);
-    g.text(this.bone ? 'BONE' : 'CHOCOLATE', CX, CY - 18, 7, this.bone ? PAL.accent : PAL.bad);
-    g.text('SWIPE IT!', CX, TOP + 22, 8, PAL.mid);
+    const tx = CX + this.dx, ty = CY - 40 + Math.abs(this.dx) * 0.35;   // dips toward the dog / bin as you drag
+    if (this.bone) g.bone(tx, ty, 30 * s); else g.choc(tx, ty, 26 * s);
+    if (!this.held) g.text(this.bone ? 'BONE' : 'CHOCOLATE', CX, CY - 18, 7, this.bone ? PAL.accent : PAL.bad);
+    g.text('DRAG IT!', CX, TOP + 22, 8, PAL.mid);
     for (let i = 0; i < this.need; i++) g.rect(CX - this.need * 4 + i * 8, BOT - 14, 5, 5, i < this.done ? PAL.accent : PAL.mid);
   }
 }
@@ -5028,12 +5167,12 @@ const Run = {
     this.bones += rows.reduce((n, r) => n + r[1], 0);
     this.saveBest(this.reached() + 1);
     Engine.state = 'CLEAR'; Engine.timer = 2.4;
-    Sfx.win(); FX.flash(PAL.accent, 0.4); Juice.confetti(60);
+    Sfx.clear(); FX.flash(PAL.accent, 0.4); Juice.confetti(60);
   },
 
   over() {
     this.saveBest(this.reached());
-    Engine.state = 'GAMEOVER'; Engine.timer = 0.8;
+    Engine.state = 'GAMEOVER'; Engine.timer = 0.8; Sfx.gameover();
   },
 
   saveBest(i) {
@@ -5350,6 +5489,7 @@ const Engine = {
     this.game.init();
     this.state = 'PROMPT';
     this.timer = this.isBoss ? 1.0 : 0.7;
+    Sfx.prompt(this.isBoss);
     if (!this.seen.has(C.meta.id)) { this.seen.add(C.meta.id); this.timer += 1.1; }
   },
 
@@ -5410,7 +5550,7 @@ const Engine = {
       if (n !== this.readyLast && n >= 0) {
         this.readyLast = n;
         if (n > 0) { Sfx.tick(); buzz(15); FX.shake(1.5); }
-        else { Sfx.blip(990, 0.14); buzz(40); FX.flash(PAL.accent, 0.4); FX.shake(3); }
+        else { Sfx.go(); buzz(40); FX.flash(PAL.accent, 0.4); FX.shake(3); }
       }
       if (this.timer <= 0) { if (this.mode === 'run') Run.beginStage(); else this.startRound(); }
       return;
@@ -5523,13 +5663,18 @@ const Engine = {
 
   // the backing beat kicks in on GO and runs until GAME OVER, but not on menus or in
   // the shop, and drops out while a mic game listens for your blow
-  beatOn() {
+  // which song plays now (null = none): the title tune on the menus, the
+  // groove (or the boss theme) through the games, the shop tune in the shop.
+  // The countdown, SPEED UP, STAGE CLEAR and GAME OVER have their own stings.
+  musicTrack() {
     const s = this.state;
-    if (!['STAGE', 'PROMPT', 'PLAYING', 'RESULT', 'PHOTO', 'SPEEDUP', 'CLEAR'].includes(s)) return false;
+    if (['TITLE', 'SETTINGS', 'ALBUM', 'PERMS'].includes(s)) return 'menu';
+    if (s === 'SHOP') return 'shop';
+    if (!['STAGE', 'PROMPT', 'PLAYING', 'RESULT', 'PHOTO'].includes(s)) return null;
     const how = this.game && this.game.meta.how;
-    if ((s === 'PROMPT' || s === 'PLAYING') && how && how.mic && (Input.micReady || Input.micPending)) return false;
-    if (s === 'PLAYING' && this.game.meta.ownBeat) return false;   // DANCE keeps its own time
-    return true;
+    if ((s === 'PROMPT' || s === 'PLAYING') && how && how.mic && (Input.micReady || Input.micPending)) return null;
+    if (s === 'PLAYING' && this.game.meta.ownBeat) return null;   // DANCE keeps its own time
+    return this.isBoss && s !== 'STAGE' ? 'boss' : 'game';
   },
 
   // WarioWare Snapped!-style: no posing. While a photo game is played the
@@ -6001,7 +6146,7 @@ const Engine = {
     // test mode: replay the same game forever, never lose lives or advance
     if (this.testClass) { this.lives = 4; this.startRound(this.testClass, this.testDiff); return; }
     if (this.mode === 'run') { Run.after(); return; }
-    if (this.lives <= 0) { this.state = 'GAMEOVER'; this.timer = 0.8; return; }
+    if (this.lives <= 0) { this.state = 'GAMEOVER'; this.timer = 0.8; Sfx.gameover(); return; }
     if (this.round % this.SPEEDUP_EVERY === 0) {
       this.speed = Math.min(2.6, this.speed + 0.12);
       this.state = 'SPEEDUP'; this.timer = 0.9; Sfx.speedup();
@@ -6264,7 +6409,7 @@ function frame(t) {
       FX.update(STEP);
       acc -= STEP;
     }
-    Beat.update(Engine.beatOn());
+    Music.update(Engine.musicTrack());
     Engine.draw();
   }
   requestAnimationFrame(frame);

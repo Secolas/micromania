@@ -175,10 +175,23 @@ the sensor games say what is happening (the soda fizzes harder, the sleeping
 shiba snores and goes "huh?" when you twitch, the shiba sniffing for you while HIDE's lens
 is uncovered).
 
-`Beat` is the backing loop — kick, snare, hats and a bass line, scheduled
-ahead on the audio clock. It starts on GO, speeds up with `Engine.speed`, is
-off on menus and in the shop, follows the SOUND and MUSIC switches, and drops out while a mic game is
-listening so the speaker can't count as a blow.
+Sound is synthesised live (no audio files), WarioWare Touched-style:
+
+- **Effects** (`Sfx`) are proper synth voices (envelopes, pitch slides,
+  vibrato, filters) through one mix bus with a compressor and a little room
+  reverb: the bark is two buzzy "wuf"s through a mouth-shaped filter, a win is
+  "ding-ding-DING!" up the chord, a fail is the "bwom-bwom" buzzer.
+- **Stings** mark each beat of the loop: a get-ready lick before every
+  microgame (a low "dun-dun-dun-DUN" for a boss), GO! after the countdown, a
+  siren-and-fanfare SPEED UP, a STAGE CLEAR fanfare and the GAME OVER slide.
+- **Music** (`Music`) is a small chiptune sequencer playing four songs written
+  as 16th-note steps: a bouncy title tune (menus), a funky groove under the
+  microgames that speeds up with every SPEED UP, a darker boss theme, and a
+  laid-back shop tune. It follows the SOUND and MUSIC switches and drops out
+  while a mic game is listening, so the speaker can't count as a blow.
+
+`tests/audio.test.mjs` renders every sound and song offline and checks none is
+silent or clipping.
 
 Props are drawn in code in the five palette colours (`g.bone`, `g.choc`,
 `g.paw`, `g.doghouse`, `g.tennis`, `g.pot`, `g.car`, `g.fence`), so new scenes
@@ -214,6 +227,7 @@ Chromium against the real page (served over http by `tests/run.mjs`).
 | `album`, `settings` | saving, paging, opening, sharing and deleting photos; every switch, saved across a reload |
 | `camera` | live frames from a fake camera, and recovery when the feed stalls |
 | `pwa` | manifest, icons, the service worker, and starting with the network off |
+| `audio` | every effect, sting and song renders audibly without clipping; the right song plays on each screen |
 
 To use a browser that's already installed instead of Playwright's own, set
 `CHROMIUM_PATH=/path/to/chromium`.

@@ -34,7 +34,13 @@ export default async function ({ url, launch }) {
   const release = () => { if (Input.down) { Input.down = false; Input._justUpRaw = true; } };
   const W = 180;
   out.wins.odd = play(OddOneOut, 3, (gm, i) => { if (i === 10) { const c = gm.cells[gm.odd]; tapAt(c.x, c.y); } });
-  out.wins.sort = play(SortTreats, 3, (gm, i) => { if (i % 12 === 6) { const d = gm.want(); swipe(90, 150, d === 'left' ? 30 : 150, 150); } });
+  // a slow drag to the right side (what a careful player does) ...
+  out.wins.sort = play(SortTreats, 3, (gm, i) => {
+    const k = i % 30, to = gm.want() === 'left' ? 30 : 150;
+    if (k === 0) { release(); } else if (k === 1) { tapAt(90, 100); hold(90, 100); } else if (k < 26) hold(90 + (to - 90) * (k / 25), 110); else release();
+  });
+  // ... and a quick flick
+  out.wins.sortFlick = play(SortTreats, 3, (gm, i) => { if (i % 12 === 6) { const d = gm.want(); swipe(90, 150, d === 'left' ? 30 : 150, 150); tapAt(90, 150); Input._justUpRaw = true; } });
   out.wins.boop = play(WhackMole, 3, (gm, i) => { if (i % 10 === 5) { const h = gm.holes[gm.cur]; tapAt(h.x, h.y - 4); } });
   out.wins.laser = play(FollowDot, 3, (gm) => hold(gm.x, gm.y));
   out.wins.rub = play(RubClean, 3, (gm, i) => { const m = gm.mud.find(m => m.dirt > 0); if (m) hold(m.x + Math.sin(i) * 9, m.y + Math.cos(i * 1.3) * 9); });
