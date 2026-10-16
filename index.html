@@ -395,6 +395,8 @@ const Sfx = {
     const f = 523 * [1, 9 / 8, 5 / 4, 4 / 3, 3 / 2, 5 / 3, 15 / 8, 2][Math.max(0, Math.min(7, i))];
     this.tone({ f, dur: 0.14, type: 'sine', vol: 0.14 }); this.tone({ f: f * 4, dur: 0.035, type: 'sine', vol: 0.03 });
   },
+  // a slingshot let go: the rubber's twang and the whoosh of the shot
+  twang() { this.tone({ f: 220, f1: 90, dur: 0.18, type: 'sawtooth', vol: 0.08, lp: 1200, vib: 0.08, vibRate: 40 }); this.whoosh(); },
   tap()  { this.tone({ f: 880, f1: 1320, dur: 0.05, type: 'sine', vol: 0.16 }); this.tone({ f: 1760, dur: 0.015, type: 'square', vol: 0.025 }); },
   tick() { this.tone({ f: 1700, dur: 0.03, type: 'sine', vol: 0.14 }); this.hiss({ dur: 0.02, vol: 0.07, bp: 2500 }); },   // a woodblock
   // WarioWare stings ───────────────────────────────────────────────────────────
@@ -1411,6 +1413,8 @@ const SCENE = {
   // a night outside, for HIDE
   // the road in CROSS
   road: '#2a2d30',
+  // KNOCK IT: the slingshot, its rubber bands, the crates and their stone slab
+  wood: '#a8743f', woodHi: '#c99055', woodLo: '#6e4a2a', band: '#5a1f16', stone: '#7d8590', stoneLo: '#5b626b', dirt: '#7a5a3a',
   night0: '#070b18', night1: '#141d36', nightGrass: '#14261a', nightGrassHi: '#1c3423', house: '#0d1220',
 };
 const Env = {
@@ -3122,11 +3126,11 @@ class DinoRun extends Microgame {
 
 // 29. KNOCK — Angry-Birds style: sling the shiba to topple the block stack
 class KnockStack extends Microgame {
-  static meta = { id: 'knock', env: 'field@270', prompt: 'KNOCK IT!', hint: 'flick', duration: 5.0, minDuration: 3.2,
+  static meta = { id: 'knock', env: 'sunny@262', prompt: 'KNOCK IT!', hint: 'flick', duration: 5.0, minDuration: 3.2,
     how: 'PULL BACK, LET GO\nTO KNOCK IT DOWN' };
   init() {
     this.K = 6;                               // pull -> velocity (same as flick)
-    this.ox = 34; this.oy = BOT - 40;         // slingshot on the lower-left
+    this.ox = 34; this.oy = BOT - 52;         // the pouch, up between the slingshot's arms, lower-left
     this.ball = { x: this.ox, y: this.oy, r: 9, vx: 0, vy: 0, flying: false };
     this.aim = false; this.launched = false;
     this.settle = 0;
@@ -3156,7 +3160,13 @@ class KnockStack extends Microgame {
       } else if (this.aim) {
         this.ball.vx = (this.ox - this.ball.x) * this.K;
         this.ball.vy = (this.oy - this.ball.y) * this.K;
-        this.ball.flying = true; this.launched = true; Sfx.tap(); buzz(15);
+        this.ball.flying = true; this.launched = true; Sfx.twang(); buzz(15);
+        this.trail = []; this.trailT = 0;
+      }
+      // the bands creak as they stretch, a note higher the further you pull
+      if (this.aim && input.down) {
+        const k = Math.floor(Math.hypot(this.ball.x - this.ox, this.ball.y - this.oy) / 14);
+        if (k > (this.creak || 0)) { this.creak = k; Sfx.blip(300 + k * 90, 0.03, 'triangle', 0.05); }
       }
       return;
     }
@@ -3165,18 +3175,20 @@ class KnockStack extends Microgame {
     if (this.ball.flying) {
       this.ball.x += this.ball.vx * dt; this.ball.y += this.ball.vy * dt;
       this.ball.vy += 240 * dt;
+      this.ball.rot = (this.ball.rot || 0) + this.ball.vx * dt * 0.06;     // it tumbles through the air
+      this.trailT += dt; if (this.trailT > 0.035) { this.trailT = 0; this.trail.push({ x: this.ball.x, y: this.ball.y }); }
       // hit a standing block -> knock it flying
       for (const b of this.blocks) {
         if (b.toppled) continue;
         if (Math.abs(this.ball.x - b.x) < b.w / 2 + this.ball.r &&
             Math.abs(this.ball.y - b.y) < b.h / 2 + this.ball.r) {
           b.toppled = true; this.knocked++;
-          b.vx = this.ball.vx * 0.4 + 40; b.vy = -80;
+          b.vx = this.ball.vx * 0.4 + 40; b.vy = -80; b.spin = 4 + Math.random() * 5;
           this.ball.vx *= 0.5; this.ball.vy = -60;       // ball bounces on
-          FX.hit(b.x, b.y, PAL.accent); Sfx.thud(); buzz(20);
+          FX.hit(b.x, b.y, PAL.accent); FX.burst(b.x, b.y, SCENE.woodHi, 10, 70); Sfx.thud(); Sfx.crunch(); buzz(20);
           // blocks above a toppled one lose support and tumble too
           for (const a of this.blocks) if (!a.toppled && a.x === b.x && a.y < b.y) {
-            a.toppled = true; this.knocked++; a.vx = 20 + Math.random() * 30; a.vy = -50;
+            a.toppled = true; this.knocked++; a.vx = 20 + Math.random() * 30; a.vy = -50; a.spin = (Math.random() - 0.5) * 8;
           }
         }
       }
@@ -3188,31 +3200,56 @@ class KnockStack extends Microgame {
       }
     }
     // animate toppled blocks falling away
-    for (const b of this.blocks) if (b.toppled) { b.x += b.vx * dt; b.y += b.vy * dt; b.vy += 240 * dt; }
+    for (const b of this.blocks) if (b.toppled) { b.x += b.vx * dt; b.y += b.vy * dt; b.vy += 240 * dt; b.rot = (b.rot || 0) + (b.spin || 0) * dt; }
+  }
+  // a wooden crate: planks with a lit top edge, a cross brace, nail heads
+  crate(w, h) {
+    g.rect(-w / 2, -h / 2, w, h, SCENE.woodLo);
+    g.rect(-w / 2 + 1, -h / 2 + 1, w - 2, h - 2, SCENE.wood);
+    g.rect(-w / 2 + 1, -h / 2 + 1, w - 2, 2, SCENE.woodHi);
+    g.rect(-w / 2 + 1, -1, w - 2, 1, SCENE.woodLo);                          // the plank seam
+    g.line(-w / 2 + 3, -h / 2 + 3, w / 2 - 3, h / 2 - 3, SCENE.woodLo, 2);    // the brace
+    for (const [nx, ny] of [[-w / 2 + 2, -h / 2 + 2], [w / 2 - 3, -h / 2 + 2], [-w / 2 + 2, h / 2 - 3], [w / 2 - 3, h / 2 - 3]]) g.rect(nx, ny, 1, 1, PAL.bg);
   }
   draw(g) {
     g.clear();
-    g.rect(0, this.groundY, W, 2, PAL.mid);
-    // platform under the stack
-    g.rect(this.baseX - 16, this.groundY - 2, 32, 4, PAL.mid);
-    // blocks
+    const ox = this.ox, oy = this.oy, gy = this.groundY;
+    // the stone slab the tower stands on
+    g.rect(this.baseX - 18, gy - 4, 36, 6, SCENE.stoneLo); g.rect(this.baseX - 18, gy - 4, 36, 2, SCENE.stone);
+    // crates, tumbling as they go
     for (const b of this.blocks) {
-      if (b.toppled && (b.y > BOT + 20)) continue;
-      g.cRect(b.x, b.y, b.w, b.h, b.toppled ? PAL.mid : PAL.bad);
-      g.box(b.x - b.w / 2, b.y - b.h / 2, b.w, b.h, PAL.bg);
-      g.line(b.x - b.w / 2 + 2, b.y - b.h / 2 + 2, b.x + b.w / 2 - 2, b.y + b.h / 2 - 2, PAL.bg, 1);   // crate brace
-      g.line(b.x - b.w / 2 + 2, b.y + b.h / 2 - 2, b.x + b.w / 2 - 2, b.y - b.h / 2 + 2, PAL.bg, 1);
+      if (b.toppled && b.y > BOT + 20) continue;
+      ctx.save(); ctx.translate(b.x, b.y); ctx.rotate(b.rot || 0); this.crate(b.w, b.h); ctx.restore();
     }
-    // slingshot fork
-    g.line(this.ox - 5, this.oy + 12, this.ox - 5, BOT, PAL.mid, 2);
-    // the shiba face as the projectile
-    if (this.aim && !this.launched) {
-      g.line(this.ox, this.oy, this.ball.x, this.ball.y, PAL.mid, 1);
-      let px = this.ball.x, py = this.ball.y;
-      let vx = (this.ox - this.ball.x) * this.K, vy = (this.oy - this.ball.y) * this.K;
-      for (let i = 0; i < 12; i++) { px += vx * 0.05; py += vy * 0.05; vy += 240 * 0.05; if (py > BOT) break; g.rect(px - 1, py - 1, 2, 2, PAL.mid); }
+    // the shot's dotted trail, Angry Birds style
+    if (this.trail) this.trail.forEach((d, i) => g.rect(d.x - (i % 2 ? 1 : 1.5), d.y - 1, i % 2 ? 2 : 3, i % 2 ? 2 : 3, PAL.ink));
+    // the slingshot: a wooden Y on a mound, two rubber bands and a pouch. The
+    // back arm and band go behind the shiba, the front ones in front of it.
+    const base = BOT - 4, fork = oy + 28, L = { x: ox - 12, y: oy + 7 }, R = { x: ox + 12, y: oy + 5 };
+    ctx.fillStyle = SCENE.dirt; ctx.beginPath(); ctx.ellipse(ox, base + 2, 16, 5, 0, Math.PI, 0); ctx.fill();
+    const held = !this.launched, bx = held ? this.ball.x : ox, by = held ? this.ball.y : oy;
+    // the pouch cups the shiba from behind: below it at rest, on the far side
+    // from the fork while it's pulled back, and both bands hook into it
+    const pd = Math.hypot(bx - ox, by - oy), ux = pd > 2 ? (bx - ox) / pd : 0, uy = pd > 2 ? (by - oy) / pd : 1;
+    const P = { x: bx + ux * 9, y: by + uy * 9 }, nx = -uy * 4, ny = ux * 4;
+    g.line(ox + 1, fork, R.x, R.y, SCENE.woodLo, 5);                           // back arm
+    g.line(R.x, R.y + 1, held ? P.x + nx : ox + 4, held ? P.y + ny : oy + 9, SCENE.band, 3);   // back band
+    if (held) {
+      ctx.save(); ctx.translate(P.x, P.y); ctx.rotate(Math.atan2(uy, ux));
+      g.rect(-2, -7, 4, 14, SCENE.band); ctx.restore();                         // the leather pouch, behind the shiba
     }
-    g.sprite('face', this.ball.x, this.ball.y, { w: 20, h: 20, frame: this.launched ? 4 : 0 });
+    g.line(ox, base, ox, fork, SCENE.wood, 7); g.line(ox - 2, base, ox - 2, fork, SCENE.woodHi, 1);   // the trunk
+    if (this.aim && held) {   // where it'll go
+      let px = bx, py = by, vx = (ox - bx) * this.K, vy = (oy - by) * this.K;
+      for (let i = 0; i < 12; i++) { px += vx * 0.05; py += vy * 0.05; vy += 240 * 0.05; if (py > BOT) break; ctx.globalAlpha = 1 - i / 13; g.rect(px - 1, py - 1, 2, 2, PAL.ink); ctx.globalAlpha = 1; }
+    }
+    // the shiba, curled up in the pouch and then spinning through the air
+    ctx.save(); ctx.translate(this.ball.x, this.ball.y); ctx.rotate(this.ball.rot || 0);
+    g.sprite('face', 0, 0, { w: 22, h: 22, frame: this.launched ? 4 : this.aim ? 1 : 0 });
+    ctx.restore();
+    g.line(L.x, L.y + 1, held ? P.x - nx : ox - 4, held ? P.y - ny : oy + 9, SCENE.band, 3);   // front band
+    g.line(ox - 1, fork, L.x, L.y, SCENE.wood, 5); g.line(ox - 2, fork - 2, L.x - 1, L.y + 1, SCENE.woodHi, 1);   // front arm
+    g.rect(L.x - 3, L.y - 3, 5, 4, SCENE.woodLo); g.rect(R.x - 2, R.y - 3, 5, 4, SCENE.woodLo);   // the band knots on the tips
     if (!this.launched && !this.aim) g.text('DRAG BACK', CX, TOP + 20, 8, PAL.mid);
     for (let i = 0; i < this.need; i++) g.rect(W - 8 - i * 8, TOP + 4, 5, 5, i < this.knocked ? PAL.accent : PAL.mid);
   }
