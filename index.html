@@ -503,11 +503,14 @@ const Input = {
     const v = document.createElement('video');
     v.autoplay = true; v.playsInline = true; v.muted = true;
     v.setAttribute('playsinline', ''); v.setAttribute('muted', '');
-    v.style.cssText = 'position:fixed;left:0;top:0;width:2px;height:2px;opacity:0;pointer-events:none;z-index:-1';
+    // tucked behind the game canvas rather than see-through: some phones stop
+    // feeding a video they think nobody can see
+    v.style.cssText = 'position:fixed;left:50%;top:50%;width:2px;height:2px;pointer-events:none;z-index:-1';
     document.body.appendChild(v);
     v.srcObject = stream;
     v.play().catch(() => {});
-    this._camLastT = -1; this._camStuck = 0;
+    this._camLastT = -1; this._camStuck = 0; this._camSince = performance.now(); this._camSeen = 0;
+    this._readFrames(stream);
     // the phone can end the camera outright (another app took it, the screen
     // locked); get it back rather than sit on a dead stream
     try { stream.getVideoTracks()[0].addEventListener('ended', () => this.restartCam()); } catch (e) {}
@@ -523,13 +526,43 @@ const Input = {
     this.camReady = true; this.camPending = false;
   },
 
+  // Where the browser can (Chrome, Android), take frames straight off the
+  // camera track: they keep coming whatever the browser thinks of the hidden
+  // video. One frame is held at a time, and the one before is closed, or the
+  // camera runs out of buffers and stalls.
+  _readFrames(stream) {
+    this._dropFrame();
+    const gen = this._camGen = (this._camGen || 0) + 1;
+    if (typeof MediaStreamTrackProcessor === 'undefined') return;
+    let reader;
+    try { reader = new MediaStreamTrackProcessor({ track: stream.getVideoTracks()[0] }).readable.getReader(); } catch (e) { return; }
+    const pump = () => reader.read().then(({ value, done }) => {
+      if (done) return;
+      if (gen !== this._camGen) { value.close(); reader.cancel().catch(() => {}); return; }
+      if (this._frame) this._frame.close();
+      this._frame = value; this._frameAt = this._camSeen = performance.now();
+      pump();
+    }).catch(() => {});
+    pump();
+  },
+  _dropFrame() { if (this._frame) { try { this._frame.close(); } catch (e) {} this._frame = null; } },
+  // what to draw the camera from: the newest track frame if one is fresh,
+  // else the video once it has a picture; null while nothing has arrived
+  _camSrc() {
+    if (!this.camReady) return null;
+    if (this._frame && performance.now() - this._frameAt < 600) return this._frame;
+    const v = this._camVideo;
+    return v && v.readyState >= 2 && v.videoWidth ? v : null;
+  },
+  _camSize(src) { return src.displayWidth ? [src.displayWidth, src.displayHeight] : [src.videoWidth, src.videoHeight]; },
+
   // Drop a dead camera stream and ask for a fresh one. Permission is already
   // granted by now, so phones hand it straight back with no popup.
   restartCam() {
     if (this._camRestarting || this.camDenied) return;
     this._camRestarting = true;
     try { this._cam && this._cam.getTracks().forEach(t => t.stop()); } catch (e) {}
-    this._cam = null; this.camReady = false; this._prevFrame = null;
+    this._cam = null; this.camReady = false; this._prevFrame = null; this._camGen++; this._dropFrame();
     this.enableCam();
     setTimeout(() => { this._camRestarting = false; }, 1500);
   },
@@ -540,7 +573,7 @@ const Input = {
       const tr = this._cam.getVideoTracks()[0];
       if (!tr || tr.readyState === 'ended') this.restartCam();
       else if (v.paused) v.play().catch(() => {});
-      this._camLastT = -1; this._camStuck = 0;
+      this._camLastT = -1; this._camStuck = 0; this._camSince = performance.now();
     }
     if (Sfx.ac && Sfx.ac.state === 'suspended') Sfx.ac.resume().catch(() => {});
     // the mic too: if the phone ended it while we were away, ask again
@@ -576,19 +609,19 @@ const Input = {
   // (motionX/Y) and how bright the frame is (bright).
   _sampleMotion() {
     if (!this.camReady || !this._camVideo) return;
-    // watchdog: the video clock should always be moving. Stuck for a second,
-    // nudge it to play; still stuck after 2.5s, get a fresh camera stream.
-    const v = this._camVideo;
+    // watchdog: pictures should keep arriving, from the track or the video.
+    // None for a second, nudge the video to play; none for 2.5s (4s while a
+    // fresh camera is still warming up), get a new camera stream.
+    const v = this._camVideo, now = performance.now();
+    if (v.readyState >= 2 && v.currentTime !== this._camLastT) { this._camLastT = v.currentTime; this._camSeen = Math.max(this._camSeen, now); }
     if (!document.hidden) {
-      if (v.currentTime === this._camLastT) {
-        this._camStuck += STEP;
-        if (this._camStuck > 1 && v.paused) v.play().catch(() => {});
-        if (this._camStuck > 2.5) { this._camStuck = 0; this.restartCam(); return; }
-      } else { this._camStuck = 0; this._camLastT = v.currentTime; }
+      const quiet = (now - Math.max(this._camSeen, this._camSince)) / 1000;
+      if (quiet > 1 && v.paused) v.play().catch(() => {});
+      if (quiet > (this._camSeen ? 2.5 : 4)) { this.restartCam(); return; }
     }
-    if (v.readyState < 2) return;
+    const src = this._camSrc(); if (!src) return;
     const cx = this._camCtx, w = this.camW, h = this.camH;
-    cx.drawImage(this._camVideo, 0, 0, w, h);
+    cx.drawImage(src, 0, 0, w, h);
     const cur = cx.getImageData(0, 0, w, h).data;
     if (this._prevFrame) {
       let diff = 0, left = 0, right = 0, sx = 0, sy = 0, lum = 0;
@@ -626,8 +659,8 @@ const Input = {
   // to a 4:3 landscape polaroid kept only a band across the middle — a face
   // held close for BLOW came out as nothing but nose. long = longest side.
   snapPhoto(long = 120) {
-    if (!this.camReady || !this._camVideo) return null;
-    const v = this._camVideo, sw = v.videoWidth, sh = v.videoHeight;
+    const src = this._camSrc(); if (!src) return null;
+    const [sw, sh] = this._camSize(src);
     if (!sw || !sh) return null;
     const k = long / Math.max(sw, sh);
     const c = document.createElement('canvas');
@@ -637,15 +670,14 @@ const Input = {
   },
   // width / height of the camera picture (4:3 until the feed reports)
   camAspect() {
-    const v = this._camVideo;
-    return v && v.videoWidth && v.videoHeight ? v.videoWidth / v.videoHeight : 4 / 3;
+    const src = this._camSrc(), [sw, sh] = src ? this._camSize(src) : [0, 0];
+    return sw && sh ? sw / sh : 4 / 3;
   },
   // the live camera, mirrored like a mirror, into a rect of its own aspect
   drawLive(c, x, y, w, h) {
-    const v = this._camVideo;
-    if (!this.camReady || !v || v.readyState < 2) return false;
+    const src = this._camSrc(); if (!src) return false;
     c.save(); c.translate(x + w, y); c.scale(-1, 1);
-    c.drawImage(v, 0, 0, w, h);
+    c.drawImage(src, 0, 0, w, h);
     c.restore();
     return true;
   },
@@ -881,7 +913,8 @@ const g = {
   // With no colour, inside a microgame that has a backdrop, this paints the
   // backdrop instead (see Env) — so every game's own g.clear() picks it up.
   outline(str, x, y, size, c) {
-    for (const [ox, oy] of [[-2, 0], [2, 0], [0, -2], [0, 2], [-2, 2], [2, 2], [0, 3]]) this.text(str, x + ox, y + oy, size, PAL.bg);
+    const d = size >= 14 ? 2 : 1, sh = size >= 14 ? 3 : 1;   // a 2px rim on small text read as a double image
+    for (const [ox, oy] of [[-d, 0], [d, 0], [0, -d], [0, d], [-d, d], [d, d], [0, sh]]) this.text(str, x + ox, y + oy, size, PAL.bg);
     this.text(str, x, y, size, c);
   },
   clear(c) {
@@ -5509,17 +5542,18 @@ const Engine = {
       if (k < 2.5 / d) return n * (k -= 2.25 / d) * k + 0.9375; return n * (k -= 2.625 / d) * k + 0.984375; };
     const back = (k) => { k = Math.max(0, Math.min(1, k)); const c = 1.7; return 1 + (c + 1) * Math.pow(k - 1, 3) + c * Math.pow(k - 1, 2); };
     Env.paint('sunny@180');
+    g.rect(0, 0, W, TOP, SCENE.day0);   // the title is full-bleed: sky to the top edge, meadow to the bottom
     const Rn = this.runner || { scroll: 0, y: 0, legT: t, pops: [] }, sc = Rn.scroll, gy = this.RUN_GROUND;
     // the far hills drift by at half speed, the meadow at full speed
     g.rect(0, gy - 14, W, 14, SCENE.day1);
     for (let i = 0; i < W; i++) { const u = i + sc * 0.5, hh = 7 + Math.sin(u / 19) * 4 + Math.sin(u / 6) * 1.5; g.rect(i, gy - hh, 1, hh, SCENE.dayHill); }
-    g.rect(0, gy, W, BOT - gy, SCENE.meadow); g.rect(0, gy, W, 2, SCENE.meadowHi);
-    for (let i = 0; i < 14; i++) {
-      const tx = ((i * 41 - sc) % (W + 20) + W + 20) % (W + 20) - 10, ty = gy + 8 + (i * 23) % (BOT - gy - 12);
+    g.rect(0, gy, W, H - gy, SCENE.meadow); g.rect(0, gy, W, 2, SCENE.meadowHi);
+    for (let i = 0; i < 18; i++) {
+      const tx = ((i * 41 - sc) % (W + 20) + W + 20) % (W + 20) - 10, ty = gy + 8 + (i * 23) % (H - gy - 12);
       g.rect(tx, ty, 1, 3, SCENE.stem); g.rect(tx + 2, ty + 1, 1, 2, SCENE.stem);
       if (i % 4 === 0) g.rect(tx + 1, ty - 1, 2, 2, i % 8 ? PAL.ink : PAL.accent);
     }
-    ctx.globalAlpha = 0.25; g.rect(0, TOP, W, BOT - TOP, PAL.bg); ctx.globalAlpha = 1;
+    ctx.globalAlpha = 0.25; g.rect(0, 0, W, H, PAL.bg); ctx.globalAlpha = 1;
     // bushes to hop, each with a bone floating over it until the shiba grabs it
     for (let i = this.runBushAfter(sc - 20); ; i++) {
       const bx = this.runBush(i).x - sc; if (bx > W + 12) break;
@@ -5561,16 +5595,14 @@ const Engine = {
     }
     // the buttons slide up into place, one after another
     const R = this.BTN_RUN, C = this.BTN_CLASSIC, A = this.BTN_ALBUM, na = Album.load().length;
-    const up = (i) => (1 - back((t - 1.3 - i * 0.08) / 0.45)) * 110;
-    ctx.save(); ctx.beginPath(); ctx.rect(0, TOP, W, BOT - TOP); ctx.clip();   // they rise from below the field, not from the black strip
+    const up = (i) => (1 - back((t - 1.3 - i * 0.08) / 0.45)) * 150;   // from below the bottom edge
     let dy = up(0); g.rect(R.x, R.y + dy, R.w, R.h, PAL.accent); g.text('RUN', CX, R.y + dy + 17, 13, PAL.bg);
     dy = up(1); g.rect(C.x, C.y + dy, C.w, C.h, PAL.bg); g.box(C.x, C.y + dy, C.w, C.h, PAL.ink); g.text('CLASSIC', CX, C.y + dy + 13, 9, PAL.ink);
     dy = up(2); g.rect(A.x, A.y + dy, A.w, A.h, PAL.bg); g.box(A.x, A.y + dy, A.w, A.h, PAL.mid); g.text('ALBUM' + (na ? ' (' + na + ')' : ''), CX, A.y + dy + 12, 8, PAL.ink);
-    ctx.restore();
     const best = [];
     if (Run.best) best.push('RUN ' + Run.label(Run.best));
     if (this.best) best.push('CLASSIC ' + this.best);
-    if (best.length && t > this.TITLE_INTRO) { g.rect(0, BOT - 15, W, 13, PAL.bg); g.text('BEST  ' + best.join('  ·  '), CX, BOT - 5, 7, TEXT_MID); }
+    if (best.length && t > this.TITLE_INTRO) g.outline('BEST  ' + best.join('  ·  '), CX, H - 24, 8, PAL.ink);
   },
 
   // ── SHARE ──────────────────────────────────────────────────────────────────
@@ -5809,18 +5841,22 @@ const Engine = {
   // The round clock as a lit fuse burning toward a bomb in the bottom-left
   // corner. The last quarter the bomb flashes red and the spark spits harder.
   drawFuse(pct) {
-    const bx = 12, by = H - 9, end = bx + 12 + (W - bx - 18) * pct, late = pct < 0.25;
-    for (let x = bx + 12; x < end; x += 3) g.rect(x, H - 6 + ((x / 3) % 2), 3, 3, (x / 3) % 2 ? TEXT_MID : PAL.ink);   // twisted cord
-    const t = this.time, flick = Math.floor(t * 20) % 2;
-    g.circle(end, H - 5, late ? 6 : 5, PAL.bad); g.circle(end, H - 5, flick ? 2.5 : 3, PAL.accent);
-    for (let i = 0; i < (late ? 10 : 6); i++) {
-      const a = i * 0.9 + t * 11, r = 6 + (i % 3) * (late ? 3 : 2);
-      g.rect(end + Math.cos(a) * r, H - 5 + Math.sin(a) * r * 0.8, 2, 2, i % 2 ? PAL.accent : PAL.ink);
+    // the bomb sits wholly inside the shelf; a plain cord runs out from under it
+    // along the bottom and burns back toward it, a small spark at the tip
+    const bx = 12, by = H - 13, cy = H - 4, x0 = bx + 5, end = x0 + (W - x0 - 6) * pct, late = pct < 0.25;
+    const t = this.time, hot = late && Math.floor(t * 8) % 2;
+    g.rect(x0, cy, end - x0, 2, TEXT_MID); g.rect(x0, by + 5, 2, cy - by - 5, TEXT_MID);   // drawn first, so the bomb covers where it goes in
+    for (let x = x0 + 6; x < end - 2; x += 4) g.rect(x, cy, 1, 1, PAL.ink);   // a twist every few pixels
+    g.circle(bx, by, 9, PAL.ink); g.circle(bx, by, 8, hot ? PAL.bad : PAL.mid);
+    g.circle(bx - 3, by - 3, 2, TEXT_MID);
+    // the spark: a flickering star, with a few bits jumping up off it
+    const f = Math.floor(t * 20) % 2, r = late ? 3 : 2;
+    g.rect(end - r, cy, r * 2 + 1, 2, PAL.accent); g.rect(end - 1, cy - r + 1, 2, r * 2, PAL.accent);
+    g.rect(end, cy, 1, 1, f ? PAL.ink : PAL.bad);
+    for (let i = 0; i < (late ? 5 : 3); i++) {
+      const k = ((t * 3 + i * 0.37) % 1), a = i * 2.1 + t;
+      g.rect(end + Math.cos(a) * 5 * k, cy - 7 * k, 1, 1, i % 2 ? PAL.accent : PAL.bad);
     }
-    const hot = late && Math.floor(t * 8) % 2;
-    g.circle(bx, by, 10, PAL.ink); g.circle(bx, by, 9, hot ? PAL.bad : PAL.mid);
-    g.circle(bx - 3, by - 3, 2.5, TEXT_MID);
-    g.rect(bx + 5, by - 11, 6, 5, PAL.ink);
   },
 
   drawCamView() {
@@ -5841,7 +5877,7 @@ const Engine = {
   // speaker in the middle of the HUD band, with sound waves or a cross. Drawn
   // after the FX so a flash or shake never hides it.
   drawMute() {
-    const x = CX - 6, y = 4, c = TEXT_MID;   // a control, so it reads like text
+    const x = CX - 6, y = 4, c = this.state === 'TITLE' ? PAL.ink : TEXT_MID;   // a control, so it reads like text (white on the title's sky)
     g.rect(x, y + 3, 3, 4, c);
     g.rect(x + 3, y + 2, 1, 6, c); g.rect(x + 4, y + 1, 1, 8, c); g.rect(x + 5, y, 1, 10, c);
     if (Sfx.muted) {

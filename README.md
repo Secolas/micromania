@@ -32,6 +32,12 @@ While a camera game is on, the shelf at the bottom-left shows the **live
 camera** (mirrored, with a blinking REC dot), so players can see themselves and
 know it is watching. Flag a game with `cam: true` in its meta.
 
+Where the browser allows it (Chrome, Android), camera frames are read straight
+off the camera track (`MediaStreamTrackProcessor`), so the picture keeps coming
+even if the phone stops feeding the page's hidden video. Elsewhere (Safari) the
+video is used. Either way, a watchdog gets a fresh camera stream if pictures
+stop arriving for a few seconds.
+
 SWAT prefers the **gyro** where the device has one — tilting the phone aims far
 more precisely than the camera's centre-of-motion can. Hold the swatter on the
 fly to squash it (or tap). Whatever the phone was doing when the round starts
@@ -84,8 +90,8 @@ Set it with `how` in a game's meta.
 
 ## Between games
 
-Each round's clock is a **lit fuse** burning along the bottom toward a bomb in
-the corner; the last quarter the bomb flashes red, and if time runs out on a
+Each round's clock is a **lit fuse**: a plain cord along the bottom, a small
+spark at its tip, burning back toward a bomb sitting in the corner of the shelf; the last quarter the bomb flashes red, and if time runs out on a
 game you had to finish, it goes off. Between games the screen slowly closes down to
 a **shiba-head-shaped window** (`Wipe`), holds a beat on black, then opens on
 the next game — whose scene shows, dimmed, behind its
@@ -105,7 +111,8 @@ so wins and fails always feel the same:
 
 ## Title screen
 
-The title is a little side-scroller. **MICRO** and **MANIA** drop in letter by
+The title is full-bleed (sky to the top edge, meadow to the bottom, the mute
+speaker drawn over the sky) and a little side-scroller. **MICRO** and **MANIA** drop in letter by
 letter, the RUN / CLASSIC / ALBUM buttons slide up, and the shiba runs in and
 keeps running: the hills and meadow scroll past, and it hops every bush and
 snaps up the bone floating over it. A tap skips the intro. Coming back
