@@ -5680,10 +5680,10 @@ const Engine = {
       g.rect(sx - 2, sy, 5, 1, PAL.accent); g.rect(sx, sy - 2, 1, 5, PAL.accent);
     }
     // the buttons slide up into place, one after another
-    const R = this.BTN_RUN, C = this.BTN_CLASSIC, A = this.BTN_ALBUM, na = Album.load().length;
+    const R = this.BTN_RUN, C = this.BTN_CLASSIC, A = this.BTN_ALBUM;
     const up = (i) => (1 - back((t - 1.3 - i * 0.08) / 0.45)) * 150;   // from below the bottom edge
     // the menu: white outlined words, all alike
-    const opts = [[R, 'RUN'], [C, 'CLASSIC'], [A, 'ALBUM' + (na ? ' (' + na + ')' : '')], [this.BTN_SET, 'SETTINGS']];
+    const opts = [[R, 'RUN'], [C, 'CLASSIC'], [A, 'ALBUM'], [this.BTN_SET, 'SETTINGS']];
     opts.forEach(([b, label], i) => g.outline(label, CX, b.y + up(i) + b.h / 2 + 5, 14, PAL.ink));
     const best = [];
     if (Run.best) best.push('RUN ' + Run.label(Run.best));
