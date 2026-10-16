@@ -104,9 +104,10 @@ so wins and fails always feel the same:
 
 ## Title screen
 
-The title plays a short intro every time you land on it. **MICRO** and
-**MANIA** drop in letter by letter, the shiba dashes in and skids to a sit, and
-the RUN / CLASSIC / ALBUM buttons slide up. A tap skips the intro. Coming back
+The title is a little side-scroller. **MICRO** and **MANIA** drop in letter by
+letter, the RUN / CLASSIC / ALBUM buttons slide up, and the shiba runs in and
+keeps running: the hills and meadow scroll past, and it hops every bush and
+snaps up the bone floating over it. A tap skips the intro. Coming back
 from the album shows the settled screen straight away.
 
 ## Photo album
