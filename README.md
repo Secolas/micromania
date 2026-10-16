@@ -1,4 +1,4 @@
-# MICROMANIA
+# SHIBA MANIA
 
 A WarioWare-style microgame collection — 53 fast microgames in a single
 self-contained HTML file. Portrait, mobile-first, starring a pixel-art shiba inu.
@@ -112,8 +112,10 @@ so wins and fails always feel the same:
 ## Title screen
 
 The title is full-bleed (sky to the top edge, meadow to the bottom, the mute
-speaker drawn over the sky) and a little side-scroller. **MICRO** and **MANIA** drop in letter by
-letter, the RUN / CLASSIC / ALBUM buttons slide up, and the shiba runs in and
+speaker drawn over the sky) and a little side-scroller. **SHIBA** and **MANIA** drop in letter by
+letter, and the menu slides up: RUN, CLASSIC and ALBUM as three alike white
+outlined words, with a bobbing bone pointer (Super Mario's mushroom) that sits on
+RUN and jumps to whichever option your finger is on. The shiba runs in and
 keeps running: the hills and meadow scroll past, and it hops every bush and
 snaps up the bone floating over it. A tap skips the intro. Coming back
 from the album shows the settled screen straight away.

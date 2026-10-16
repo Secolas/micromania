@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#101010">
-<title>MICROMANIA</title>
+<title>SHIBA MANIA</title>
 <style>
   * { box-sizing: border-box; }
   html, body {
@@ -120,7 +120,7 @@ const ART = {
 
 <script>
 /* =============================================================================
-   MICROMANIA — a mobile microgame engine (WarioWare-style)
+   SHIBA MANIA — a mobile microgame engine (WarioWare-style)
    Single file, no dependencies. Rename freely.
 
    ── HOW TO ADD A MICROGAME ──────────────────────────────────────────────────
@@ -5512,9 +5512,10 @@ const Engine = {
   PERM_ALLOW: { x: CX - 50, y: CY + 22, w: 100, h: 24 },
   PERM_SKIP:  { x: CX - 50, y: CY + 54, w: 100, h: 24 },
   RUN_SPEED: 80, RUN_X: 46, RUN_GROUND: 180,
+  // three menu options, all the same size and style (Super Mario's title menu)
   BTN_RUN:     { x: CX - 50, y: 186, w: 100, h: 24 },
-  BTN_CLASSIC: { x: CX - 50, y: 216, w: 100, h: 18 },
-  BTN_ALBUM:   { x: CX - 50, y: 240, w: 100, h: 16 },
+  BTN_CLASSIC: { x: CX - 50, y: 212, w: 100, h: 24 },
+  BTN_ALBUM:   { x: CX - 50, y: 238, w: 100, h: 24 },
   TITLE_INTRO: 1.9,          // seconds until the title has settled and its buttons work
   ALB_BACK:    { x: 4, y: TOP + 4, w: 40, h: 16 },
   ALB_PREV:    { x: 8, y: BOT - 26, w: 30, h: 20 },
@@ -5553,7 +5554,7 @@ const Engine = {
   },
 
   // ── TITLE ──
-  // The letters of MICRO then MANIA drop in and bounce, the shiba dashes in,
+  // The letters of SHIBA then MANIA drop in and bounce, the shiba dashes in,
   // skids and sits, and the buttons slide up. Tapping skips straight to the end.
   titleIntro(dt) {
     this.titleT = (this.titleT || 0) + dt;
@@ -5623,7 +5624,7 @@ const Engine = {
         g.outline(ch, x0 + i * step, y + idle, size, col);
       });
     };
-    word('MICRO', 70, PAL.ink, 0.0);
+    word('SHIBA', 70, PAL.ink, 0.0);
     word('MANIA', 98, PAL.accent, 0.35);
     if (t > 1.0) { ctx.globalAlpha = Math.min(1, (t - 1.0) * 3); g.outline(POOL.length + BOSSES.length + ' MICROGAMES', CX, 118, 8, PAL.ink); ctx.globalAlpha = 1; }
     // the shiba runs in from the left, then keeps running: hop, grab, land
@@ -5642,9 +5643,16 @@ const Engine = {
     // the buttons slide up into place, one after another
     const R = this.BTN_RUN, C = this.BTN_CLASSIC, A = this.BTN_ALBUM, na = Album.load().length;
     const up = (i) => (1 - back((t - 1.3 - i * 0.08) / 0.45)) * 150;   // from below the bottom edge
-    let dy = up(0); g.rect(R.x, R.y + dy, R.w, R.h, PAL.accent); g.text('RUN', CX, R.y + dy + 17, 13, PAL.bg);
-    dy = up(1); g.rect(C.x, C.y + dy, C.w, C.h, PAL.bg); g.box(C.x, C.y + dy, C.w, C.h, PAL.ink); g.text('CLASSIC', CX, C.y + dy + 13, 9, PAL.ink);
-    dy = up(2); g.rect(A.x, A.y + dy, A.w, A.h, PAL.bg); g.box(A.x, A.y + dy, A.w, A.h, PAL.mid); g.text('ALBUM' + (na ? ' (' + na + ')' : ''), CX, A.y + dy + 12, 8, PAL.ink);
+    // the menu: white outlined words, all alike, and a bone pointer like Mario's
+    // mushroom; it sits on RUN and jumps to whichever option your finger is on
+    const opts = [[R, 'RUN'], [C, 'CLASSIC'], [A, 'ALBUM' + (na ? ' (' + na + ')' : '')]];
+    let sel = 0;
+    if (Input.down) opts.forEach(([b], i) => { if (this.hit(b, { x: Input.x, y: Input.y })) sel = i; });
+    opts.forEach(([b, label], i) => {
+      const dy = up(i), y = b.y + dy + b.h / 2;
+      g.outline(label, CX + 6, y + 5, 14, PAL.ink);
+      if (i === sel && dy < 1) g.bone(CX - 44 + Math.abs(Math.sin(this.time * 5)) * 3, y, 14);
+    });
     const best = [];
     if (Run.best) best.push('RUN ' + Run.label(Run.best));
     if (this.best) best.push('CLASSIC ' + this.best);
@@ -5669,7 +5677,7 @@ const Engine = {
       x.restore();
     };
     x.fillStyle = PAL.bg; x.fillRect(0, 0, 720, 960);
-    text('MICRO', 360, 120, 96, PAL.ink);
+    text('SHIBA', 360, 120, 96, PAL.ink);
     text('MANIA', 360, 212, 96, PAL.accent);
     const n = this.album.length;
     if (n === 0) {
@@ -5682,26 +5690,26 @@ const Engine = {
     }
     const result = this.mode === 'run' ? 'REACHED ' + Run.label() : 'SCORE ' + this.score;
     text(result, 360, 860, 60, PAL.ink);
-    text(location.host || 'MICROMANIA', 360, 920, 26, TEXT_MID);
+    text(location.host || 'SHIBA MANIA', 360, 920, 26, TEXT_MID);
     return c;
   },
 
   share(c, words) {
     c = c || this.shareCard();
     const url = c.toDataURL('image/png');
-    words = words || (this.mode === 'run' ? 'I reached ' + Run.label() + ' in MICROMANIA RUN mode!' : 'I scored ' + this.score + ' in MICROMANIA!');
+    words = words || (this.mode === 'run' ? 'I reached ' + Run.label() + ' in SHIBA MANIA RUN mode!' : 'I scored ' + this.score + ' in SHIBA MANIA!');
     try {
       // the phone's own share sheet, with the picture attached
       const bin = atob(url.split(',')[1]), buf = new Uint8Array(bin.length);
       for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
-      const file = new File([buf], 'micromania.png', { type: 'image/png' });
+      const file = new File([buf], 'shibamania.png', { type: 'image/png' });
       if (navigator.canShare && navigator.canShare({ files: [file] })) {
-        navigator.share({ files: [file], title: 'MICROMANIA', text: words + ' ' + location.href }).catch(() => {});
+        navigator.share({ files: [file], title: 'SHIBA MANIA', text: words + ' ' + location.href }).catch(() => {});
         return;
       }
     } catch (e) {}
     // no share sheet (most desktops): save the picture instead
-    const a = document.createElement('a'); a.href = url; a.download = 'micromania.png';
+    const a = document.createElement('a'); a.href = url; a.download = 'shibamania.png';
     document.body.appendChild(a); a.click(); a.remove();
   },
 
@@ -5732,7 +5740,7 @@ const Engine = {
       if (this.hit(this.ALB_SHARE, p)) {
         Sfx.tap();
         const im = Album.img(it);
-        if (im) this.share(this.photoCard(im, it), 'My shiba moment in MICROMANIA: ' + it.cap);
+        if (im) this.share(this.photoCard(im, it), 'My shiba moment in SHIBA MANIA: ' + it.cap);
       } else if (this.hit(this.ALB_DEL, p)) {
         if (!this.albumDel) { this.albumDel = true; Sfx.tap(); return; }
         Album.remove(Album.load().length - 1 - this.albumSel);
@@ -5798,14 +5806,14 @@ const Engine = {
       x.textAlign = 'center'; x.fillText(str, tx, ty);
     };
     x.fillStyle = PAL.bg; x.fillRect(0, 0, 720, 960);
-    text('MICRO', 360, 100, 72, PAL.ink); text('MANIA', 360, 170, 72, PAL.accent);
+    text('SHIBA', 360, 100, 72, PAL.ink); text('MANIA', 360, 170, 72, PAL.accent);
     const a = im.width / im.height, size = 520, w = a < 1 ? size * a : size, h = a < 1 ? size : size / a, b = size / 16;
     x.save(); x.translate(360, 500); x.rotate(-0.03);
     x.fillStyle = PAL.ink; x.fillRect(-w / 2 - b, -h / 2 - b, w + b * 2, h + b * 4);
     x.drawImage(im, -w / 2, -h / 2, w, h);
     x.restore();
     text(it.cap, 360, 860, 52, PAL.accent);
-    text(location.host || 'MICROMANIA', 360, 920, 26, TEXT_MID);
+    text(location.host || 'SHIBA MANIA', 360, 920, 26, TEXT_MID);
     return c;
   },
 
