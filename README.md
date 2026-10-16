@@ -24,6 +24,10 @@ refused at the browser level reads BLOCKED, with a note to allow it in the
 browser's site settings; one the device doesn't have reads NONE. Every switch is
 remembered on that phone. There is no mute icon in the top bar any more.
 
+The menu-style screens (SETTINGS, ALBUM, the sensors screen and GAME OVER) share
+one look: black with faint paw prints drifting by, the content in a pixel frame
+with notched corners, and no mascot in the corner.
+
 | game | what the camera reads | touch fallback |
 |---|---|---|
 | MOVE | how much you move — the shiba runs for the flag | tap fast |

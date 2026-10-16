@@ -5553,11 +5553,29 @@ const Engine = {
     { k: 'mic',   label: 'MICROPHONE', y: TOP + 164 },
     { k: 'motion', label: 'MOTION', y: TOP + 188 },
   ],
-  setSwitch(r) { return { x: W - 66, y: r.y - 4, w: 54, h: 20 }; },
+  setSwitch(r) { return { x: W - 72, y: r.y - 4, w: 54, h: 20 }; },
   TITLE_INTRO: 1.9,          // seconds until the title has settled and its buttons work
-  ALB_BACK:    { x: 4, y: TOP + 4, w: 40, h: 16 },
-  ALB_PREV:    { x: 8, y: BOT - 26, w: 30, h: 20 },
-  ALB_NEXT:    { x: W - 38, y: BOT - 26, w: 30, h: 20 },
+  ALB_BACK:    { x: 16, y: TOP + 2, w: 40, h: 16 },   // inside the menu frame (see menuPanel)
+  ALB_PREV:    { x: 16, y: BOT - 26, w: 30, h: 20 },
+  ALB_NEXT:    { x: W - 46, y: BOT - 26, w: 30, h: 20 },
+  // the menu-style screens: black with drifting paw prints and a pixel frame,
+  // and no mascot on the shelf
+  MENU_SCREENS: ['SETTINGS', 'ALBUM', 'PERMS', 'GAMEOVER'],
+  menuBg() {
+    g.rect(0, 0, W, H, PAL.bg);
+    const t = (this.time * 6) % 24, c = '#1c1c1c';
+    for (let yy = -24; yy < H + 24; yy += 24) for (let xx = -24; xx < W + 24; xx += 24) {
+      const px = Math.round(xx + t + ((yy / 24) % 2 ? 12 : 0)), py = Math.round(yy + t);
+      g.rect(px, py, 5, 4, c); g.rect(px - 3, py - 4, 2, 2, c); g.rect(px, py - 6, 2, 2, c); g.rect(px + 3, py - 6, 2, 2, c); g.rect(px + 6, py - 4, 2, 2, c);
+    }
+  },
+  menuPanel() {
+    const x = 8, y = 8, w = W - 16, h = H - 16, c = PAL.mid;
+    ctx.globalAlpha = 0.9; g.rect(x, y, w, h, PAL.bg); ctx.globalAlpha = 1;
+    g.rect(x + 2, y, w - 4, 1, c); g.rect(x + 2, y + h - 1, w - 4, 1, c);
+    g.rect(x, y + 2, 1, h - 4, c); g.rect(x + w - 1, y + 2, 1, h - 4, c);
+    for (const [cx, cy] of [[x + 1, y + 1], [x + w - 2, y + 1], [x + 1, y + h - 2], [x + w - 2, y + h - 2]]) g.rect(cx, cy, 1, 1, c);   // notched corners
+  },
   ALB_SHARE:   { x: CX - 50, y: BOT - 46, w: 100, h: 20 },
   ALB_DEL:     { x: CX - 30, y: BOT - 21, w: 60, h: 16 },
   BTN_SHARE:   { x: CX - 50, y: CY + 66, w: 100, h: 22 },
@@ -5756,7 +5774,7 @@ const Engine = {
   // share it, or delete it (a second tap confirms).
   ALB_PER: 6,
   albumCell(k) {   // centre of grid slot k on a page: three across, two down
-    return { x: CX + (k % 3 - 1) * 56, y: TOP + 74 + Math.floor(k / 3) * 92 };
+    return { x: CX + (k % 3 - 1) * 50, y: TOP + 74 + Math.floor(k / 3) * 92 };
   },
   albumRelease(p) {
     const n = Album.load().length, pages = Math.max(1, Math.ceil(n / this.ALB_PER));
@@ -5807,7 +5825,7 @@ const Engine = {
       return;
     }
     g.text('ALBUM', CX, TOP + 16, 12, PAL.accent);
-    g.text(n + (n === 1 ? ' PHOTO' : ' PHOTOS'), W - 6, TOP + 15, 7, PAL.mid, 'right');
+    g.text(n + (n === 1 ? ' PHOTO' : ' PHOTOS'), W - 16, TOP + 14, 7, PAL.mid, 'right');
     if (!n) {
       g.sprite('face', CX, CY - 18, { w: 46, h: 46, frame: 5 });
       g.text('NO PHOTOS YET', CX, CY + 22, 10, PAL.ink);
@@ -5895,20 +5913,20 @@ const Engine = {
     const B = this.ALB_BACK;
     g.box(B.x, B.y, B.w, B.h, PAL.mid); g.text('BACK', B.x + B.w / 2, B.y + 11, 7, PAL.ink);
     g.text('SETTINGS', CX, TOP + 16, 12, PAL.accent);
-    g.text('SENSORS', 14, TOP + 122, 7, TEXT_MID, 'left');
-    g.rect(14, TOP + 126, W - 28, 1, PAL.mid);
+    g.text('SENSORS', 18, TOP + 122, 7, TEXT_MID, 'left');
+    g.rect(18, TOP + 126, W - 36, 1, PAL.mid);
     let blocked = false;
     for (const r of this.SET_ROWS) {
       const st = this.setState(r.k), S = this.setSwitch(r), on = st === 'ON';
       if (st === 'BLOCKED') blocked = true;
-      g.text(r.label, 14, r.y + 10, 9, PAL.ink, 'left');
+      g.text(r.label, 18, r.y + 10, 9, PAL.ink, 'left');
       if (on) { g.rect(S.x, S.y, S.w, S.h, PAL.accent); g.text('ON', S.x + S.w / 2, S.y + 14, 9, PAL.bg); }
       else {
         const c = st === 'BLOCKED' ? PAL.bad : PAL.mid;
         g.box(S.x, S.y, S.w, S.h, c); g.text(st, S.x + S.w / 2, S.y + 14, st.length > 3 ? 7 : 9, st === 'BLOCKED' ? PAL.bad : PAL.ink);
       }
     }
-    g.text('OFF: GAMES THAT NEED IT ARE SKIPPED', CX, TOP + 216, 7, TEXT_MID);
+    g.text('OFF: THOSE GAMES ARE SKIPPED', CX, TOP + 216, 7, TEXT_MID);
     if (blocked) {
       g.text('BLOCKED: ALLOW IT IN YOUR', CX, TOP + 232, 7, PAL.bad);
       g.text("BROWSER'S SITE SETTINGS", CX, TOP + 242, 7, PAL.bad);
@@ -5961,7 +5979,7 @@ const Engine = {
   draw() {
     FX.pre();
     this.drawScene();
-    if (this.state !== 'TITLE') Mascot.draw(g);   // the title has its own shiba
+    if (this.state !== 'TITLE' && !this.MENU_SCREENS.includes(this.state)) Mascot.draw(g);   // the title has its own shiba; menu screens have none
     Juice.drawConfetti();
     if (this.state === 'PLAYING') {
       this.drawFuse(Math.max(0, this.timer / this.duration));
@@ -6028,6 +6046,7 @@ const Engine = {
   drawScene() {
     g.clear();
     const s = this.state;
+    if (this.MENU_SCREENS.includes(s)) { this.menuBg(); this.menuPanel(); }
 
     if (s === 'TITLE') { this.drawTitle(); return; }
 
