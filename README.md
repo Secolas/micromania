@@ -44,7 +44,7 @@ fly to squash it (or tap). Whatever the phone was doing when the round starts
 becomes centre, so any comfortable hold works.
 
 The action games — MOVE, DRY OFF, LEAN, FREEZE, DANCE, SWAT, SQUID and the blow
-games BLOW, CANDLES and PUFF — take an **action shot**, WarioWare *Snapped!*
+games BLOW, CANDLES and PLUCK — take an **action shot**, WarioWare *Snapped!*
 style: no posing. While you play, the camera keeps the frame with the most
 action in it (the biggest wave, shake, lean or dance move, the hardest blow, or
 for FREEZE the stillest moment), and a win shows it as a polaroid. Stills are
@@ -78,8 +78,8 @@ pointer wiggling stand behind it, in that order. A short vibration re-fires ever
 **Tilt games** (`deviceorientation`, via `Input.tiltX/tiltY`): BALANCE keeps a
 ball on a see-saw, POUR fills a cup to a line then levels off, STEER drives the
 runner down a lane. **More blow games**: CANDLES snuffs a birthday cake (reusing
-the cake polaroid), PUFF clears a dandelion. **Touch**: STACK drops blocks on a
-tower, SORT swipes treats to colour-matched bowls. Each falls back to touch
+the cake polaroid). **Touch**: PLUCK (`puff`) has you drag every seed off a
+dandelion, one by one, STACK builds a shiba tower, SORT swipes treats to colour-matched bowls. Each falls back to touch
 where its sensor is missing.
 
 Every prompt card says **how to play** under the pictogram ("MOVE YOUR BODY IN
@@ -130,7 +130,7 @@ Nothing leaves the phone unless you share it.
 
 Games play in a place, not on black: a game names a backdrop with `env` in its
 meta — `lawn`, `sky`, `bath`, `snow`, `field@Y` (horizon/ground at Y), `room@Y`
-or `wall@Y` (floor at Y), and four bright ones: `sunny@Y` (PUFF), `beach@Y`
+or `wall@Y` (floor at Y), and four bright ones: `sunny@Y` (PLUCK), `beach@Y`
 (FETCH), `park@Y` (LEAP) and `nature@Y` (SWAT — the sunny day with far mountains
 and a pine forest, so the winged shiba buzzes around open sky). DANCE has a
 `disco@Y` club with a mirror ball and floor tiles that flash on the beat, and
@@ -145,9 +145,9 @@ head-only face is used only where it peeks out of something (a tub, a hedge, a
 dog bed). Otherwise the whole sitting shiba is used, since its art is cut flat
 at the paws. The bathroom tiles stop at the play field's edge, the day clouds
 drift below the instruction line, and CROSS has a tarmac road. A game never puts
-a second shiba right above the shelf mascot (PUFF and BLOW just have the mascot
-watching). STACK is a shiba tower: shibas hop in from either side and you tap to
-drop each one onto the one below.
+a second shiba right above the shelf mascot (PLUCK and BLOW just have the mascot
+watching). STACK is a shiba tower: shibas run in from either side and you tap to
+drop each one; it freezes mid-run on the back of the one below.
 
 ## Fake-outs and sounds
 
@@ -207,9 +207,9 @@ lives run). RUN is Balatro-style scoring over the same microgames:
   | group | games | treat |
   |---|---|---|
   | TAP (17) | TAP, PAT, CHARGE, SHH, LEAP, IN ORDER, ODD ONE, BOOP, PUMP, GRAB 3, FLAP, CROSS, PAWS, JUMP, STACK, RED LIGHT, JUGGLE | QUICK PAWS +15 chips |
-  | DRAG (17) | CATCH, RUB, PULL DOWN, SWIPE, LASER, FEED, CUT, WALK, FETCH, HOP, KNOCK IT, SORT, DIG, WALKIES, SLICE, DODGE, SQUEEZE | ZOOMIES +20 chips |
+  | DRAG (18) | CATCH, RUB, PULL DOWN, SWIPE, LASER, FEED, CUT, WALK, FETCH, HOP, KNOCK IT, SORT, DIG, WALKIES, SLICE, PLUCK, DODGE, SQUEEZE | ZOOMIES +20 chips |
   | CAMERA (8) | MOVE, DRY OFF, LEAN, FREEZE, HIDE, DANCE, YES OR NO, RUN & FREEZE | CAMERA STAR x2 chips |
-  | BLOW (5) | BLOW (bubble), CANDLES, PUFF, BARK TO JUMP, WAKE UP | BIG LUNGS +4 mult |
+  | BLOW (4) | BLOW (bubble), CANDLES, BARK TO JUMP, WAKE UP | BIG LUNGS +4 mult |
   | SHAKE (6) | SHAKE, SWAT, BALANCE, POUR, SLED, BATH TIME | WIGGLE BUTT +4 mult |
 
   In RUN mode each game's card says its group, lit up with the treat's name

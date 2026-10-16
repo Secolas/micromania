@@ -3923,44 +3923,45 @@ class BlowCandles extends Microgame {
   }
 }
 
-// BLOW — blow every seed off the dandelion
+// DRAG — pull every seed off the dandelion, one by one (the blowing is BLOW and CANDLES)
 class Dandelion extends Microgame {
-  static meta = { id: 'puff', env: 'sunny@258', photo: true, photoCap: 'WHOOSH!', prompt: 'BLOW!', hint: 'blow', duration: 4.8, minDuration: 4.2,
-    how: { mic: 'BLOW INTO THE MIC\nCLEAR EVERY SEED', touch: 'TAP FAST\nTO BLOW' } };
+  static meta = { id: 'puff', env: 'sunny@258', photo: true, photoCap: 'WHOOSH!', prompt: 'PLUCK!', hint: 'drag', duration: 4.8, minDuration: 4.2,
+    how: 'DRAG EACH SEED\nOFF THE DANDELION' };
   init() {
-    Input.enableMic();
-    this.paused = Input.micPending; this.wait = 0;
     this.n = this.byD(6, 7, 8); this.seeds = [];
     for (let i = 0; i < this.n; i++) {
       const a = (i / this.n) * 6.2832 + Math.random() * 0.4, r = 13 + Math.random() * 11;
       this.seeds.push({ a, x: CX + Math.cos(a) * r, y: CY - 8 + Math.sin(a) * r, gone: false, vx: 0, vy: 0, t: 0, spin: 0 });
     }
     this.cleared = 0; this.cool = 0;
+    this.held = null;   // the seed your finger is pulling
+  }
+  // a seed comes loose and floats off, the way it was pulled or blown
+  release(s, vx, vy) {
+    s.gone = true; s.vx = vx; s.vy = vy; s.spin = (Math.random() - 0.5) * 12;
+    this.cleared++; Sfx.tick(); buzz(14); FX.hit(s.x, s.y, PAL.ink);
+  }
+  // grab a seed and drag it far enough from the head to pull it off
+  pull(input) {
+    const hx = CX, hy = CY - 8;
+    if (input.justDown && !this.held) {
+      let best = null, bd = 14;
+      for (const s of this.seeds) { if (s.gone) continue; const d = Math.hypot(input.x - s.x, input.y - s.y); if (d < bd) { bd = d; best = s; } }
+      if (best) { this.held = best; best.hx = best.x; best.hy = best.y; }
+    }
+    const s = this.held; if (!s) return;
+    if (!input.down) { s.x = s.hx; s.y = s.hy; this.held = null; return; }   // let go too soon: it springs back
+    s.x = input.x; s.y = input.y;
+    const dx = s.x - hx, dy = s.y - hy, d = Math.hypot(dx, dy);
+    if (d > 40) { this.held = null; this.release(s, dx / d * 90, dy / d * 90 - 50); }
   }
   update(dt, input) {
-    if (this.paused) { this.wait += dt; if (!Input.micPending || this.wait > 1.2) this.paused = false; return; }
-    this.cool -= dt;
-    const b = input.blow;
-    // one petal per puff: a blow peels the next seed off, then a short cooldown
-    // gates the following one, so clearing the flower takes ~7-8 puffs (or one
-    // long breath peeling them off one at a time) with each seed flying away
-    if (b > 0.3 && this.cool <= 0) {
-      const s = this.seeds.find(x => !x.gone);
-      if (s) {
-        s.gone = true;
-        s.vx = Math.cos(s.a) * (70 + b * 120) + (s.x >= CX ? 40 : -40);
-        s.vy = Math.sin(s.a) * (70 + b * 120) - 70;
-        s.spin = (Math.random() - 0.5) * 12;
-        this.cleared++; this.cool = 0.28;
-        Sfx.tick(); buzz(14); FX.hit(s.x, s.y, PAL.ink);
-      }
-    }
+    this.pull(input);
     for (const s of this.seeds) if (s.gone) { s.t += dt; s.x += s.vx * dt; s.y += s.vy * dt; s.vy += 70 * dt; s.vx *= 0.99; }
     if (this.cleared >= this.n && !this.finished) this.succeed();
   }
   draw(g) {
     g.clear();
-    if (this.paused) { g.text('ALLOW MIC…', CX, CY - 6, 12, PAL.ink); g.text('(then blow)', CX, CY + 12, 7, PAL.mid); return; }
     // the stem, a couple of leaves at its foot, and the seed head
     g.line(CX, CY - 8, CX + 2, BOT - 16, SCENE.stem, 3);
     g.rect(CX - 12, BOT - 24, 12, 3, SCENE.stem); g.rect(CX + 3, BOT - 30, 11, 3, SCENE.stem);
@@ -3968,7 +3969,7 @@ class Dandelion extends Microgame {
     for (const s of this.seeds) {
       if (s.gone && s.t > 0.9) continue;
       ctx.globalAlpha = s.gone ? Math.max(0, 1 - s.t / 0.9) : 1;
-      if (!s.gone) g.line(CX, CY - 8, s.x, s.y, PAL.ink, 1);
+      if (!s.gone) g.line(CX, CY - 8, s.x, s.y, s === this.held ? PAL.accent : PAL.ink, 1);   // the stalk stretches as you pull
       // the seed's fluffy parachute: little white spokes round a dot
       const sp = s.gone ? s.t * s.spin : 0;
       for (let k = 0; k < 5; k++) {
@@ -3978,50 +3979,53 @@ class Dandelion extends Microgame {
       g.circle(s.x, s.y, 1.5, PAL.ink);
       ctx.globalAlpha = 1;
     }
-    g.text(Input.micReady ? 'BLOW!' : 'TAP FAST!', CX, TOP + 24, 10, PAL.ink);
+    g.text('DRAG THE SEEDS OFF!', CX - 14, TOP + 24, 9, PAL.ink);   // clear of the sun
     g.bar(16, BOT - 10, W - 74, 5, this.cleared / this.n);   // stops short of the shiba sitting at the right
   }
 }
 
-// TAP — a shiba tower: shibas hop in from either side; tap to drop each one onto the tower
+// TAP — a shiba tower: shibas run in from either side; tap to drop each one, and it freezes mid-run on the tower
 class StackBlocks extends Microgame {
   static meta = { id: 'stack', env: 'room@270', prompt: 'STACK!', hint: 'tap', duration: 5.0, minDuration: 4.2,
     how: 'TAP TO DROP EACH SHIBA\nONTO THE TOWER' };
   init() {
     this.need = this.byD(3, 4, 5); this.done = 0;
     this.baseX = CX; this.stackY = BOT - 6;   // the floor
-    this.LH = 28;                             // each one sits on the back of the one below, faces still showing
+    this.LH = 20;                             // one running shiba's height: each lands on the back of the one below
     this.sp = this.byD(90, 115, 140);
     this.tol = this.byD(14, 11, 9);
-    this.leans = [];                          // where each landed, so the tower leans a little
+    this.leans = [];                          // where each landed (so the tower leans a little) and which way it ran
     this.drop = null;                         // the one falling, between the tap and the landing
     this.spawn(Math.random() < 0.5 ? 1 : -1);
   }
-  spawn(dir) { this.dir = dir; this.bx = dir > 0 ? 14 : W - 14; this.hopT = 0; }
+  spawn(dir) { this.dir = dir; this.bx = dir > 0 ? 14 : W - 14; this.runT = 0; }
   topY() { return this.stackY - 4 - this.done * this.LH; }   // where the next one's paws land
   update(dt, input) {
     if (this.drop) {
       this.drop.t += dt;
       if (this.drop.t >= 0.2) {
-        this.leans.push(this.drop.x - this.baseX); this.done++; this.drop = null;
+        this.leans.push({ dx: this.drop.x - this.baseX, dir: this.drop.dir, f: this.drop.f }); this.done++; this.drop = null;
         Sfx.squeak(); buzz(12); FX.hit(this.baseX, this.topY() + this.LH - 6, PAL.accent);
         if (this.done >= this.need) { Sfx.bark(); this.succeed(); return; }
         this.spawn(Math.random() < 0.5 ? 1 : -1); this.sp += 12;
       }
       return;
     }
-    this.hopT += dt;
+    this.runT += dt;
     this.bx += this.dir * this.sp * dt;
     if (this.bx < 14) { this.bx = 14; this.dir = 1; }
     if (this.bx > W - 14) { this.bx = W - 14; this.dir = -1; }
     for (const t of input.taps) {
-      if (Math.abs(this.bx - this.baseX) <= this.tol) { this.drop = { x: this.bx, y0: this.hopY(), t: 0 }; Sfx.whoosh(); }
+      if (Math.abs(this.bx - this.baseX) <= this.tol) { this.drop = { x: this.bx, y0: this.runY(), t: 0, dir: this.dir, f: this.frame() }; Sfx.whoosh(); }
       else { buzz(90); FX.shake(4); Sfx.thud(); this.lose(); }
       return;
     }
   }
-  // paws of the hopping shiba: a little above the tower top, bouncing along
-  hopY() { return this.topY() - 34 - Math.abs(Math.sin(this.hopT * 7)) * 10; }
+  // paws of the running shiba: a little above the tower top
+  runY() { return this.topY() - 30; }
+  frame() { return Math.floor(this.runT * 16) % 9; }
+  // a running shiba, paws at y; frozen stays on one frame of the gallop
+  runner(x, paws, dir, f) { g.sprite(dir > 0 ? 'swiperight' : 'swipeleft', x, paws - 14, { w: 56, h: 56, frame: f }); }
   draw(g) {
     g.clear();
     // a cushion on the floor, dead centre, so the first one has a clear target
@@ -4030,15 +4034,16 @@ class StackBlocks extends Microgame {
     // the tower, bottom up, so each one sits in front of the one it's on
     const top = this.finished && this.won;
     for (let i = 0; i < this.done; i++) {
-      const paws = this.stackY - 4 - i * this.LH;
-      g.sprite('shiba', this.baseX + this.leans[i], paws - 17, { w: 34, h: 36, frame: top && i === this.done - 1 ? 1 + Math.floor(this.t * 14) % 7 : 0 });
+      const L = this.leans[i], paws = this.stackY - 4 - i * this.LH;
+      // frozen mid-run; the top one gallops on the spot when the tower is done
+      this.runner(this.baseX + L.dx, paws, L.dir, top && i === this.done - 1 ? this.frame() : L.f);
     }
-    if (this.drop) {   // falling onto the tower
+    if (this.drop) {   // falling onto the tower, frozen in the pose it was tapped in
       const k = Math.min(1, this.drop.t / 0.2), paws = this.drop.y0 + (this.topY() - this.drop.y0) * k * k;
-      g.sprite('shiba', this.drop.x, paws - 17, { w: 34, h: 36, frame: 0 });
-    } else if (!this.finished) {   // the next one, hopping across
-      const paws = this.hopY(), f = Math.abs(Math.sin(this.hopT * 7)) > 0.5 ? 3 : 2;
-      g.sprite('runjump', this.bx, paws - 13, { w: 56, h: 52, frame: f, flip: this.dir < 0 });
+      this.runner(this.drop.x, paws, this.drop.dir, this.drop.f);
+    } else if (!this.finished) {   // the next one, running across
+      const paws = this.runY();
+      this.runner(this.bx, paws, this.dir, this.frame());
       ctx.globalAlpha = 0.3; g.line(this.bx, paws + 2, this.bx, this.topY(), PAL.mid, 1); ctx.globalAlpha = 1;
     }
     g.text('TAP TO DROP', CX, TOP + 22, 8, PAL.mid);
