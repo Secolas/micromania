@@ -3989,7 +3989,7 @@ class Dandelion extends Microgame {
       ctx.globalAlpha = 1;
     }
     g.text('DRAG THE SEEDS OFF!', CX - 14, TOP + 24, 9, PAL.ink);   // clear of the sun
-    g.bar(16, BOT - 10, W - 74, 5, this.cleared / this.n);   // stops short of the shiba sitting at the right
+    for (let i = 0; i < this.n; i++) g.rect(CX - this.n * 5 + i * 10 + 1, BOT - 10, 7, 4, i < this.cleared ? PAL.accent : PAL.bg);   // one pip per seed, like DIG and BARK
   }
 }
 
