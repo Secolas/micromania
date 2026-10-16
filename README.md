@@ -178,7 +178,10 @@ Everything lives in `index.html` — engine, all games, and the sprites
 (base64-embedded). No build step, no dependencies.
 
 - Add **`?dev`** to the address (e.g. `…/index.html?dev`) for the in-game **DEV**
-  test menu (top-right) and the live sensor readouts. Players never see it.
+  test menu (a yellow DEV button in the window's top-right corner) and the live
+  sensor readouts. Players never see it. `#dev` works too, and once turned on it
+  stays on in that browser (some in-app browsers drop the query on reload);
+  `?nodev` turns it off.
 - The DEV menu lists every game, with a difficulty selector and a LOOP mode
   that replays one game without losing lives — for testing and tuning.
 

@@ -35,8 +35,8 @@
     z-index: 10; font-size: 10px; text-align: right;
   }
   #devToggle {
-    background: #101010; color: #6b6b6b; border: 1px solid #333;
-    padding: 6px 8px; font: inherit; font-size: 10px;
+    background: #101010; color: #ffd23f; border: 1px solid #ffd23f;
+    padding: 8px 10px; font: inherit; font-size: 12px; font-weight: bold;
   }
   #devList { display: none; background: #101010f2; border: 1px solid #333; padding: 4px; max-height: 78vh; overflow: auto; min-width: 148px; }
   #devList .devrow { display: flex; align-items: center; gap: 3px; margin: 2px 0; }
@@ -159,8 +159,17 @@ const ART = {
 ============================================================================= */
 
 // The DEV test menu (every game, a difficulty picker, LOOP) and the live sensor
-// readouts. Off for players; add ?dev to the address to turn it on.
-const DEBUG = /[?&]dev\b/.test(location.search);
+// readouts. Off for players; add ?dev (or #dev) to the address to turn it on.
+// It stays on for that browser afterwards (some in-app browsers drop the
+// query on reload); ?nodev turns it off again.
+const DEBUG = (() => {
+  const want = /[?&#]dev\b/.test(location.search + location.hash), off = /[?&#]nodev\b/.test(location.search + location.hash);
+  try {
+    if (off) localStorage.removeItem('micromania.dev');
+    else if (want) localStorage.setItem('micromania.dev', '1');
+    return !off && (want || localStorage.getItem('micromania.dev') === '1');
+  } catch (e) { return want && !off; }
+})();
 
 // ── CONFIG ───────────────────────────────────────────────────────────────────
 const W = 180, H = 320;        // virtual pixels
