@@ -1,4 +1,4 @@
-# MICROMANIA
+# SHIBA MANIA
 
 A WarioWare-style microgame collection — 53 fast microgames in a single
 self-contained HTML file. Portrait, mobile-first, starring a pixel-art shiba inu.
@@ -14,8 +14,19 @@ so they stay playable anywhere. The deployed Vercel URL is HTTPS.
 The first run opens a **sensors screen**: ALLOW asks for camera and mic in one
 popup (plus motion/tilt on iOS), up front, so no round ever stops for a
 permission prompt; TOUCH ONLY plays every game on its touch fallback. It is
-skipped when the browser says both are already granted. The speaker in the
-middle of the top bar mutes sound, and the choice is remembered.
+skipped when the browser says both are already granted.
+
+**SETTINGS** (on the title menu) has switches for SOUND, MUSIC (the backing
+beat) and VIBRATION, and for each sensor: CAMERA, MICROPHONE and MOTION. Turning
+a sensor on asks the browser right there; turning it off stops it now and keeps
+it off, and the games that need it are skipped (as when it's refused). A sensor
+refused at the browser level reads BLOCKED, with a note to allow it in the
+browser's site settings; one the device doesn't have reads NONE. Every switch is
+remembered on that phone. There is no mute icon in the top bar any more.
+
+The menu-style screens (SETTINGS, ALBUM, the sensors screen and GAME OVER) share
+one look: black with faint paw prints drifting by, the content in a pixel frame
+with notched corners, and no mascot in the corner.
 
 | game | what the camera reads | touch fallback |
 |---|---|---|
@@ -32,13 +43,19 @@ While a camera game is on, the shelf at the bottom-left shows the **live
 camera** (mirrored, with a blinking REC dot), so players can see themselves and
 know it is watching. Flag a game with `cam: true` in its meta.
 
+Where the browser allows it (Chrome, Android), camera frames are read straight
+off the camera track (`MediaStreamTrackProcessor`), so the picture keeps coming
+even if the phone stops feeding the page's hidden video. Elsewhere (Safari) the
+video is used. Either way, a watchdog gets a fresh camera stream if pictures
+stop arriving for a few seconds.
+
 SWAT prefers the **gyro** where the device has one — tilting the phone aims far
 more precisely than the camera's centre-of-motion can. Hold the swatter on the
 fly to squash it (or tap). Whatever the phone was doing when the round starts
 becomes centre, so any comfortable hold works.
 
 The action games — MOVE, DRY OFF, LEAN, FREEZE, DANCE, SWAT, SQUID and the blow
-games BLOW, CANDLES and PUFF — take an **action shot**, WarioWare *Snapped!*
+games BLOW, CANDLES and PLUCK — take an **action shot**, WarioWare *Snapped!*
 style: no posing. While you play, the camera keeps the frame with the most
 action in it (the biggest wave, shake, lean or dance move, the hardest blow, or
 for FREEZE the stillest moment), and a win shows it as a polaroid. Stills are
@@ -72,8 +89,8 @@ pointer wiggling stand behind it, in that order. A short vibration re-fires ever
 **Tilt games** (`deviceorientation`, via `Input.tiltX/tiltY`): BALANCE keeps a
 ball on a see-saw, POUR fills a cup to a line then levels off, STEER drives the
 runner down a lane. **More blow games**: CANDLES snuffs a birthday cake (reusing
-the cake polaroid), PUFF clears a dandelion. **Touch**: STACK drops blocks on a
-tower, SORT swipes treats to colour-matched bowls. Each falls back to touch
+the cake polaroid). **Touch**: PLUCK (`puff`) has you drag every seed off a
+dandelion, one by one, STACK builds a shiba tower, SORT swipes treats to colour-matched bowls. Each falls back to touch
 where its sensor is missing.
 
 Every prompt card says **how to play** under the pictogram ("MOVE YOUR BODY IN
@@ -84,13 +101,34 @@ Set it with `how` in a game's meta.
 
 ## Between games
 
-Each round's clock is a **lit fuse** burning along the bottom toward a bomb in
-the corner; the last quarter the bomb flashes red, and if time runs out on a
+Each round's clock is a **lit fuse**: a plain cord along the bottom, a small
+spark at its tip, burning back toward a bomb sitting in the corner of the shelf; the last quarter the bomb flashes red, and if time runs out on a
 game you had to finish, it goes off. Between games the screen slowly closes down to
 a **shiba-head-shaped window** (`Wipe`), holds a beat on black, then opens on
 the next game — whose scene shows, dimmed, behind its
 instructions. The verdict (GOOD! / FAIL!) is drawn over the game you just
 played, so the wipe closes on that place rather than a blank screen.
+
+Every verdict, in every game and both modes, goes through one place (`Juice`),
+so wins and fails always feel the same:
+
+- **Win:** a short hit-stop with a white flash and a ring where you tapped (or the
+  centre, for tilt, camera, blow and shake games). Then **GOOD!** slams in,
+  tilted, with confetti from the top corners. From two wins in a row a
+  **xN STREAK!** badge pops under the stamp. (The mascot cheers but never
+  moves: its art is cut flat at the feet, which only the shelf hides.)
+- **Fail:** **FAIL!** slams in on the red screen, with no flash and no confetti.
+- **Stage clear** (RUN) adds a bigger burst of confetti.
+
+## Title screen
+
+The title is full-bleed (sky to the top edge, meadow to the bottom) and a
+little side-scroller. **SHIBA** and **MANIA** drop in letter by
+letter, and the menu slides up: RUN, CLASSIC, ALBUM and SETTINGS as alike white
+outlined words, like Super Mario's title menu. The shiba runs in and
+keeps running: the hills and meadow scroll past, and it hops every bush and
+snaps up the bone floating over it. A tap skips the intro. Coming back
+from the album shows the settled screen straight away.
 
 ## Photo album
 
@@ -104,7 +142,7 @@ Nothing leaves the phone unless you share it.
 
 Games play in a place, not on black: a game names a backdrop with `env` in its
 meta — `lawn`, `sky`, `bath`, `snow`, `field@Y` (horizon/ground at Y), `room@Y`
-or `wall@Y` (floor at Y), and four bright ones: `sunny@Y` (PUFF), `beach@Y`
+or `wall@Y` (floor at Y), and four bright ones: `sunny@Y` (PLUCK), `beach@Y`
 (FETCH), `park@Y` (LEAP) and `nature@Y` (SWAT — the sunny day with far mountains
 and a pine forest, so the winged shiba buzzes around open sky). DANCE has a
 `disco@Y` club with a mirror ball and floor tiles that flash on the beat, and
@@ -112,6 +150,16 @@ HIDE plays `night@Y` — moon, stars, a fence and a house with one lit window. F
 in a dog bed in `bedroom@Y`, the room after dark with the moon in the window. They use a small set of dark, muted scenery colours
 (`SCENE`) so the sprites and play colours stay on top; each is painted once and
 cached. Every game has a scene now; the live camera view sits in the black shelf below it.
+
+Every shiba stands on something. In a side-view scene its paws sit a few pixels
+into the grass or floor below the horizon, not on the line or up in the sky; a
+head-only face is used only where it peeks out of something (a tub, a hedge, a
+dog bed). Otherwise the whole sitting shiba is used, since its art is cut flat
+at the paws. The bathroom tiles stop at the play field's edge, the day clouds
+drift below the instruction line, and CROSS has a tarmac road. A game never puts
+a second shiba right above the shelf mascot (PLUCK and BLOW just have the mascot
+watching). STACK is a shiba tower: shibas run in from either side and you tap to
+drop each one; it freezes mid-run on the back of the one below.
 
 ## Fake-outs and sounds
 
@@ -129,7 +177,7 @@ is uncovered).
 
 `Beat` is the backing loop — kick, snare, hats and a bass line, scheduled
 ahead on the audio clock. It starts on GO, speeds up with `Engine.speed`, is
-off on menus and in the shop, follows mute, and drops out while a mic game is
+off on menus and in the shop, follows the SOUND and MUSIC switches, and drops out while a mic game is
 listening so the speaker can't count as a blow.
 
 Props are drawn in code in the five palette colours (`g.bone`, `g.choc`,
@@ -138,13 +186,52 @@ don't need generated art.
 
 ## Develop
 
-Everything lives in `index.html` — engine, all games, and the sprites
-(base64-embedded). No build step, no dependencies.
+The game is `index.html`: engine, all games, and the sprites (base64-embedded).
+No build step. Around it: `manifest.webmanifest`, `sw.js` and `icons/` make it
+installable and playable offline, and `tests/` checks it.
 
 - Add **`?dev`** to the address (e.g. `…/index.html?dev`) for the in-game **DEV**
-  test menu (top-right) and the live sensor readouts. Players never see it.
+  test menu (a yellow DEV button in the window's top-right corner) and the live
+  sensor readouts. Players never see it. `#dev` works too, and once turned on it
+  stays on in that browser (some in-app browsers drop the query on reload);
+  `?nodev` turns it off.
 - The DEV menu lists every game, with a difficulty selector and a LOOP mode
   that replays one game without losing lives — for testing and tuning.
+
+### Tests
+
+`npm install`, then `npm test` runs every `tests/*.test.mjs` in headless
+Chromium against the real page (served over http by `tests/run.mjs`).
+`npm test -- games text` runs only the files whose names match. GitHub Actions
+(`.github/workflows/test.yml`) runs them on every push and pull request.
+
+| test | checks |
+|---|---|
+| `games` | every game at every difficulty ends without throwing; a scripted player can win the skill games; fake-outs behave |
+| `text` | no text under 8px, none grey, none off the screen or out of a menu frame, on every screen and in every game |
+| `classic`, `run` | both modes from the title through GAME OVER (RUN: stage card, clear, shop, next stage) |
+| `title` | the intro skip and the four menu options with real clicks; the GOOD!/FAIL! juice |
+| `album`, `settings` | saving, paging, opening, sharing and deleting photos; every switch, saved across a reload |
+| `camera` | live frames from a fake camera, and recovery when the feed stalls |
+| `pwa` | manifest, icons, the service worker, and starting with the network off |
+
+To use a browser that's already installed instead of Playwright's own, set
+`CHROMIUM_PATH=/path/to/chromium`.
+
+### Text
+
+`g.text` never draws smaller than 8px, and grey text (`PAL.mid` / `TEXT_MID`)
+comes out white: grey is for bars and lines. Long labels use `g.wrap` (the shop
+cards do).
+
+## Install and offline
+
+SHIBA MANIA is a Progressive Web App: on Android, SETTINGS has an **ADD TO HOME
+SCREEN** button (or Chrome's menu > Install app); on iPhone it's Share > Add to
+Home Screen, which SETTINGS spells out. Installed, it opens full screen like an
+app. `sw.js` caches the page on the first visit: online it always fetches the
+latest version first, offline it serves the cached copy, so the game works with
+no signal. Camera and mic still need the permission to have been granted.
 
 ## RUN mode
 
@@ -171,9 +258,9 @@ lives run). RUN is Balatro-style scoring over the same microgames:
   | group | games | treat |
   |---|---|---|
   | TAP (17) | TAP, PAT, CHARGE, SHH, LEAP, IN ORDER, ODD ONE, BOOP, PUMP, GRAB 3, FLAP, CROSS, PAWS, JUMP, STACK, RED LIGHT, JUGGLE | QUICK PAWS +15 chips |
-  | DRAG (17) | CATCH, RUB, PULL DOWN, SWIPE, LASER, FEED, CUT, WALK, FETCH, HOP, KNOCK IT, SORT, DIG, WALKIES, SLICE, DODGE, SQUEEZE | ZOOMIES +20 chips |
+  | DRAG (18) | CATCH, RUB, PULL DOWN, SWIPE, LASER, FEED, CUT, WALK, FETCH, HOP, KNOCK IT, SORT, DIG, WALKIES, SLICE, PLUCK, DODGE, SQUEEZE | ZOOMIES +20 chips |
   | CAMERA (8) | MOVE, DRY OFF, LEAN, FREEZE, HIDE, DANCE, YES OR NO, RUN & FREEZE | CAMERA STAR x2 chips |
-  | BLOW (5) | BLOW (bubble), CANDLES, PUFF, BARK TO JUMP, WAKE UP | BIG LUNGS +4 mult |
+  | BLOW (4) | BLOW (bubble), CANDLES, BARK TO JUMP, WAKE UP | BIG LUNGS +4 mult |
   | SHAKE (6) | SHAKE, SWAT, BALANCE, POUR, SLED, BATH TIME | WIGGLE BUTT +4 mult |
 
   In RUN mode each game's card says its group, lit up with the treat's name
