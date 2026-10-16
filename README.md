@@ -144,7 +144,10 @@ into the grass or floor below the horizon, not on the line or up in the sky; a
 head-only face is used only where it peeks out of something (a tub, a hedge, a
 dog bed). Otherwise the whole sitting shiba is used, since its art is cut flat
 at the paws. The bathroom tiles stop at the play field's edge, the day clouds
-drift below the instruction line, and CROSS has a tarmac road.
+drift below the instruction line, and CROSS has a tarmac road. A game never puts
+a second shiba right above the shelf mascot (PUFF and BLOW just have the mascot
+watching). STACK is a shiba tower: shibas hop in from either side and you tap to
+drop each one onto the one below.
 
 ## Fake-outs and sounds
 

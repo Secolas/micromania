@@ -2514,7 +2514,6 @@ class BlowSail extends Microgame {
     ctx.strokeStyle = PAL.ink; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(bx, by, r, 0, 6.2832); ctx.stroke();
     ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(bx, by, r * 0.7, -2.4, -1.7); ctx.stroke();   // the shine
     // a shiba watching it grow, more delighted the bigger it gets
-    g.sprite('shiba', W - 30, BOT - 22, { w: 40, h: 42, frame: k > 0.6 ? 1 : 0 });   // sat in the grass, cheering a big bubble
     if (Input.micReady) g.text('BLOW!', CX, TOP + 24, 9, PAL.mid);
     else g.text('TAP FAST TO BLOW', CX, TOP + 24, 7, PAL.mid);
     g.bar(30, BOT - 12, W - 60, 5, k);
@@ -3809,7 +3808,7 @@ class PourCup extends Microgame {
     g.rect(cx0 + 3, cy0 + ch - 3 - this.fill * (ch - 6), cw - 6, this.fill * (ch - 6), inBand ? PAL.accent : PAL.ink);
     g.line(cx0 - 6, cy0 + ch - this.lo * ch, cx0 + cw + 6, cy0 + ch - this.lo * ch, PAL.accent, 1);
     g.line(cx0 - 6, cy0 + ch - this.hi * ch, cx0 + cw + 6, cy0 + ch - this.hi * ch, PAL.accent, 1);
-    g.sprite('shiba', cx0 + cw + 26, BOT - 20, { w: 36, h: 38, frame: inBand ? 1 : 0 });   // sat on the floor by its bowl
+    g.sprite('shiba', cx0 - 26, BOT - 20, { w: 36, h: 38, frame: inBand ? 1 : 0 });   // sat on the floor by its bowl, clear of the mascot's corner
     const msg = this.fill > 0.92 ? 'STOP!'
               : (inBand && !this.pouring) ? 'HOLD STEADY!'
               : inBand ? 'LEVEL OFF!'
@@ -3965,8 +3964,6 @@ class Dandelion extends Microgame {
     // the stem, a couple of leaves at its foot, and the seed head
     g.line(CX, CY - 8, CX + 2, BOT - 16, SCENE.stem, 3);
     g.rect(CX - 12, BOT - 24, 12, 3, SCENE.stem); g.rect(CX + 3, BOT - 30, 11, 3, SCENE.stem);
-    // a happy shiba in the grass, waiting to see the seeds fly
-    g.sprite('shiba', W - 30, BOT - 20, { w: 36, h: 38, frame: this.cleared > this.n / 2 ? 1 : 0 });
     g.circle(CX, CY - 8, 4, SCENE.stem);
     for (const s of this.seeds) {
       if (s.gone && s.t > 0.9) continue;
@@ -3986,48 +3983,64 @@ class Dandelion extends Microgame {
   }
 }
 
-// TAP — drop each biscuit on the stack; miss and it's over
+// TAP — a shiba tower: shibas hop in from either side; tap to drop each one onto the tower
 class StackBlocks extends Microgame {
   static meta = { id: 'stack', env: 'room@270', prompt: 'STACK!', hint: 'tap', duration: 5.0, minDuration: 4.2,
-    how: 'TAP TO DROP EACH\nBISCUIT ON THE STACK' };
+    how: 'TAP TO DROP EACH SHIBA\nONTO THE TOWER' };
   init() {
     this.need = this.byD(3, 4, 5); this.done = 0;
-    this.w = 46; this.h = 12;
-    this.baseX = CX; this.stackY = BOT - 10;
-    this.dir = 1; this.bx = 20; this.sp = this.byD(90, 115, 140);
+    this.baseX = CX; this.stackY = BOT - 6;   // the floor
+    this.LH = 28;                             // each one sits on the back of the one below, faces still showing
+    this.sp = this.byD(90, 115, 140);
     this.tol = this.byD(14, 11, 9);
+    this.leans = [];                          // where each landed, so the tower leans a little
+    this.drop = null;                         // the one falling, between the tap and the landing
+    this.spawn(Math.random() < 0.5 ? 1 : -1);
   }
+  spawn(dir) { this.dir = dir; this.bx = dir > 0 ? 14 : W - 14; this.hopT = 0; }
+  topY() { return this.stackY - 4 - this.done * this.LH; }   // where the next one's paws land
   update(dt, input) {
+    if (this.drop) {
+      this.drop.t += dt;
+      if (this.drop.t >= 0.2) {
+        this.leans.push(this.drop.x - this.baseX); this.done++; this.drop = null;
+        Sfx.squeak(); buzz(12); FX.hit(this.baseX, this.topY() + this.LH - 6, PAL.accent);
+        if (this.done >= this.need) { Sfx.bark(); this.succeed(); return; }
+        this.spawn(Math.random() < 0.5 ? 1 : -1); this.sp += 12;
+      }
+      return;
+    }
+    this.hopT += dt;
     this.bx += this.dir * this.sp * dt;
-    if (this.bx < this.w / 2 + 4) { this.bx = this.w / 2 + 4; this.dir = 1; }
-    if (this.bx > W - this.w / 2 - 4) { this.bx = W - this.w / 2 - 4; this.dir = -1; }
+    if (this.bx < 14) { this.bx = 14; this.dir = 1; }
+    if (this.bx > W - 14) { this.bx = W - 14; this.dir = -1; }
     for (const t of input.taps) {
-      if (Math.abs(this.bx - this.baseX) <= this.tol) {
-        this.done++; Sfx.crunch(); buzz(12); FX.hit(this.baseX, this.stackY - this.done * this.h, PAL.accent);
-        if (this.done >= this.need) { this.succeed(); return; }
-        this.dir = Math.random() < 0.5 ? 1 : -1; this.bx = this.dir > 0 ? this.w / 2 + 4 : W - this.w / 2 - 4;
-        this.sp += 12;
-      } else { buzz(90); FX.shake(4); Sfx.thud(); this.lose(); return; }
-      break;
+      if (Math.abs(this.bx - this.baseX) <= this.tol) { this.drop = { x: this.bx, y0: this.hopY(), t: 0 }; Sfx.whoosh(); }
+      else { buzz(90); FX.shake(4); Sfx.thud(); this.lose(); }
+      return;
     }
   }
-  // a dog biscuit: a fat rounded bar with docking holes
-  biscuit(x, y, w, h, c) {
-    g.rect(x - w / 2 + 2, y, w - 4, h, c); g.rect(x - w / 2, y + 2, w, h - 4, c);
-    for (let i = -1; i <= 1; i++) g.rect(x + i * w * 0.28 - 1, y + h / 2 - 1, 2, 2, PAL.bg);
-  }
+  // paws of the hopping shiba: a little above the tower top, bouncing along
+  hopY() { return this.topY() - 34 - Math.abs(Math.sin(this.hopT * 7)) * 10; }
   draw(g) {
     g.clear();
-    // a plate, dead centre, so the very first biscuit has a clear target
-    g.rect(this.baseX - (this.w + 12) / 2, this.stackY, this.w + 12, 4, PAL.ink);
-    for (let i = 0; i < this.done; i++) this.biscuit(this.baseX, this.stackY - (i + 1) * this.h, this.w, this.h - 1, PAL.accent);
-    if (this.done === 0) { ctx.globalAlpha = 0.35; g.line(this.baseX, this.stackY, this.baseX, TOP + 30, PAL.accent, 1); ctx.globalAlpha = 1; }
-    // the biscuit you drop
-    const y = this.stackY - (this.done + 1) * this.h - 26;
-    this.biscuit(this.bx, y, this.w, this.h - 1, PAL.ink);
-    ctx.globalAlpha = 0.3; g.line(this.bx, y + this.h, this.bx, this.stackY - this.done * this.h, PAL.mid, 1); ctx.globalAlpha = 1;
-    // a hopeful shiba eyeing the tower
-    g.sprite('shiba', 22, BOT - 19, { w: 32, h: 34, frame: Math.floor(this.t * 2) % 5 === 0 ? 8 : 0 });   // on the floor, blinking now and then
+    // a cushion on the floor, dead centre, so the first one has a clear target
+    g.rect(this.baseX - 26, this.stackY - 6, 52, 6, PAL.bad); g.rect(this.baseX - 22, this.stackY - 8, 44, 2, PAL.bad);
+    if (this.done === 0 && !this.drop) { ctx.globalAlpha = 0.35; g.line(this.baseX, this.stackY - 8, this.baseX, TOP + 30, PAL.accent, 1); ctx.globalAlpha = 1; }
+    // the tower, bottom up, so each one sits in front of the one it's on
+    const top = this.finished && this.won;
+    for (let i = 0; i < this.done; i++) {
+      const paws = this.stackY - 4 - i * this.LH;
+      g.sprite('shiba', this.baseX + this.leans[i], paws - 17, { w: 34, h: 36, frame: top && i === this.done - 1 ? 1 + Math.floor(this.t * 14) % 7 : 0 });
+    }
+    if (this.drop) {   // falling onto the tower
+      const k = Math.min(1, this.drop.t / 0.2), paws = this.drop.y0 + (this.topY() - this.drop.y0) * k * k;
+      g.sprite('shiba', this.drop.x, paws - 17, { w: 34, h: 36, frame: 0 });
+    } else if (!this.finished) {   // the next one, hopping across
+      const paws = this.hopY(), f = Math.abs(Math.sin(this.hopT * 7)) > 0.5 ? 3 : 2;
+      g.sprite('runjump', this.bx, paws - 13, { w: 56, h: 52, frame: f, flip: this.dir < 0 });
+      ctx.globalAlpha = 0.3; g.line(this.bx, paws + 2, this.bx, this.topY(), PAL.mid, 1); ctx.globalAlpha = 1;
+    }
     g.text('TAP TO DROP', CX, TOP + 22, 8, PAL.mid);
     for (let i = 0; i < this.need; i++) g.rect(W - 8 - i * 8, TOP + 4, 5, 5, i < this.done ? PAL.accent : PAL.mid);
   }
