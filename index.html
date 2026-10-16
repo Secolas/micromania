@@ -1226,6 +1226,8 @@ const SCENE = {
   // the disco, for DANCE: a dark club, a checkered floor
   club: '#1a1426', clubHi: '#241b36', tileA: '#2e2246', tileB: '#3d2d5c',
   // a night outside, for HIDE
+  // the road in CROSS
+  road: '#2a2d30',
   night0: '#070b18', night1: '#141d36', nightGrass: '#14261a', nightGrassHi: '#1c3423', house: '#0d1220',
 };
 const Env = {
@@ -1287,7 +1289,7 @@ const Env = {
   dayClouds() {
     const t = Engine.time;
     for (let i = 0; i < 3; i++) {
-      const x = ((i * 83 + t * (3 + i * 2)) % (W + 70)) - 35, y = TOP + 22 + i * 30;
+      const x = ((i * 83 + t * (3 + i * 2)) % (W + 70)) - 35, y = TOP + 46 + i * 28;   // below the instruction line at TOP+26
       ctx.fillStyle = SCENE.dayCloud;
       ctx.fillRect(Math.round(x - 14), Math.round(y), 28, 6);
       ctx.fillRect(Math.round(x - 9), Math.round(y - 4), 14, 4);
@@ -1473,7 +1475,8 @@ const Env = {
       R(ux - 2, uy - 2, 4, 4, PAL.accent);
     } else if (kind === 'bath') {
       for (let ty = TOP; ty < BOT; ty += 16) for (let tx = 0; tx < W; tx += 16) {
-        R(tx, ty, 16, 16, SCENE.grout); R(tx + 1, ty + 1, 14, 14, ((tx + ty) / 16) % 2 ? SCENE.tile : SCENE.tileHi);
+        const th = Math.min(16, BOT - ty);   // the last row is cut at the field's edge, not left hanging into the shelf
+        R(tx, ty, 16, th, SCENE.grout); R(tx + 1, ty + 1, 14, Math.max(0, th - 2), ((tx + ty) / 16) % 2 ? SCENE.tile : SCENE.tileHi);
       }
     } else if (kind === 'snow') {
       R(0, TOP, W, BOT - TOP, SCENE.snow);
@@ -1646,6 +1649,9 @@ class RubClean extends Microgame {
   draw(g) {
     g.clear();
     const left = this.mud.filter(m => m.dirt > 0).length;
+    // a floor and a bath mat to sit on, so the flat-cut paws rest on something
+    g.rect(0, 204, W, BOT - 204, SCENE.grout); g.rect(0, 204, W, 2, SCENE.tileHi);
+    g.rect(CX - 50, 206, 100, 10, PAL.mid); for (let mx = CX - 46; mx < CX + 48; mx += 8) g.rect(mx, 216, 3, 3, PAL.mid);
     g.sprite('shiba', CX, CY + 4, { w: 110, h: 116, frame: left === 0 ? 1 : 0 });
     for (const m of this.mud) {
       if (m.dirt <= 0) continue;
@@ -1768,19 +1774,19 @@ class SwipeArrow extends Microgame {
     g.clear();
     const d = this.seq[this.i];
     const ang = { up: -Math.PI / 2, down: Math.PI / 2, left: Math.PI, right: 0 }[d];
-    const ux = Math.cos(ang), uy = Math.sin(ang);
+    const ux = Math.cos(ang), uy = Math.sin(ang), sy = 167;   // paws in the grass (horizon at 190), not up in the sky
     // the shiba faces the way it wants you to swipe, one dedicated high-res
     // sprite per direction (running left/right, jumping up, running down).
     if (d === 'left' || d === 'right') {
-      g.sprite(d === 'right' ? 'swiperight' : 'swipeleft', CX, CY - 6, { w: 116, h: 116, frame: Math.floor(this.t * 14) % 9 });
+      g.sprite(d === 'right' ? 'swiperight' : 'swipeleft', CX, sy, { w: 116, h: 116, frame: Math.floor(this.t * 14) % 9 });
     } else if (d === 'up') {
       // 120px frames carry wide transparent padding, so draw large for on-screen size
-      g.sprite('swipeup', CX, CY - 6, { w: 112, h: 112, frame: Math.floor(this.t * 12) % 9 });
+      g.sprite('swipeup', CX, sy, { w: 112, h: 112, frame: Math.floor(this.t * 12) % 9 });
     } else {
-      g.sprite('swipedown', CX, CY - 6, { w: 112, h: 112, frame: Math.floor(this.t * 14) % 9 });
+      g.sprite('swipedown', CX, sy, { w: 112, h: 112, frame: Math.floor(this.t * 14) % 9 });
     }
     // bold arrow pushed out past the dog so it stays visible
-    ctx.save(); ctx.translate(CX + ux * 62, CY - 6 + uy * 62); ctx.rotate(ang);
+    ctx.save(); ctx.translate(CX + ux * 62, sy + uy * 62); ctx.rotate(ang);
     g.line(-16, 0, 14, 0, PAL.ink, 7);
     g.line(14, 0, 2, -12, PAL.ink, 7);
     g.line(14, 0, 2, 12, PAL.ink, 7);
@@ -2056,7 +2062,7 @@ class StopBar extends Microgame {
   }
   draw(g) {
     g.clear();
-    const x0 = 20, w = W - 40, ground = CY + 30;
+    const x0 = 20, w = W - 40, ground = CY + 38;   // paws a few px into the grass (horizon at 177), not on the line
     const fx = x0 + this.at * w, fy = ground - 78 + Math.sin(this.t * 3) * 3;
     // the frisbee's spot on the grass, so "under it" is something you can see
     const sw = this.band * w;
@@ -2078,7 +2084,7 @@ class StopBar extends Microgame {
 
 // 12. LASER — keep your finger on the laser dot the shiba is chasing
 class FollowDot extends Microgame {
-  static meta = { id: 'follow', env: 'room@236', prompt: 'LASER!', hint: 'drag', duration: 4.6, winOnTimeout: true,
+  static meta = { id: 'follow', env: 'room@40', prompt: 'LASER!', hint: 'drag', duration: 4.6, winOnTimeout: true,
     how: 'KEEP YOUR FINGER\nON THE LASER DOT' };
   init() {
     this.x = CX; this.y = CY;
@@ -2401,7 +2407,7 @@ class CutRope extends Microgame {
     g.rect(0, this.y0 - 4, W, 4, PAL.ink);       // the beam they hang from
     // the shiba waiting under the bone, mouth open
     const tx = this.ropes[this.target].x;
-    g.sprite('face', tx, BOT - 24, { w: 38, h: 39, frame: 0 });
+    g.sprite('shiba', tx, BOT - 22, { w: 40, h: 42, frame: 0 });   // the whole dog, sat on the floor
     this.ropes.forEach((r, i) => {
       const e = this.end(r), bone = i === this.target;
       let itemY = e + 6;
@@ -2508,7 +2514,7 @@ class BlowSail extends Microgame {
     ctx.strokeStyle = PAL.ink; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(bx, by, r, 0, 6.2832); ctx.stroke();
     ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(bx, by, r * 0.7, -2.4, -1.7); ctx.stroke();   // the shine
     // a shiba watching it grow, more delighted the bigger it gets
-    g.sprite('face', W - 30, BOT - 30, { w: 38, h: 39, frame: k > 0.6 ? 0 : 3 });
+    g.sprite('shiba', W - 30, BOT - 22, { w: 40, h: 42, frame: k > 0.6 ? 1 : 0 });   // sat in the grass, cheering a big bubble
     if (Input.micReady) g.text('BLOW!', CX, TOP + 24, 9, PAL.mid);
     else g.text('TAP FAST TO BLOW', CX, TOP + 24, 7, PAL.mid);
     g.bar(30, BOT - 12, W - 60, 5, k);
@@ -2754,11 +2760,12 @@ class Crossy extends Microgame {
   draw(g) {
     g.clear();
     const top = this.laneY(this.lanes - 1) - this.laneH / 2, bottom = this.laneY(0) + this.laneH / 2;
-    // the road: kerbs top and bottom, dashed lines between the lanes
+    // the road: tarmac (cars drove on the lawn before), kerbs top and bottom, dashed lines between the lanes
+    g.rect(0, top, W, bottom - top, SCENE.road);
     g.rect(0, top - 2, W, 2, PAL.ink); g.rect(0, bottom, W, 2, PAL.ink);
     for (let L = 0; L < this.lanes - 1; L++) {
       const y = this.laneY(L) - this.laneH / 2;
-      for (let x = 4; x < W; x += 16) g.rect(x, y, 8, 1, PAL.mid);
+      for (let x = 4; x < W; x += 16) g.rect(x, y, 8, 1, TEXT_MID);
     }
     // pavement you start on, and the far side with a bone waiting
     ctx.globalAlpha = 0.25;
@@ -3125,6 +3132,7 @@ class DryShiba extends Microgame {
     const fr = Math.max(0, Math.min(8, Math.floor(prog * 8.99)));
     const j = (Math.random() - 0.5) * (this.wob * 6 + this.pop * 30);
     g.sprite('dryshake', CX + j, CY - 4, { w: 56, h: 45, frame: fr });
+    BathTime.tub(162);   // shaking off in the bath, not floating on the tiles
     for (const d of this.drops) { const k = 1 - d.t / 0.6; ctx.globalAlpha = k; g.circle(d.x, d.y, 2, PAL.ink); ctx.globalAlpha = 1; }
     g.text(this.ready ? (Input.camReady ? 'SHAKE!' : 'TAP!') : 'NOW STOP…', CX, TOP + 26, 10, this.ready ? PAL.accent : PAL.mid);
     for (let i = 0; i < this.need; i++) g.rect(CX - this.need * 6 + i * 12, BOT - 20, 8, 8, i < this.bursts ? PAL.accent : PAL.mid);
@@ -3315,7 +3323,7 @@ class FreezeStatue extends Microgame {
     else for (let i = 0; i < 3; i++) {            // Zzz drifting up while it sleeps
       const k = (this.t * 0.6 + i / 3) % 1;
       ctx.globalAlpha = 1 - k;
-      g.text('Z', CX + 26 + k * 24 + i * 4, 160 - k * 50, 9 + i * 3, PAL.ink);
+      g.text('Z', CX + 8 + k * 14 + i * 4, 160 - k * 48, 9 + i * 3, PAL.ink);   // left of the window, not over it
       ctx.globalAlpha = 1;
     }
     if (this.grace > 0) g.text('GET READY…', CX, TOP + 26, 9, PAL.mid);
@@ -3620,17 +3628,23 @@ class RedLight extends Microgame {
     g.clear();
     const red = this.light === 'red', amber = this.light === 'amber';
     const lit = red ? PAL.bad : amber ? PAL.accent : PAL.accent;
-    // the lamp, three bulbs with one of them on
-    g.rect(CX - 13, TOP + 8, 26, 60, PAL.mid);
-    g.circle(CX, TOP + 20, 8, red ? PAL.bad : PAL.bg);
-    g.circle(CX, TOP + 38, 8, amber ? PAL.accent : PAL.bg);
-    g.circle(CX, TOP + 56, 8, this.light === 'green' ? PAL.ink : PAL.bg);
+    // the lamp, three bulbs with one of them on, on a pole that stands in the field
+    const LX = W - 30;
+    g.rect(LX - 2, TOP + 68, 4, 214 - TOP - 68, PAL.mid);
+    g.rect(LX - 13, TOP + 8, 26, 60, PAL.mid);
+    g.circle(LX, TOP + 20, 8, red ? PAL.bad : PAL.bg);
+    g.circle(LX, TOP + 38, 8, amber ? PAL.accent : PAL.bg);
+    g.circle(LX, TOP + 56, 8, this.light === 'green' ? PAL.ink : PAL.bg);
     // the shiba doll spins like SQUID: back turned on green (go), mid-spin on
     // amber, facing you on red (watching) — facedir frames 4=back, 2=profile, 0=front
     const bob = red ? 0 : Math.abs(Math.sin(this.t * 12)) * 4;   // bounces on green
     const df = red ? 0 : amber ? 2 : 4;
-    g.sprite('facedir', CX, CY + 40 + bob, { w: 72, h: 72, frame: df });
-    g.text(red ? 'FREEZE!' : amber ? 'ABOUT TO STOP…' : 'TAP! TAP! TAP!', CX, CY + 74, red ? 12 : 10, lit);
+    g.sprite('facedir', CX - 10, 190 + bob, { w: 72, h: 72, frame: df });
+    // it peeks over a hedge, so it's sitting in the field rather than floating over it
+    g.rect(0, 216, W, 12, SCENE.leaf);
+    ctx.fillStyle = SCENE.leaf; for (let hx = 6; hx < W; hx += 14) { ctx.beginPath(); ctx.arc(hx, 217, 8, Math.PI, 0); ctx.fill(); }
+    g.rect(0, 226, W, 2, SCENE.grassLo);
+    g.text(red ? 'FREEZE!' : amber ? 'ABOUT TO STOP…' : 'TAP! TAP! TAP!', CX - 10, 128, red ? 12 : 10, lit);
     // progress, and how close being caught is
     g.bar(24, BOT - 16, W - 48, 7, this.fill);
     if (this.hp < 1) g.bar(24, BOT - 26, W - 48, 4, this.hp, PAL.bad, PAL.bg);
@@ -3735,9 +3749,11 @@ class BalanceBall extends Microgame {
   draw(g) {
     g.clear();
     const near = Math.abs(this.pos) > 0.7;
+    // a stand from the grass (horizon at 200) up to the pivot, so the seesaw isn't hanging in the air
+    g.rect(CX - 3, CY + 6, 6, 200 - CY - 2, PAL.mid); g.rect(CX - 12, 200, 24, 4, PAL.mid);
     ctx.save(); ctx.translate(CX, CY + 6); ctx.rotate(this.tilt * 0.5);
     g.rect(-this.half, -2, this.half * 2, 4, PAL.mid);       // plank
-    g.rect(-3, 2, 6, 10, PAL.mid);                           // pivot
+    g.rect(-5, 1, 10, 4, PAL.mid);                           // pivot
     const bx = this.pos * this.half;
     g.sprite('face', bx, -12, { w: 20, h: 20, frame: Math.floor(this.t * 8) % 3 });
     ctx.restore();
@@ -3793,7 +3809,7 @@ class PourCup extends Microgame {
     g.rect(cx0 + 3, cy0 + ch - 3 - this.fill * (ch - 6), cw - 6, this.fill * (ch - 6), inBand ? PAL.accent : PAL.ink);
     g.line(cx0 - 6, cy0 + ch - this.lo * ch, cx0 + cw + 6, cy0 + ch - this.lo * ch, PAL.accent, 1);
     g.line(cx0 - 6, cy0 + ch - this.hi * ch, cx0 + cw + 6, cy0 + ch - this.hi * ch, PAL.accent, 1);
-    g.sprite('face', cx0 + cw + 22, cy0 + ch - 18, { w: 34, h: 35, frame: inBand ? 0 : 4 });
+    g.sprite('shiba', cx0 + cw + 26, BOT - 20, { w: 36, h: 38, frame: inBand ? 1 : 0 });   // sat on the floor by its bowl
     const msg = this.fill > 0.92 ? 'STOP!'
               : (inBand && !this.pouring) ? 'HOLD STEADY!'
               : inBand ? 'LEVEL OFF!'
@@ -3860,7 +3876,7 @@ class SteerRun extends Microgame {
     g.rect(this.px - 10, this.runY + 6, 20, 5, PAL.bad); g.rect(this.px - 12, this.runY + 11, 24, 2, PAL.ink);
     g.sprite('hero', this.px, this.runY - 2, { w: 22, h: 27, frame: 0 });
     for (let i = 0; i < this.need; i++) g.rect(W - 8 - i * 8, TOP + 4, 5, 5, i < this.passed ? PAL.accent : PAL.mid);
-    g.text(Input.tiltReady ? 'TILT TO STEER' : 'DRAG TO STEER', CX, TOP + 22, 8, PAL.mid);
+    g.outline(Input.tiltReady ? 'TILT TO STEER' : 'DRAG TO STEER', CX, TOP + 22, 8, TEXT_MID);   // rimmed: the gates scroll right through this line
   }
 }
 
@@ -3950,7 +3966,7 @@ class Dandelion extends Microgame {
     g.line(CX, CY - 8, CX + 2, BOT - 16, SCENE.stem, 3);
     g.rect(CX - 12, BOT - 24, 12, 3, SCENE.stem); g.rect(CX + 3, BOT - 30, 11, 3, SCENE.stem);
     // a happy shiba in the grass, waiting to see the seeds fly
-    g.sprite('face', W - 30, BOT - 34, { w: 34, h: 35, frame: this.cleared > this.n / 2 ? 0 : 3 });
+    g.sprite('shiba', W - 30, BOT - 20, { w: 36, h: 38, frame: this.cleared > this.n / 2 ? 1 : 0 });
     g.circle(CX, CY - 8, 4, SCENE.stem);
     for (const s of this.seeds) {
       if (s.gone && s.t > 0.9) continue;
@@ -3966,7 +3982,7 @@ class Dandelion extends Microgame {
       ctx.globalAlpha = 1;
     }
     g.text(Input.micReady ? 'BLOW!' : 'TAP FAST!', CX, TOP + 24, 10, PAL.ink);
-    g.bar(30, BOT - 10, W - 60, 5, this.cleared / this.n);
+    g.bar(16, BOT - 10, W - 74, 5, this.cleared / this.n);   // stops short of the shiba sitting at the right
   }
 }
 
@@ -4011,7 +4027,7 @@ class StackBlocks extends Microgame {
     this.biscuit(this.bx, y, this.w, this.h - 1, PAL.ink);
     ctx.globalAlpha = 0.3; g.line(this.bx, y + this.h, this.bx, this.stackY - this.done * this.h, PAL.mid, 1); ctx.globalAlpha = 1;
     // a hopeful shiba eyeing the tower
-    g.sprite('face', 22, this.stackY - 16, { w: 32, h: 33, frame: Math.floor(this.t * 6) % 3 });
+    g.sprite('shiba', 22, BOT - 19, { w: 32, h: 34, frame: Math.floor(this.t * 2) % 5 === 0 ? 8 : 0 });   // on the floor, blinking now and then
     g.text('TAP TO DROP', CX, TOP + 22, 8, PAL.mid);
     for (let i = 0; i < this.need; i++) g.rect(W - 8 - i * 8, TOP + 4, 5, 5, i < this.done ? PAL.accent : PAL.mid);
   }
@@ -4221,7 +4237,7 @@ class WakeUp extends Microgame {
     else if (stir) g.text('?', CX + 54, 122, 14, PAL.bad);
     else for (let i = 0; i < 3; i++) {
       const z = (this.t * 0.5 + i / 3) % 1;
-      ctx.globalAlpha = 1 - z; g.text('Z', CX + 48 + z * 26 + i * 4, 120 - z * 52, 12 + i * 4, PAL.ink); ctx.globalAlpha = 1;
+      ctx.globalAlpha = 1 - z; g.text('Z', CX - 44 - z * 22 - i * 4, 120 - z * 52, 12 + i * 4, PAL.ink); ctx.globalAlpha = 1;   // away from the window
     }
     // the wake-up meter: how loud you've been, draining while you're quiet
     g.text(Input.micReady ? 'SHOUT!' : 'TAP TAP TAP!', CX, TOP + 26, 11, PAL.accent);
@@ -4262,16 +4278,19 @@ class BathTime extends Microgame {
     for (const f of this.flying) { f.t += dt; f.x += f.vx * dt; f.y += f.vy * dt; f.vy += 260 * dt; }
     this.flying = this.flying.filter(f => f.t < 0.8);
   }
+  // the tub: white enamel, a rim, little feet, the water line (DRY OFF sits in it too)
+  static tub(y) {
+    g.rect(28, y, 124, 52, PAL.ink); g.rect(24, y - 4, 132, 8, PAL.ink); g.rect(24, y + 2, 132, 2, PAL.mid);
+    g.rect(34, y + 52, 8, 8, PAL.mid); g.rect(138, y + 52, 8, 8, PAL.mid);
+    g.rect(36, y + 8, 108, 2, SCENE.sea1);
+  }
   bubble(x, y, r) { g.circle(x, y, r + 1, PAL.mid); g.circle(x, y, r, PAL.ink); g.circle(x - r * 0.35, y - r * 0.35, Math.max(1, r * 0.22), SCENE.dayCloud); }
   draw(g) {
     g.clear();
     const j = (Math.random() - 0.5) * Input.shake * 8, clean = this.done > 0;
     // the shiba sits in the tub, squinting under the suds; clean = all smiles
     g.sprite('face', CX + j, 152, { w: 64, h: 66, frame: clean ? 0 : 1 });
-    // the tub: white enamel, a rim, little feet, the water line
-    g.rect(28, 178, 124, 52, PAL.ink); g.rect(24, 174, 132, 8, PAL.ink); g.rect(24, 180, 132, 2, PAL.mid);
-    g.rect(34, 230, 8, 8, PAL.mid); g.rect(138, 230, 8, 8, PAL.mid);
-    g.rect(36, 186, 108, 2, SCENE.sea1);
+    BathTime.tub(178);
     // a rubber duck riding the bath
     const dx = 120 + Math.sin(this.t * 2) * 6;
     g.circle(dx, 176, 6, PAL.accent); g.circle(dx + 5, 170, 4, PAL.accent); g.rect(dx + 8, 169, 4, 2, PAL.bad); g.rect(dx + 5, 168, 1, 1, PAL.bg);

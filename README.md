@@ -139,6 +139,13 @@ in a dog bed in `bedroom@Y`, the room after dark with the moon in the window. Th
 (`SCENE`) so the sprites and play colours stay on top; each is painted once and
 cached. Every game has a scene now; the live camera view sits in the black shelf below it.
 
+Every shiba stands on something. In a side-view scene its paws sit a few pixels
+into the grass or floor below the horizon, not on the line or up in the sky; a
+head-only face is used only where it peeks out of something (a tub, a hedge, a
+dog bed). Otherwise the whole sitting shiba is used, since its art is cut flat
+at the paws. The bathroom tiles stop at the play field's edge, the day clouds
+drift below the instruction line, and CROSS has a tarmac road.
+
 ## Fake-outs and sounds
 
 Once you have met PAT! or TAP!, about one time in seven it comes back as
