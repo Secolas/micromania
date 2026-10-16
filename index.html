@@ -3135,19 +3135,25 @@ class KnockStack extends Microgame {
     this.aim = false; this.launched = false;
     this.settle = 0;
 
-    // a stack of blocks on a platform to the right; knock enough off to win
-    this.baseX = this.byD(120, 132, 144);     // stack column
+    // a tower of crates on a stone slab to the right; knock enough of them
+    // out of place to win. The crates are little rigid bodies: they fall, bounce,
+    // slide, tip over and land on each other. A crate rests ("sleeps") until
+    // it's hit or what it stands on goes, so the tower doesn't jitter.
+    this.baseX = this.byD(120, 132, 144);
     this.groundY = BOT - 6;
-    this.need = this.byD(1, 2, 2);            // blocks that must be toppled
-    this.count = this.byD(3, 3, 4);          // blocks in the stack
+    this.slabY = this.groundY - 4;           // the top of the slab
+    this.need = this.byD(1, 2, 2);            // crates that must be knocked out of place
+    this.count = this.byD(3, 3, 4);
     this.blocks = [];
     const bw = 20, bh = 16;
     for (let i = 0; i < this.count; i++) {
-      this.blocks.push({ x: this.baseX, y: this.groundY - bh / 2 - i * bh,
-                         w: bw, h: bh, vx: 0, vy: 0, toppled: false });
+      const y = this.slabY - bh / 2 - i * bh;
+      this.blocks.push({ x: this.baseX, y, hx: this.baseX, hy: y, w: bw, h: bh, vx: 0, vy: 0, rot: 0, av: 0, sleep: true, still: 0, gone: false });
     }
-    this.knocked = 0;
+    this.knocked = 0; this.winAt = 0;
   }
+  floorAt(x) { return Math.abs(x - this.baseX) < 18 ? this.slabY : this.groundY; }
+  wake(b) { b.sleep = false; b.still = 0; }
   update(dt, input) {
     if (!this.launched) {
       if (input.down) {
@@ -3156,7 +3162,7 @@ class KnockStack extends Microgame {
         const maxPull = 70, d = Math.hypot(px, py);
         if (d > maxPull) { px = px / d * maxPull; py = py / d * maxPull; }
         this.ball.x = Math.max(6, Math.min(W - 6, this.ox + px));
-        this.ball.y = Math.min(BOT - 2, this.oy + py);
+        this.ball.y = Math.min(this.groundY - this.ball.r, this.oy + py);   // not into the ground
       } else if (this.aim) {
         this.ball.vx = (this.ox - this.ball.x) * this.K;
         this.ball.vy = (this.oy - this.ball.y) * this.K;
@@ -3170,37 +3176,93 @@ class KnockStack extends Microgame {
       }
       return;
     }
-
-    // projectile
-    if (this.ball.flying) {
-      this.ball.x += this.ball.vx * dt; this.ball.y += this.ball.vy * dt;
-      this.ball.vy += 240 * dt;
-      this.ball.rot = (this.ball.rot || 0) + this.ball.vx * dt * 0.06;     // it tumbles through the air
-      this.trailT += dt; if (this.trailT > 0.035) { this.trailT = 0; this.trail.push({ x: this.ball.x, y: this.ball.y }); }
-      // hit a standing block -> knock it flying
-      for (const b of this.blocks) {
-        if (b.toppled) continue;
-        if (Math.abs(this.ball.x - b.x) < b.w / 2 + this.ball.r &&
-            Math.abs(this.ball.y - b.y) < b.h / 2 + this.ball.r) {
-          b.toppled = true; this.knocked++;
-          b.vx = this.ball.vx * 0.4 + 40; b.vy = -80; b.spin = 4 + Math.random() * 5;
-          this.ball.vx *= 0.5; this.ball.vy = -60;       // ball bounces on
-          FX.hit(b.x, b.y, PAL.accent); FX.burst(b.x, b.y, SCENE.woodHi, 10, 70); Sfx.thud(); Sfx.crunch(); buzz(20);
-          // blocks above a toppled one lose support and tumble too
-          for (const a of this.blocks) if (!a.toppled && a.x === b.x && a.y < b.y) {
-            a.toppled = true; this.knocked++; a.vx = 20 + Math.random() * 30; a.vy = -50; a.spin = (Math.random() - 0.5) * 8;
-          }
-        }
+    const G = 420, ball = this.ball;
+    this.playingOut = true;   // a shot in the air when the clock runs out still gets to land
+    // the shiba: flies, then bounces and rolls along the ground
+    if (ball.flying) {
+      ball.vy += G * dt; ball.x += ball.vx * dt; ball.y += ball.vy * dt;
+      ball.rot = (ball.rot || 0) + ball.vx * dt * 0.06;     // it tumbles through the air
+      if (!this.landed) { this.trailT += dt; if (this.trailT > 0.035) { this.trailT = 0; this.trail.push({ x: ball.x, y: ball.y }); } }
+      const fy = this.floorAt(ball.x);
+      if (ball.vy > 0 && ball.y + ball.r > fy && ball.x < W + 10) {   // only on the way down
+        ball.y = fy - ball.r; this.landed = true;
+        if (ball.vy > 40) Sfx.thud();
+        ball.vy = -ball.vy * 0.35; ball.vx *= 0.75;
       }
-      if (this.knocked >= this.need) { this.succeed(); return; }
-      // ball left the field -> that shot is spent; if not enough knocked, fail
-      if (this.ball.y > BOT + 20 || this.ball.x > W + 20 || this.ball.x < -20) {
-        this.settle += dt;
-        if (this.settle > 0.3) { this.lose(); return; }
+      // into a crate: shove it, and spin it by where it was struck (high tips it over)
+      for (const b of this.blocks) {
+        const ox = (b.w / 2 + ball.r) - Math.abs(ball.x - b.x), oy = (b.h / 2 + ball.r) - Math.abs(ball.y - b.y);
+        if (ox <= 0 || oy <= 0) continue;
+        const sp = Math.hypot(ball.vx, ball.vy);
+        if (sp > 40) {
+          this.wake(b);
+          b.vx += ball.vx * 0.7; b.vy += ball.vy * 0.25 - 40;
+          b.av += -(ball.y - b.y) / b.h * 9 * Math.sign(ball.vx || 1) + (Math.random() - 0.5) * 2;
+          FX.hit(ball.x, ball.y, PAL.accent); FX.burst(b.x, b.y, SCENE.woodHi, 10, 70); Sfx.thud(); Sfx.crunch(); buzz(20);
+        }
+        if (ox < oy) { ball.x += Math.sign(ball.x - b.x) * ox; ball.vx = -ball.vx * 0.3; }   // off its side
+        else { ball.y += Math.sign(ball.y - b.y) * oy; ball.vy = -ball.vy * 0.3; }           // off its top
       }
     }
-    // animate toppled blocks falling away
-    for (const b of this.blocks) if (b.toppled) { b.x += b.vx * dt; b.y += b.vy * dt; b.vy += 240 * dt; b.rot = (b.rot || 0) + (b.spin || 0) * dt; }
+    // the crates
+    for (let pass = 0; pass < 2; pass++) {
+      if (pass === 0) for (const b of this.blocks) {
+        if (b.sleep || b.gone) continue;
+        b.vy += G * dt; b.x += b.vx * dt; b.y += b.vy * dt; b.rot += b.av * dt;
+        if (b.y > BOT + 40 || b.x < -30 || b.x > W + 30) { b.gone = true; continue; }
+        const fy = this.floorAt(b.x);
+        if (b.y + b.h / 2 > fy) {
+          b.y = fy - b.h / 2;
+          if (b.vy > 90) { Sfx.thud(); FX.burst(b.x, fy, SCENE.dirt, 5, 40); }
+          b.vy = -b.vy * 0.25; b.vx *= 0.82; b.av *= 0.6;
+          const flat = Math.round(b.rot / (Math.PI / 2)) * (Math.PI / 2);   // rolls over to land flat
+          b.rot += (flat - b.rot) * 0.25;
+        }
+      }
+      // crate on crate: push them apart along the shallower overlap
+      for (let i = 0; i < this.blocks.length; i++) for (let k = i + 1; k < this.blocks.length; k++) {
+        const a = this.blocks[i], c = this.blocks[k];
+        if (a.gone || c.gone || (a.sleep && c.sleep)) continue;
+        const ox = (a.w + c.w) / 2 - Math.abs(a.x - c.x), oy = (a.h + c.h) / 2 - Math.abs(a.y - c.y);
+        if (ox <= 0 || oy <= 0) continue;
+        if (ox < oy) {   // side by side: a shove, shared
+          const s = Math.sign(a.x - c.x) || 1, va = a.vx, vc = c.vx;
+          if (a.sleep) { this.wake(a); } if (c.sleep) { this.wake(c); }
+          a.x += s * ox / 2; c.x -= s * ox / 2;
+          a.vx = vc * 0.6 + va * 0.2; c.vx = va * 0.6 + vc * 0.2;
+        } else {         // one on top of the other: the upper one rests on the lower
+          const [up, lo] = a.y < c.y ? [a, c] : [c, a];
+          up.y -= oy; if (up.vy > lo.vy) up.vy = lo.vy - (up.vy - lo.vy) * 0.15;
+          up.vx += (lo.vx - up.vx) * 0.04; up.av *= 0.95;   // a little friction between them
+          if (lo.sleep && Math.abs(up.vy) > 120) this.wake(lo);
+        }
+      }
+    }
+    // rest when still; wake when what it stands on is gone
+    for (const b of this.blocks) {
+      if (b.gone) continue;
+      if (!b.sleep) {
+        b.still = Math.hypot(b.vx, b.vy) < 6 && Math.abs(b.av) < 0.4 ? b.still + dt : 0;
+        if (b.still > 0.25) { b.sleep = true; b.vx = b.vy = b.av = 0; b.rot = Math.round(b.rot / (Math.PI / 2)) * (Math.PI / 2); }
+      } else {
+        const onFloor = b.y + b.h / 2 >= this.floorAt(b.x) - 1;
+        const onCrate = this.blocks.some(c => c !== b && !c.gone && Math.abs(c.x - b.x) < (b.w + c.w) / 2 - 3 && Math.abs((c.y - c.h / 2) - (b.y + b.h / 2)) < 2);
+        if (!onFloor && !onCrate) this.wake(b);
+      }
+    }
+    this.knocked = this.blocks.filter(b => b.gone || Math.hypot(b.x - b.hx, b.y - b.hy) > 8 || Math.abs(b.rot) > 0.4).length;
+    // enough knocked: let the tower finish coming down, then win
+    if (this.knocked >= this.need) {
+      this.playingOut = true;
+      if (!this.winAt) this.winAt = this.t + 0.8;
+      if (this.t >= this.winAt && !this.finished) { this.playingOut = false; this.succeed(); }
+      return;
+    }
+    // the shot is spent (out of the field, or it's stopped rolling) and the tower stands: a miss
+    const spent = ball.y > BOT + 20 || ball.x > W + 20 || ball.x < -20 || (this.landed && Math.hypot(ball.vx, ball.vy) < 25);
+    const moving = this.blocks.some(b => !b.sleep && !b.gone);
+    this.settle = spent && !moving ? this.settle + dt : 0;
+    if (this.settle > 0.3) { this.playingOut = false; this.lose(); }
   }
   // a wooden crate: planks with a lit top edge, a cross brace, nail heads
   crate(w, h) {
@@ -3218,7 +3280,7 @@ class KnockStack extends Microgame {
     g.rect(this.baseX - 18, gy - 4, 36, 6, SCENE.stoneLo); g.rect(this.baseX - 18, gy - 4, 36, 2, SCENE.stone);
     // crates, tumbling as they go
     for (const b of this.blocks) {
-      if (b.toppled && b.y > BOT + 20) continue;
+      if (b.gone) continue;
       ctx.save(); ctx.translate(b.x, b.y); ctx.rotate(b.rot || 0); this.crate(b.w, b.h); ctx.restore();
     }
     // the shot's dotted trail, Angry Birds style

@@ -156,7 +156,7 @@ into the grass or floor below the horizon, not on the line or up in the sky; a
 head-only face is used only where it peeks out of something (a tub, a hedge, a
 dog bed). Otherwise the whole sitting shiba is used, since its art is cut flat
 at the paws. The bathroom tiles stop at the play field's edge, the day clouds
-drift below the instruction line, and CROSS has a tarmac road. KNOCK IT is drawn like Angry Birds: a wooden Y slingshot on a mound with two rubber bands and a pouch (the back band behind the shiba, the front one in front), a dotted aim and trail, and wooden crates on a stone slab that spin as they fall. A game never puts
+drift below the instruction line, and CROSS has a tarmac road. KNOCK IT is drawn like Angry Birds: a wooden Y slingshot on a mound with two rubber bands and a pouch (the back band behind the shiba, the front one in front), a dotted aim and trail, and wooden crates on a stone slab with simple physics: they fall, bounce, slide, roll over to land flat and stack on each other, so a crate shot out of the middle drops the ones above it. A game never puts
 a second shiba right above the shelf mascot (PLUCK and BLOW just have the mascot
 watching). STACK is a shiba tower: shibas run in from either side and you tap to
 drop each one; it freezes mid-run on the back of the one below.

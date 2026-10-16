@@ -65,6 +65,19 @@ export default async function ({ url, launch }) {
     if (!gm.held) { release(); if (i % 2 === 0) { tapAt(s.x, s.y); Input.down = true; } return; }
     const dx = s.x - CX, dy = s.y - (CY - 8), d = Math.hypot(dx, dy) || 1; hold(CX + dx / d * (d + 10), CY - 8 + dy / d * (d + 10));
   });
+  // KNOCK IT: aim the slingshot at the tower (solve the arc), pull, let go
+  out.wins.knock = play(KnockStack, 3, (gm, i) => {
+    if (i === 2) {
+      const t = gm.blocks[0]; let best = null;
+      for (let a = 0; a < 6.28 && !best; a += 0.03) for (let r = 30; r <= 70 && !best; r += 4) {
+        const x = gm.ox + Math.cos(a) * r, y = gm.oy + Math.sin(a) * r; if (y > gm.groundY - gm.ball.r || x < 6) continue;
+        let px = x, py = y, vx = (gm.ox - x) * gm.K, vy = (gm.oy - y) * gm.K;
+        for (let k = 0; k < 300; k++) { vy += 420 / 60; px += vx / 60; py += vy / 60; if (Math.abs(px - t.x) < t.w / 2 + 6 && Math.abs(py - t.y) < t.h / 2 + 6) { best = [x, y]; break; } if (py > BOT) break; }
+      }
+      gm._aim = best || [gm.ox - 40, gm.oy + 30];
+    }
+    if (i >= 2 && i < 8) hold(gm._aim[0], gm._aim[1]); else if (i === 8) release();
+  });
   out.wins.pat = play(PatShiba, 3, (gm, i) => { if (!gm.fake && i % 3 === 0) tapAt(90, 150); });
   // fake-outs: forced on, a touch must lose and leaving it alone must win
   Engine.seen.add('pat'); Engine.seen.add('tap');
