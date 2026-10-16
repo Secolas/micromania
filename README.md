@@ -14,8 +14,15 @@ so they stay playable anywhere. The deployed Vercel URL is HTTPS.
 The first run opens a **sensors screen**: ALLOW asks for camera and mic in one
 popup (plus motion/tilt on iOS), up front, so no round ever stops for a
 permission prompt; TOUCH ONLY plays every game on its touch fallback. It is
-skipped when the browser says both are already granted. The speaker in the
-middle of the top bar mutes sound, and the choice is remembered.
+skipped when the browser says both are already granted.
+
+**SETTINGS** (on the title menu) has switches for SOUND, MUSIC (the backing
+beat) and VIBRATION, and for each sensor: CAMERA, MICROPHONE and MOTION. Turning
+a sensor on asks the browser right there; turning it off stops it now and keeps
+it off, and the games that need it are skipped (as when it's refused). A sensor
+refused at the browser level reads BLOCKED, with a note to allow it in the
+browser's site settings; one the device doesn't have reads NONE. Every switch is
+remembered on that phone. There is no mute icon in the top bar any more.
 
 | game | what the camera reads | touch fallback |
 |---|---|---|
@@ -111,11 +118,10 @@ so wins and fails always feel the same:
 
 ## Title screen
 
-The title is full-bleed (sky to the top edge, meadow to the bottom, the mute
-speaker drawn over the sky) and a little side-scroller. **SHIBA** and **MANIA** drop in letter by
-letter, and the menu slides up: RUN, CLASSIC and ALBUM as three alike white
-outlined words, with a bobbing bone pointer (Super Mario's mushroom) that sits on
-RUN and jumps to whichever option your finger is on. The shiba runs in and
+The title is full-bleed (sky to the top edge, meadow to the bottom) and a
+little side-scroller. **SHIBA** and **MANIA** drop in letter by
+letter, and the menu slides up: RUN, CLASSIC, ALBUM and SETTINGS as alike white
+outlined words, like Super Mario's title menu. The shiba runs in and
 keeps running: the hills and meadow scroll past, and it hops every bush and
 snaps up the bone floating over it. A tap skips the intro. Coming back
 from the album shows the settled screen straight away.
@@ -167,7 +173,7 @@ is uncovered).
 
 `Beat` is the backing loop — kick, snare, hats and a bass line, scheduled
 ahead on the audio clock. It starts on GO, speeds up with `Engine.speed`, is
-off on menus and in the shop, follows mute, and drops out while a mic game is
+off on menus and in the shop, follows the SOUND and MUSIC switches, and drops out while a mic game is
 listening so the speaker can't count as a blow.
 
 Props are drawn in code in the five palette colours (`g.bone`, `g.choc`,

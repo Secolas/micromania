@@ -254,6 +254,15 @@ const Assets = {
   get(name) { return this.cache[name] || null; }
 };
 
+// ── SETTINGS (saved on this phone) ───────────────────────────────────────────
+// The SETTINGS screen's switches. Sound is Sfx.muted; the rest live here.
+const Prefs = {
+  get(k, d) { try { const v = localStorage.getItem('micromania.' + k); return v == null ? d : v === '1'; } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem('micromania.' + k, v ? '1' : '0'); } catch (e) {} },
+};
+Prefs.music = Prefs.get('music', true);   // the backing beat
+Prefs.vibe = Prefs.get('vibe', true);     // buzz() on hits and misses
+
 // ── AUDIO (tiny blips; replace with samples later) ───────────────────────────
 const Sfx = {
   ac: null,
@@ -346,7 +355,7 @@ const Beat = {
   update(want) {
     if (!this.setup()) return;
     const ac = Sfx.ac, now = ac.currentTime;
-    want = want && !Sfx.muted;
+    want = want && !Sfx.muted && Prefs.music;
     if (want !== this.on) {
       this.on = want;
       this.bus.gain.cancelScheduledValues(now);
@@ -500,7 +509,21 @@ const Input = {
     this.camPending = true;
     navigator.mediaDevices.getUserMedia({ video: this.CAM_SPEC, audio: false })
       .then(stream => this._useCam(stream))
-      .catch(() => { this.camDenied = true; this.camPending = false; });
+      .catch(err => { this.camDenied = true; this.camPending = false; this._why('cam', err); });
+  },
+  // why a sensor isn't available: refused (BLOCKED, only the browser's site
+  // settings can undo it) or simply missing (NONE)
+  _why(k, err) { this[k + 'Blocked'] = !!err && err.name === 'NotAllowedError'; this[k + 'Missing'] = !this[k + 'Blocked']; },
+  // the SETTINGS switches: off stops the device now and keeps it off
+  stopCam() {
+    try { this._cam && this._cam.getTracks().forEach(t => t.stop()); } catch (e) {}
+    if (this._camVideo) { this._camVideo.remove(); this._camVideo = null; }
+    this._cam = null; this.camReady = false; this.camPending = false; this._prevFrame = null;
+    this._camGen = (this._camGen || 0) + 1; this._dropFrame(); this.motion = 0;
+  },
+  stopMic() {
+    try { this._micStream && this._micStream.getTracks().forEach(t => t.stop()); } catch (e) {}
+    this._micStream = null; this._mic = null; this.micReady = false; this.micPending = false; this.loud = 0; this.blow = 0;
   },
   CAM_SPEC: { facingMode: 'user', width: 320, height: 240 },
   _useCam(stream) {
@@ -607,7 +630,7 @@ const Input = {
       this._useMic(new MediaStream(stream.getAudioTracks()));
     }).catch(err => {
       this.camPending = this.micPending = false;
-      if (err && err.name === 'NotAllowedError') { this.camDenied = this.micDenied = true; return; }
+      if (err && err.name === 'NotAllowedError') { this.camDenied = this.micDenied = true; this._why('cam', err); this._why('mic', err); return; }
       this.enableCam(); this.enableMic();
     });
   },
@@ -697,7 +720,7 @@ const Input = {
     this.micPending = true;                       // decision not made yet
     navigator.mediaDevices.getUserMedia({ audio: true })
       .then(stream => this._useMic(stream))
-      .catch(() => { this.micDenied = true; this.micPending = false; });
+      .catch(err => { this.micDenied = true; this.micPending = false; this._why('mic', err); });
   },
   _useMic(stream) {
     Sfx.unlock();
@@ -723,7 +746,7 @@ const Input = {
     if (this._tiltOn) return;
     this._tiltOn = true;
     const add = () => window.addEventListener('deviceorientation', e => {
-      if (e.gamma == null || e.beta == null) return;
+      if (this.motionOff || e.gamma == null || e.beta == null) return;
       this._tiltG = e.gamma; this._tiltB = e.beta;
       this.tiltReady = true;
     });
@@ -746,6 +769,7 @@ const Input = {
     if (this._motionOn) return;
     this._motionOn = true;
     const add =() => window.addEventListener('devicemotion', e => {
+      if (this.motionOff) return;
       // rotation rate — the gyro proper. Peak rather than sum, so the reading
       // does not depend on how often the device fires the event.
       const rr = e.rotationRate;
@@ -860,8 +884,12 @@ const Input = {
   resetTravel() { this._travel = 0; }
 };
 Input.attach(canvas);
+// switched off in SETTINGS on an earlier visit: stays off until switched on there
+if (Prefs.get('camOff', false)) Input.camDenied = true;
+if (Prefs.get('micOff', false)) Input.micDenied = true;
+Input.motionOff = Prefs.get('motionOff', false);
 
-function buzz(ms) { navigator.vibrate?.(ms); }
+function buzz(ms) { if (Prefs.vibe) navigator.vibrate?.(ms); }
 
 // ── FX ───────────────────────────────────────────────────────────────────────
 /* Engine-level juice, shared by every microgame. Nothing here changes game
@@ -5328,7 +5356,7 @@ const Engine = {
     Wipe.update(dt); Juice.update(dt);
     // the title plays its intro every time you arrive (not back from the album)
     if (this.state !== this._lastState) {
-      if (this.state === 'TITLE') { this.titleT = this._lastState === 'ALBUM' ? 9 : 0; this.titleSfx = 0; }
+      if (this.state === 'TITLE') { this.titleT = ['ALBUM', 'SETTINGS'].includes(this._lastState) ? 9 : 0; this.titleSfx = 0; }
       this._lastState = this.state;
     }
     if (this.state === 'TITLE') this.titleIntro(dt);
@@ -5339,7 +5367,7 @@ const Engine = {
     const s = this.state;
 
     // starting a run is handled in release(), inside the tap itself
-    if (s === 'TITLE' || s === 'GAMEOVER' || s === 'ALBUM') {
+    if (s === 'TITLE' || s === 'GAMEOVER' || s === 'ALBUM' || s === 'SETTINGS') {
       Mascot.set(s === 'GAMEOVER' ? 'sad' : 'watch');
       return;
     }
@@ -5508,14 +5536,24 @@ const Engine = {
   // ── BUTTONS ────────────────────────────────────────────────────────────────
   // Called straight from the pointer events, so the permission prompts they
   // raise are inside a user gesture. press() returns true to eat the press.
-  MUTE: { x: CX - 12, y: 0, w: 24, h: TOP },
   PERM_ALLOW: { x: CX - 50, y: CY + 22, w: 100, h: 24 },
   PERM_SKIP:  { x: CX - 50, y: CY + 54, w: 100, h: 24 },
   RUN_SPEED: 80, RUN_X: 46, RUN_GROUND: 180,
-  // three menu options, all the same size and style (Super Mario's title menu)
-  BTN_RUN:     { x: CX - 50, y: 186, w: 100, h: 24 },
-  BTN_CLASSIC: { x: CX - 50, y: 212, w: 100, h: 24 },
-  BTN_ALBUM:   { x: CX - 50, y: 238, w: 100, h: 24 },
+  // the menu options, all the same size and style (Super Mario's title menu)
+  BTN_RUN:     { x: CX - 50, y: 182, w: 100, h: 24 },
+  BTN_CLASSIC: { x: CX - 50, y: 206, w: 100, h: 24 },
+  BTN_ALBUM:   { x: CX - 50, y: 230, w: 100, h: 24 },
+  BTN_SET:     { x: CX - 50, y: 254, w: 100, h: 24 },
+  // SETTINGS: one switch per row, BACK like the album's
+  SET_ROWS: [
+    { k: 'sound', label: 'SOUND', y: TOP + 40 },
+    { k: 'music', label: 'MUSIC', y: TOP + 64 },
+    { k: 'vibe',  label: 'VIBRATION', y: TOP + 88 },
+    { k: 'cam',   label: 'CAMERA', y: TOP + 140 },
+    { k: 'mic',   label: 'MICROPHONE', y: TOP + 164 },
+    { k: 'motion', label: 'MOTION', y: TOP + 188 },
+  ],
+  setSwitch(r) { return { x: W - 66, y: r.y - 4, w: 54, h: 20 }; },
   TITLE_INTRO: 1.9,          // seconds until the title has settled and its buttons work
   ALB_BACK:    { x: 4, y: TOP + 4, w: 40, h: 16 },
   ALB_PREV:    { x: 8, y: BOT - 26, w: 30, h: 20 },
@@ -5526,7 +5564,6 @@ const Engine = {
   hit(b, p) { return p.x >= b.x && p.x < b.x + b.w && p.y >= b.y && p.y < b.y + b.h; },
 
   press(p) {
-    if (this.hit(this.MUTE, p)) { Sfx.toggleMute(); Sfx.unlock(); if (!Sfx.muted) Sfx.tap(); return true; }
     return this.state === 'PERMS';   // the sensors screen is buttons only
   },
 
@@ -5539,6 +5576,8 @@ const Engine = {
       return;
     }
     if (s === 'ALBUM') { this.albumRelease(p); return; }
+    if (s === 'TITLE' && this.timer <= 0 && this.hit(this.BTN_SET, p)) { Sfx.unlock(); Sfx.tap(); this.state = 'SETTINGS'; return; }
+    if (s === 'SETTINGS') { this.settingsRelease(p); return; }
     if (s === 'TITLE' && this.timer <= 0) {
       const mode = this.hit(this.BTN_RUN, p) ? 'run' : this.hit(this.BTN_CLASSIC, p) ? 'classic' : null;
       if (!mode) return;
@@ -5643,16 +5682,9 @@ const Engine = {
     // the buttons slide up into place, one after another
     const R = this.BTN_RUN, C = this.BTN_CLASSIC, A = this.BTN_ALBUM, na = Album.load().length;
     const up = (i) => (1 - back((t - 1.3 - i * 0.08) / 0.45)) * 150;   // from below the bottom edge
-    // the menu: white outlined words, all alike, and a bone pointer like Mario's
-    // mushroom; it sits on RUN and jumps to whichever option your finger is on
-    const opts = [[R, 'RUN'], [C, 'CLASSIC'], [A, 'ALBUM' + (na ? ' (' + na + ')' : '')]];
-    let sel = 0;
-    if (Input.down) opts.forEach(([b], i) => { if (this.hit(b, { x: Input.x, y: Input.y })) sel = i; });
-    opts.forEach(([b, label], i) => {
-      const dy = up(i), y = b.y + dy + b.h / 2;
-      g.outline(label, CX + 6, y + 5, 14, PAL.ink);
-      if (i === sel && dy < 1) g.bone(CX - 44 + Math.abs(Math.sin(this.time * 5)) * 3, y, 14);
-    });
+    // the menu: white outlined words, all alike
+    const opts = [[R, 'RUN'], [C, 'CLASSIC'], [A, 'ALBUM' + (na ? ' (' + na + ')' : '')], [this.BTN_SET, 'SETTINGS']];
+    opts.forEach(([b, label], i) => g.outline(label, CX, b.y + up(i) + b.h / 2 + 5, 14, PAL.ink));
     const best = [];
     if (Run.best) best.push('RUN ' + Run.label(Run.best));
     if (this.best) best.push('CLASSIC ' + this.best);
@@ -5817,6 +5849,72 @@ const Engine = {
     return c;
   },
 
+  // ── SETTINGS ───────────────────────────────────────────────────────────────
+  // what each switch reads: ON / OFF, or why a sensor can't be used
+  setState(k) {
+    if (k === 'sound') return Sfx.muted ? 'OFF' : 'ON';
+    if (k === 'music') return Prefs.music ? 'ON' : 'OFF';
+    if (k === 'vibe') return Prefs.vibe ? 'ON' : 'OFF';
+    if (k === 'cam' || k === 'mic') {
+      if (Input[k + 'Ready']) return 'ON';
+      if (Input[k + 'Pending']) return '…';
+      if (Prefs.get(k + 'Off', false)) return 'OFF';
+      return Input[k + 'Blocked'] ? 'BLOCKED' : Input[k + 'Missing'] ? 'NONE' : 'OFF';
+    }
+    if (Input.motionOff) return 'OFF';
+    if (Input.motionReady || Input.tiltReady) return 'ON';
+    return Input._motionOn ? 'NONE' : 'OFF';
+  },
+  settingsRelease(p) {
+    if (this.hit(this.ALB_BACK, p)) { Sfx.tap(); this.state = 'TITLE'; this.timer = 0.2; return; }
+    const r = this.SET_ROWS.find(r => this.hit({ x: 0, y: r.y - 6, w: W, h: 24 }, p));
+    if (!r) return;
+    const on = this.setState(r.k) === 'ON' || this.setState(r.k) === '…';
+    Sfx.unlock();
+    if (r.k === 'sound') Sfx.toggleMute();
+    else if (r.k === 'music') { Prefs.music = !Prefs.music; Prefs.set('music', Prefs.music); }
+    else if (r.k === 'vibe') { Prefs.vibe = !Prefs.vibe; Prefs.set('vibe', Prefs.vibe); buzz(30); }
+    else if (r.k === 'cam' || r.k === 'mic') {
+      Prefs.set(r.k + 'Off', on);
+      if (on) { r.k === 'cam' ? Input.stopCam() : Input.stopMic(); Input[r.k + 'Denied'] = true; }
+      else {
+        // asked from here, inside the tap, so the browser can show its popup;
+        // a sensor refused at the browser level stays BLOCKED until it's allowed there
+        Input[r.k + 'Denied'] = Input[r.k + 'Blocked'] = Input[r.k + 'Missing'] = false;
+        r.k === 'cam' ? Input.enableCam() : Input.enableMic();
+        if (this.sensors !== true) this.sensors = true;   // a choice is made: skip the sensors screen
+      }
+    } else if (r.k === 'motion') {
+      Input.motionOff = on; Prefs.set('motionOff', on);
+      if (on) { Input.motionReady = Input.tiltReady = Input.gyroReady = false; }
+      else { Input.enableMotion(); Input.enableTilt(); }
+    }
+    Sfx.tap();
+  },
+  drawSettings() {
+    const B = this.ALB_BACK;
+    g.box(B.x, B.y, B.w, B.h, PAL.mid); g.text('BACK', B.x + B.w / 2, B.y + 11, 7, PAL.ink);
+    g.text('SETTINGS', CX, TOP + 16, 12, PAL.accent);
+    g.text('SENSORS', 14, TOP + 122, 7, TEXT_MID, 'left');
+    g.rect(14, TOP + 126, W - 28, 1, PAL.mid);
+    let blocked = false;
+    for (const r of this.SET_ROWS) {
+      const st = this.setState(r.k), S = this.setSwitch(r), on = st === 'ON';
+      if (st === 'BLOCKED') blocked = true;
+      g.text(r.label, 14, r.y + 10, 9, PAL.ink, 'left');
+      if (on) { g.rect(S.x, S.y, S.w, S.h, PAL.accent); g.text('ON', S.x + S.w / 2, S.y + 14, 9, PAL.bg); }
+      else {
+        const c = st === 'BLOCKED' ? PAL.bad : PAL.mid;
+        g.box(S.x, S.y, S.w, S.h, c); g.text(st, S.x + S.w / 2, S.y + 14, st.length > 3 ? 7 : 9, st === 'BLOCKED' ? PAL.bad : PAL.ink);
+      }
+    }
+    g.text('OFF: GAMES THAT NEED IT ARE SKIPPED', CX, TOP + 216, 7, TEXT_MID);
+    if (blocked) {
+      g.text('BLOCKED: ALLOW IT IN YOUR', CX, TOP + 232, 7, PAL.bad);
+      g.text("BROWSER'S SITE SETTINGS", CX, TOP + 242, 7, PAL.bad);
+    }
+  },
+
   // The sensors screen eats its presses (see press), so its buttons are
   // checked here on the raw release instead.
   permRelease(p) {
@@ -5886,7 +5984,6 @@ const Engine = {
     FX.post();
     this.drawCamView();
     Wipe.draw();
-    this.drawMute();
   },
 
   // In a camera game the shelf shows what the camera sees, mirrored like a
@@ -5928,19 +6025,6 @@ const Engine = {
     }
   },
 
-  // speaker in the middle of the HUD band, with sound waves or a cross. Drawn
-  // after the FX so a flash or shake never hides it.
-  drawMute() {
-    const x = CX - 6, y = 4, c = this.state === 'TITLE' ? PAL.ink : TEXT_MID;   // a control, so it reads like text (white on the title's sky)
-    g.rect(x, y + 3, 3, 4, c);
-    g.rect(x + 3, y + 2, 1, 6, c); g.rect(x + 4, y + 1, 1, 8, c); g.rect(x + 5, y, 1, 10, c);
-    if (Sfx.muted) {
-      for (let i = 0; i < 5; i++) { g.rect(x + 8 + i, y + 2 + i, 1, 1, c); g.rect(x + 12 - i, y + 2 + i, 1, 1, c); }
-    } else {
-      g.rect(x + 8, y + 3, 1, 4, c); g.rect(x + 10, y + 1, 1, 8, c);
-    }
-  },
-
   drawScene() {
     g.clear();
     const s = this.state;
@@ -5948,6 +6032,7 @@ const Engine = {
     if (s === 'TITLE') { this.drawTitle(); return; }
 
     if (s === 'ALBUM') { this.drawAlbumScreen(); return; }
+    if (s === 'SETTINGS') { this.drawSettings(); return; }
 
     if (s === 'PERMS') {
       g.text('CAMERA + MIC', CX, CY - 62, 12, PAL.accent);
