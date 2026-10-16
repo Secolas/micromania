@@ -3052,7 +3052,7 @@ class MoveCam extends Microgame {
     this.fill += input.motion * dt * 1.4;
     // legs go as fast as you move; kick up dust while it's really running
     this.legT += dt * input.motion * 30;
-    if (input.motion > 0.15 && Math.random() < input.motion) this.dust.push({ x: this.runX() - 14, y: 246, t: 0 });
+    if (input.motion > 0.15 && Math.random() < input.motion) this.dust.push({ x: this.runX() - 14, y: 255, t: 0 });
     for (const d of this.dust) { d.t += dt; d.x -= 18 * dt; d.y -= 6 * dt; }
     this.dust = this.dust.filter(d => d.t < 0.4);
     const n = Math.floor(Math.min(1, this.fill / this.need) * 8);   // a rising scale as the meter fills
@@ -3073,15 +3073,15 @@ class MoveCam extends Microgame {
     const m = Input.motion, gy = 250;
     // the race lane, and the finish flag waiting at the far end
     for (let x = 22; x < W - 26; x += 8) g.rect(x, gy + 10, 4, 1, PAL.ink);
-    const fx = W - 18;
-    g.rect(fx, gy - 34, 2, 34, PAL.bg);
-    for (let r = 0; r < 3; r++) for (let c = 0; c < 4; c++) g.rect(fx + 2 + c * 4, gy - 34 + r * 4, 4, 4, (r + c) % 2 ? PAL.bg : PAL.ink);
+    const fx = W - 18, fy = gy + 10;   // the flag stands on the lane, like the runner
+    g.rect(fx, fy - 34, 2, 34, PAL.bg);
+    for (let r = 0; r < 3; r++) for (let c = 0; c < 4; c++) g.rect(fx + 2 + c * 4, fy - 34 + r * 4, 4, 4, (r + c) % 2 ? PAL.bg : PAL.ink);
     // dust behind its paws, speed lines when it's flat out
     for (const d of this.dust) { ctx.globalAlpha = 1 - d.t / 0.4; g.rect(d.x, d.y, 3, 3, PAL.mid); ctx.globalAlpha = 1; }
     const rx = this.runX();
-    if (m > 0.4) for (let i = 0; i < 3; i++) g.rect(rx - 34 - i * 5, gy - 30 + i * 9, 12 + i * 3, 2, PAL.bg);
+    if (m > 0.4) for (let i = 0; i < 3; i++) g.rect(rx - 34 - i * 5, gy - 16 + i * 9, 12 + i * 3, 2, PAL.bg);
     const frame = m > 0.05 ? Math.floor(this.legT) % 9 : 0;
-    g.sprite('swiperight', rx, gy - 22, { w: 64, h: 64, frame });
+    g.sprite('swiperight', rx, gy - 7, { w: 64, h: 64, frame });   // paws on the lane in the grass, not up among the trees
     g.text(Input.camReady ? 'WAVE TO RUN!' : 'TAP TO RUN!', CX - 12, TOP + 26, 9, PAL.bg);   // clear of the sun
     if (this.flash > 0 && Engine.state === 'PLAYING') { this.flash -= STEP; g.rect(0, 0, W, H, PAL.ink); }
   }
