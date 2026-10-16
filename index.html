@@ -2132,8 +2132,7 @@ class HoldRelease extends Microgame {
     const seamX = x0 + 8 + (w - 22) / 2;
     g.rect(seamX, top + 2, 1, th - 3, dark);
     // a bone-print pillow leaning on the back
-    rr(bx - 11, top - 13, 13, 14, 4, PAL.ink);
-    g.bone(bx - 5, top - 6, 8, PAL.accent);
+    g.circle(bx - 6, top - 5, 6, PAL.bg); g.tennis(bx - 6, top - 5, 5);   // its ball, waiting on the seat
     // armrest at the near end: a rounded roll a little above the seat
     rr(x0, top - 8, 12, base - top + 8, 6, red);
     rr(x0 + 2, top - 6, 4, 6, 2, lite);
@@ -2180,8 +2179,7 @@ class HoldRelease extends Microgame {
     g.rect(x - 3, py - 2, w + 6, 4, PAL.ink);
     // the couch, its seat at the height the zone marks
     HoldRelease.couch(cx0, cw, seat, th, floor);
-    // the aim line: how high the jump would go at this charge
-    if (this.jumpT < 0) { ctx.globalAlpha = 0.5; g.rect(x + w + 4, floor - this.lift(this.p) - 1, 64, 2, PAL.ink); ctx.globalAlpha = 1; }   // the paws top out here
+    // the floor
     g.rect(0, floor, W, 2, PAL.mid);
     // the shiba: crouched on the floor winding up, then leaping. Its feet sit
     // a quarter of the sprite below its centre, so floor - 14 stands it on the floor.
@@ -4409,14 +4407,15 @@ class StackBlocks extends Microgame {
     this.spawn(Math.random() < 0.5 ? 1 : -1);
   }
   spawn(dir) { this.dir = dir; this.bx = dir > 0 ? 14 : W - 14; this.runT = 0; }
-  topY() { return this.stackY - 4 - this.done * this.LH; }   // where the next one's paws land
+  // paws on the cushion's top (stackY - 7), then each on the back of the one below
+  topY() { return this.stackY - 7 - this.done * this.LH; }   // where the next one's paws land
   swayAt(i) { return Math.sin(this.t * 2.4) * this.sway * (i + 1) / Math.max(4, this.need); }
   xAt(i) { return this.baseX + this.leans[i].dx + this.swayAt(i); }
   // knock shibas from level `from` up off the tower, falling toward `side`
   topple(from, side) {
     for (let i = from; i < this.leans.length; i++) {
       const L = this.leans[i];
-      this.tumble.push({ x: this.xAt(i), y: this.stackY - 4 - i * this.LH - 10, vx: side * (30 + (i - from) * 25), vy: -20, rot: 0, av: side * (4 + (i - from)), dir: L.dir, f: L.f });
+      this.tumble.push({ x: this.xAt(i), y: this.stackY - 7 - i * this.LH - 10, vx: side * (30 + (i - from) * 25), vy: -20, rot: 0, av: side * (4 + (i - from)), dir: L.dir, f: L.f });
     }
     this.leans.length = from; this.done = from;
     Sfx.whoosh(); buzz(60); FX.shake(4);
@@ -4446,7 +4445,8 @@ class StackBlocks extends Microgame {
           this.leans.push({ dx: d.x - this.baseX - this.swayAt(this.done), dir: d.dir, f: d.f }); this.done++;
           this.topple(this.done - 1, Math.sign(rel)); return;
         }
-        this.leans.push({ dx: d.x - this.baseX - this.swayAt(this.done), dir: d.dir, f: d.f }); this.done++;
+        // landed: it plants all four paws (the gallop frame with every paw down)
+        this.leans.push({ dx: d.x - this.baseX - this.swayAt(this.done), dir: d.dir, f: 3 }); this.done++;
         this.squash = 0.12;
         if (Math.abs(rel) < 3) { this.perfect = 0.6; Sfx.step(Math.min(7, this.done + 2)); FX.burst(d.x, this.topY() + this.LH, PAL.accent, 10, 60); }
         Sfx.squeak(); buzz(12);
@@ -4480,12 +4480,11 @@ class StackBlocks extends Microgame {
     g.clear();
     // a cushion on the floor, dead centre, so the first one has a clear target
     g.rect(this.baseX - 26, this.stackY - 6, 52, 6, PAL.bad); g.rect(this.baseX - 22, this.stackY - 8, 44, 2, PAL.bad);
-    if (this.done === 0 && !this.drop) { ctx.globalAlpha = 0.35; g.line(this.baseX, this.stackY - 8, this.baseX, TOP + 30, PAL.accent, 1); ctx.globalAlpha = 1; }
     // the tower, bottom up, so each one sits in front of the one it's on
     const cheer = this.result === 'win';
     for (let i = 0; i < this.done; i++) {
-      const L = this.leans[i], paws = this.stackY - 4 - i * this.LH;
-      const sq = i === this.done - 1 && this.squash > 0 ? 3 : 0;   // the newest one squashes as it lands
+      const L = this.leans[i], paws = this.stackY - 7 - i * this.LH;
+      const sq = i === this.done - 1 && this.squash > 0 ? 1 : 0;   // the newest one dips as it lands
       // frozen mid-run; the top one gallops on the spot when the tower is done
       this.runner(this.xAt(i), paws + sq, L.dir, cheer && i === this.done - 1 ? this.frame() : L.f);
     }
@@ -4493,7 +4492,6 @@ class StackBlocks extends Microgame {
     else if (!this.finished && !this.endT && !this.tumble.length) {   // the next one, running across
       const paws = this.runY();
       this.runner(this.bx, paws, this.dir, this.frame());
-      ctx.globalAlpha = 0.3; g.line(this.bx, paws + 2, this.bx, this.topY(), PAL.mid, 1); ctx.globalAlpha = 1;
     }
     for (const b of this.tumble) {   // tipping off and falling, spinning
       ctx.save(); ctx.translate(b.x, b.y); ctx.rotate(b.rot);
