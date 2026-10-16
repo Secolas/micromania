@@ -92,6 +92,23 @@ the next game — whose scene shows, dimmed, behind its
 instructions. The verdict (GOOD! / FAIL!) is drawn over the game you just
 played, so the wipe closes on that place rather than a blank screen.
 
+Every verdict, in every game and both modes, goes through one place (`Juice`),
+so wins and fails always feel the same:
+
+- **Win:** a short hit-stop with a white flash and a ring where you tapped (or the
+  centre, for tilt, camera, blow and shake games). Then **GOOD!** slams in,
+  tilted, with confetti from the top corners. The mascot hops, and from two wins
+  in a row a **xN STREAK!** badge pops under the stamp.
+- **Fail:** **FAIL!** slams in on the red screen, with no flash and no confetti.
+- **Stage clear** (RUN) adds a bigger burst of confetti.
+
+## Title screen
+
+The title plays a short intro every time you land on it. **MICRO** and
+**MANIA** drop in letter by letter, the shiba dashes in and skids to a sit, and
+the RUN / CLASSIC / ALBUM buttons slide up. A tap skips the intro. Coming back
+from the album shows the settled screen straight away.
+
 ## Photo album
 
 Every action shot you win is saved on the phone (`Album`, in localStorage as
