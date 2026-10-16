@@ -186,8 +186,9 @@ don't need generated art.
 
 ## Develop
 
-Everything lives in `index.html` — engine, all games, and the sprites
-(base64-embedded). No build step, no dependencies.
+The game is `index.html`: engine, all games, and the sprites (base64-embedded).
+No build step. Around it: `manifest.webmanifest`, `sw.js` and `icons/` make it
+installable and playable offline, and `tests/` checks it.
 
 - Add **`?dev`** to the address (e.g. `…/index.html?dev`) for the in-game **DEV**
   test menu (a yellow DEV button in the window's top-right corner) and the live
@@ -196,6 +197,41 @@ Everything lives in `index.html` — engine, all games, and the sprites
   `?nodev` turns it off.
 - The DEV menu lists every game, with a difficulty selector and a LOOP mode
   that replays one game without losing lives — for testing and tuning.
+
+### Tests
+
+`npm install`, then `npm test` runs every `tests/*.test.mjs` in headless
+Chromium against the real page (served over http by `tests/run.mjs`).
+`npm test -- games text` runs only the files whose names match. GitHub Actions
+(`.github/workflows/test.yml`) runs them on every push and pull request.
+
+| test | checks |
+|---|---|
+| `games` | every game at every difficulty ends without throwing; a scripted player can win the skill games; fake-outs behave |
+| `text` | no text under 8px, none grey, none off the screen or out of a menu frame, on every screen and in every game |
+| `classic`, `run` | both modes from the title through GAME OVER (RUN: stage card, clear, shop, next stage) |
+| `title` | the intro skip and the four menu options with real clicks; the GOOD!/FAIL! juice |
+| `album`, `settings` | saving, paging, opening, sharing and deleting photos; every switch, saved across a reload |
+| `camera` | live frames from a fake camera, and recovery when the feed stalls |
+| `pwa` | manifest, icons, the service worker, and starting with the network off |
+
+To use a browser that's already installed instead of Playwright's own, set
+`CHROMIUM_PATH=/path/to/chromium`.
+
+### Text
+
+`g.text` never draws smaller than 8px, and grey text (`PAL.mid` / `TEXT_MID`)
+comes out white: grey is for bars and lines. Long labels use `g.wrap` (the shop
+cards do).
+
+## Install and offline
+
+SHIBA MANIA is a Progressive Web App: on Android, SETTINGS has an **ADD TO HOME
+SCREEN** button (or Chrome's menu > Install app); on iPhone it's Share > Add to
+Home Screen, which SETTINGS spells out. Installed, it opens full screen like an
+app. `sw.js` caches the page on the first visit: online it always fetches the
+latest version first, offline it serves the cached copy, so the game works with
+no signal. Camera and mic still need the permission to have been granted.
 
 ## RUN mode
 

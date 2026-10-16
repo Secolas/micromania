@@ -6,6 +6,11 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#101010">
+<meta name="apple-mobile-web-app-title" content="SHIBA MANIA">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <title>SHIBA MANIA</title>
 <style>
   * { box-sizing: border-box; }
@@ -965,13 +970,25 @@ const g = {
   circle(x, y, r, c) { ctx.fillStyle = c; ctx.beginPath(); ctx.arc(x, y, r, 0, 6.2832); ctx.fill(); },
   line(x1, y1, x2, y2, c, lw = 1) { ctx.strokeStyle = c; ctx.lineWidth = lw; ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); },
   text(str, x, y, size = 8, c = PAL.ink, align = 'center', bold = true) {
-    // PAL.mid is fine for bars and lines but too dark to read as small text on
-    // the near-black background, so grey text is drawn a few steps lighter
-    ctx.fillStyle = c === PAL.mid ? TEXT_MID : c;
+    // Readable on a phone in daylight: nothing smaller than 8px, and no grey
+    // text — grey (PAL.mid / TEXT_MID) is for bars and lines; as text it's white
+    size = Math.max(8, size);
+    ctx.fillStyle = c === PAL.mid || c === TEXT_MID ? PAL.ink : c;
     ctx.font = (bold ? 'bold ' : '') + size + 'px ui-monospace, monospace';
     ctx.textAlign = align;
     ctx.fillText(str, Math.round(x), Math.round(y));
     ctx.textAlign = 'left';
+  },
+  // split str into lines that each fit maxW at this size (whole words)
+  wrap(str, maxW, size = 8) {
+    ctx.font = 'bold ' + Math.max(8, size) + 'px ui-monospace, monospace';
+    const out = [];
+    for (const word of String(str).split(' ')) {
+      const last = out[out.length - 1];
+      if (last != null && ctx.measureText(last + ' ' + word).width <= maxW) out[out.length - 1] = last + ' ' + word;
+      else out.push(word);
+    }
+    return out;
   },
   bar(x, y, w, h, pct, c = PAL.accent, bg = PAL.mid) {
     this.rect(x, y, w, h, bg);
@@ -5119,11 +5136,13 @@ const Run = {
   drawTreat(t, x, y, w, h, small) {
     g.rect(x, y, w, h, small ? PAL.mid : PAL.ink);
     g.rect(x + 2, y + 2, w - 4, h - 4, PAL.bg);
-    const ay = small ? y + 13 : y + 42, as = small ? 20 : 40;
-    this.drawArt(t, x + w / 2, ay, as);
-    if (small) { g.text(t.tag, x + w / 2, y + h - 4, 6, PAL.ink); return; }
-    g.text(t.name, x + w / 2, y + 12, 6, PAL.ink);
-    t.lines.forEach((l, i) => g.text(l, x + w / 2, y + h - 30 + i * 8, 6, PAL.mid));
+    if (small) { this.drawArt(t, x + w / 2, y + 13, 20); g.text(t.tag, x + w / 2, y + h - 4, 8, PAL.ink); return; }
+    // 8px text wrapped to the card: the name on top, the effect bottom-up above the price
+    const name = g.wrap(t.name, w - 6), desc = t.lines.flatMap(l => g.wrap(l, w - 6));
+    name.forEach((l, i) => g.text(l, x + w / 2, y + 12 + i * 9, 8, PAL.ink));
+    const top = y + 12 + (name.length - 1) * 9 + 6, bot = y + h - 16 - desc.length * 9 - 1;   // the art fills the gap between
+    this.drawArt(t, x + w / 2, (top + bot) / 2, Math.min(30, bot - top));
+    desc.forEach((l, i) => g.text(l, x + w / 2, y + h - 16 - (desc.length - 1 - i) * 9, 8, PAL.ink));
   },
 
   drawOwned(y) {
@@ -5554,6 +5573,9 @@ const Engine = {
     { k: 'motion', label: 'MOTION', y: TOP + 188 },
   ],
   setSwitch(r) { return { x: W - 72, y: r.y - 4, w: 54, h: 20 }; },
+  SET_INSTALL: { x: CX - 62, y: H - 48, w: 124, h: 22 },
+  installEvt: null,
+  installed() { return matchMedia('(display-mode: standalone)').matches || navigator.standalone === true; },
   TITLE_INTRO: 1.9,          // seconds until the title has settled and its buttons work
   ALB_BACK:    { x: 16, y: TOP + 2, w: 40, h: 16 },   // inside the menu frame (see menuPanel)
   ALB_PREV:    { x: 16, y: BOT - 26, w: 30, h: 20 },
@@ -5885,6 +5907,11 @@ const Engine = {
   },
   settingsRelease(p) {
     if (this.hit(this.ALB_BACK, p)) { Sfx.tap(); this.state = 'TITLE'; this.timer = 0.2; return; }
+    if (this.installEvt && this.hit(this.SET_INSTALL, p)) {   // inside the tap, so Chrome shows its install popup
+      Sfx.tap(); const e = this.installEvt;
+      e.prompt(); e.userChoice.then(() => { this.installEvt = null; }).catch(() => {});
+      return;
+    }
     const r = this.SET_ROWS.find(r => this.hit({ x: 0, y: r.y - 6, w: W, h: 24 }, p));
     if (!r) return;
     const on = this.setState(r.k) === 'ON' || this.setState(r.k) === '…';
@@ -5931,6 +5958,12 @@ const Engine = {
       g.text('BLOCKED: ALLOW IT IN YOUR', CX, TOP + 232, 7, PAL.bad);
       g.text("BROWSER'S SITE SETTINGS", CX, TOP + 242, 7, PAL.bad);
     }
+    // put it on the home screen, to open like an app and play offline
+    const I = this.SET_INSTALL;
+    if (this.installed()) g.text('INSTALLED ON THIS PHONE', CX, I.y + 15, 8, PAL.ink);
+    else if (this.installEvt) { g.rect(I.x, I.y, I.w, I.h, PAL.accent); g.text('ADD TO HOME SCREEN', CX, I.y + 15, 9, PAL.bg); }
+    else if (/iphone|ipad|ipod/i.test(navigator.userAgent)) { g.text('ADD TO HOME SCREEN:', CX, I.y + 8, 8, PAL.ink); g.text('TAP SHARE, THEN ADD', CX, I.y + 19, 8, PAL.ink); }
+    else g.text('INSTALL: BROWSER MENU', CX, I.y + 15, 8, PAL.ink);
   },
 
   // The sensors screen eats its presses (see press), so its buttons are
@@ -6252,6 +6285,15 @@ try {
 } catch (e) {}
 
 Assets.load().then(() => requestAnimationFrame(frame));
+
+// Install to the home screen and play offline (see sw.js and manifest.webmanifest).
+// Chrome offers the install through beforeinstallprompt, kept for the SETTINGS
+// button; iPhones only have Share > Add to Home Screen, which SETTINGS explains.
+if ('serviceWorker' in navigator && (location.protocol === 'https:' || ['localhost', '127.0.0.1'].includes(location.hostname))) {
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+}
+window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); Engine.installEvt = e; });
+window.addEventListener('appinstalled', () => { Engine.installEvt = null; });
 
 // ── TEST MENU ────────────────────────────────────────────────────────────────
 const devEl = document.getElementById('dev');
