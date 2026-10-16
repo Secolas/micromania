@@ -44,14 +44,23 @@ export default async function ({ url, launch }) {
   out.wins.boop = play(WhackMole, 3, (gm, i) => { if (i % 10 === 5) { const h = gm.holes[gm.cur]; tapAt(h.x, h.y - 4); } });
   out.wins.laser = play(FollowDot, 3, (gm) => hold(gm.x, gm.y));
   out.wins.rub = play(RubClean, 3, (gm, i) => { const m = gm.mud.find(m => m.dirt > 0); if (m) hold(m.x + Math.sin(i) * 9, m.y + Math.cos(i * 1.3) * 9); });
-  out.wins.cut = play(CutRope, 3, (gm, i) => { if (i === 10) { const r = gm.ropes[gm.target]; const y = (gm.y0 + gm.end(r)) / 2; swipe(r.x - 20, y, r.x + 20, y); } });
+  // CUT: wait until a cut now would drop the swinging bone into the mouth, then swipe across its rope
+  out.wins.cut = play(CutRope, 3, (gm, i) => {
+    const r = gm.ropes[gm.target]; if (r.cut || i < 3) return;
+    const it = gm.item(r), v = r.va * r.L; let x = it.x, y = it.y, vx = Math.cos(r.a) * v, vy = -Math.sin(r.a) * v;
+    for (let k = 0; k < 200 && !(vy > 0 && y >= gm.mouthY - 6); k++) { vy += gm.G / 60; x += vx / 60; y += vy / 60; }
+    if (Math.abs(x - gm.dogX) < 8) { const mx = (r.px + it.x) / 2, my = (gm.y0 + it.y) / 2; swipe(mx - 20, my, mx + 20, my); }
+  });
   out.wins.walk = play(TracePath, 3, (gm, i) => { const k = Math.min(gm.nodes.length - 1, gm.i + 1), a = gm.nodes[gm.i], b = gm.nodes[k]; const t = gm.started ? Math.min(1, (gm._s = (gm._s || 0) + 0.08)) : 0; if (gm._last !== gm.i) { gm._s = 0; gm._last = gm.i; } hold(a.x + (b.x - a.x) * (gm._s || 0), a.y + (b.y - a.y) * (gm._s || 0)); });
   out.wins.paws = play(PianoTiles, 3, (gm) => { const t = gm.tiles.filter(t => !t.hit && t.y > 150).sort((a, b) => b.y - a.y)[0]; if (t) tapAt(t.col * gm.colW + gm.colW / 2, t.y + 10); });
-  out.wins.charge = play(HoldRelease, 3, (gm) => { if (gm.armed && Math.abs(gm.p - gm.zoneAt) < gm.zone / 4) release(); else hold(90, 150); });
+  out.wins.charge = play(HoldRelease, 3, (gm) => { const c = (gm.bandLo + gm.bandHi) / 2, hw = Math.max(0.006, (gm.bandHi - gm.bandLo) / 4); if (gm.armed && Math.abs(gm.p - c) < hw) release(); else hold(90, 150); });
   out.wins.throw = play(StopBar, 3, (gm) => { if (Math.abs(gm.p - gm.at) < gm.band / 4) tapAt(90, 150); });
   out.wins.pour = play(PourCup, 3, (gm) => { if (gm.fill < (gm.lo + gm.hi) / 2) hold(90, 150); else release(); });
   out.wins.blow = play(BlowSail, 3, (gm, i) => { if (i % 4 === 0) tapAt(90, 150); });
-  out.wins.stack = play(StackBlocks, 3, (gm) => { if (Math.abs(gm.bx - gm.baseX) <= gm.tol / 2) tapAt(90, 150); });
+  // STACK: drop each one right over the top of the tower (it sways, so aim at where the top is now)
+  out.wins.stack = play(StackBlocks, 3, (gm) => { if (gm.drop || gm.endT || gm.tumble.length) return; const tx = gm.done ? gm.xAt(gm.done - 1) : gm.baseX; if (Math.abs(gm.bx - tx) <= 2) tapAt(90, 150); });
+  // ... and a careless player who taps whenever: should lose most of the time
+  out.losses = { stack: play(StackBlocks, 3, (gm, i) => { if (i % 25 === 10) tapAt(90, 150); }) };
   out.wins.shh = play(DontTap, 3, () => {});
   out.wins.dodge = play(Dodge, 3, (gm) => { const danger = gm.blocks.filter(b => b.y > gm.py - 80 && b.y < gm.py + 10); let best = gm.px, bs = -1; for (let x = 12; x < W - 12; x += 4) { const s = Math.min(...danger.map(b => Math.abs(b.x - x) - b.w / 2), 999); if (s > bs) { bs = s; best = x; } } hold(best, 250); });
   out.wins.squeeze = play(Squeeze, 3, (gm) => { const w = gm.walls.filter(w => w.y < gm.py).sort((a, b) => b.y - a.y)[0]; hold(w ? w.gx : 90, 250); });
@@ -78,6 +87,8 @@ export default async function ({ url, launch }) {
     }
     if (i >= 2 && i < 8) hold(gm._aim[0], gm._aim[1]); else if (i === 8) release();
   });
+  // CATCH: stand under each treat as it falls
+  out.wins.catch = play(CatchCoin, 3, (gm) => { const c = gm.coins.filter(c => !c.done && c.delay <= 0).sort((a, b) => b.y - a.y)[0]; Input.x = c ? c.x : CX; });
   out.wins.pat = play(PatShiba, 3, (gm, i) => { if (!gm.fake && i % 3 === 0) tapAt(90, 150); });
   // fake-outs: forced on, a touch must lose and leaving it alone must win
   Engine.seen.add('pat'); Engine.seen.add('tap');

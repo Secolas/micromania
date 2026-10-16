@@ -1766,10 +1766,14 @@ class CatchCoin extends Microgame {
     const gap = this.need > 1 ? Math.min(0.8, budget * 0.35 / (this.need - 1)) : 0;
     const travel = budget - gap * (this.need - 1);
     const speed = Math.max(55, (this.floor - this.startY) / travel);
+    // the treats really fall: same drop time as a steady fall at that speed,
+    // but starting slow and speeding up (y = v0 t + g t²/2 over the drop)
+    const D = this.floor - this.startY, T = D / speed;
+    this.v0 = speed * 0.35; this.grav = 2 * (D - this.v0 * T) / (T * T);
 
     this.coins = [];
     for (let i = 0; i < this.need; i++) {
-      this.coins.push({ x: 22 + Math.random() * (W - 44), y: this.startY, sp: speed, delay: i * gap, done: false });
+      this.coins.push({ x: 22 + Math.random() * (W - 44), y: this.startY, vx: 0, vy: this.v0, rot: 0, delay: i * gap, done: false, bounces: 0 });
     }
   }
   update(dt, input) {
@@ -1780,15 +1784,20 @@ class CatchCoin extends Microgame {
     for (const c of this.coins) {
       if (c.done) continue;
       if (c.delay > 0) { c.delay -= dt; continue; }
-      c.y += c.sp * dt;
-      if (c.y >= this.floor) {                    // resolve at the floor, no tunnelling
-        c.done = true;
-        if (Math.abs(c.x - this.bx) < this.catchTol) {
-          this.got++; Sfx.crunch(); FX.hit(c.x, this.floor, PAL.accent);
+      c.vy += this.grav * dt; c.x += c.vx * dt; c.y += c.vy * dt; c.rot += (c.vx * 0.05 + 2) * dt;
+      c.x = Math.max(6, Math.min(W - 6, c.x));
+      if (c.y >= this.floor && c.vy > 0) {        // resolve at the floor, no tunnelling
+        const dx = c.x - this.bx;
+        if (Math.abs(dx) < this.catchTol) {
+          c.done = true; this.got++; Sfx.crunch(); FX.hit(c.x, this.floor, PAL.accent);
           if (this.got >= this.need) this.succeed();
-        } else { this.lose(); }
+        } else if (Math.abs(dx) < this.catchTol + 7 && c.bounces < 2) {
+          // clipped the edge of the dog's head: it bounces off, up and away, and can still be caught
+          c.y = this.floor; c.vy = -c.vy * 0.45; c.vx = Math.sign(dx) * 70; c.bounces++; Sfx.boop(); FX.hit(c.x, this.floor, PAL.ink);
+        } else { c.done = true; this.lose(); }
       }
     }
+    this.playingOut = !this.finished && this.coins.some(c => !c.done && c.bounces > 0);   // a treat bouncing off gets to come down
   }
   draw(g) {
     g.clear();
@@ -1796,7 +1805,8 @@ class CatchCoin extends Microgame {
     for (const c of this.coins) {
       if (c.done) continue;
       if (c.delay > 0) { g.rect(c.x - 1, this.startY - 6, 2, 3, PAL.mid); continue; }  // drop marker
-      g.bone(c.x, c.y, 13);
+      if (c.bounces) { ctx.globalAlpha = 0.4; g.rect(c.x - 4, this.floor + 4, 8, 2, PAL.bg); ctx.globalAlpha = 1; }   // its shadow, once it's bouncing
+      ctx.save(); ctx.translate(c.x, c.y); ctx.rotate(c.rot); g.bone(0, 0, 13); ctx.restore();
     }
     g.sprite('catcher', this.bx, this.dogY, { w: this.dogW, h: this.dogH, color: PAL.ink,
              frame: Math.floor(this.t * 8) % 5 });
@@ -2043,9 +2053,56 @@ class HoldRelease extends Microgame {
     this.p = 0; this.dir = 1;
     this.speed = this.byD(0.55, 0.8, 1.1);
     this.zone = this.byD(0.22, 0.16, 0.11);
-    this.zoneAt = 0.35 + Math.random() * 0.4;
+    this.zoneAt = 0.32 + Math.random() * 0.3;   // the couch's height; a very high one leaves almost no landing window
     this.armed = false;
     this.jumpT = -1;                         // seconds into the jump, -1 = still on the floor
+    // a real jump: the charge sets how high it leaps (the meter is the height),
+    // with the same run-up speed every time, under gravity. Too low and it
+    // hits the arm; too high and it's still flying past the seat into the
+    // backrest. The run-up is set so the zone's height lands mid-seat, and the
+    // yellow band is drawn where the flight really lands on the seat.
+    this.G = 900;
+    // pick the run-up whose landing window is as wide as the difficulty's zone
+    // (a faster run-up makes the landing spot more sensitive to the height)
+    const band = () => { let lo = -1, hi = -1; for (let q = 0; q <= 1; q += 0.01) if (this.flight(q).end === 'seat') { if (lo < 0) lo = q; hi = q; } return [lo, hi]; };
+    let best = null;
+    for (let vx = 40; vx <= 420; vx += 10) {
+      this.VX = vx; const [lo, hi] = band();
+      if (lo < 0.05 || hi > 0.97) continue;
+      const err = Math.abs((hi - lo) - this.zone) + Math.abs((lo + hi) / 2 - this.zoneAt) * 0.5;
+      if (!best || err < best.err) best = { err, vx, lo, hi };
+    }
+    if (!best) { this.VX = 120; const [lo, hi] = band(); best = { vx: 120, lo: Math.max(0, lo), hi: Math.max(lo, hi) }; }
+    this.VX = best.vx; this.bandLo = best.lo; this.bandHi = best.hi;
+  }
+  // the couch as boxes: front arm, seat, backrest (feet-point collision)
+  boxes() {
+    const { cx0, cw, seat, th, floor } = this.geo(), top = seat - th / 2, bh = Math.max(30, th + 26), bx = cx0 + cw - 16;
+    // the arm's top counts as seat (it's only a cushion higher): the arm front, seat and backrest
+    return { arm: { x0: cx0, x1: cx0 + 12, top }, seat: { x0: cx0, x1: bx, top }, back: { x0: bx, x1: bx + 16, top: top - bh + th }, floor };
+  }
+  // how high the paws go for meter position q: the meter height, plus the body's clearance
+  lift(q) { const { h } = this.geo(); return Math.max(0, q) * h + this.zone * h / 2 + 8; }
+  // fly the jump for meter position q from the start spot; returns its path and how it ended
+  flight(q) {
+    const B = this.boxes(), path = [];
+    let x = 52, y = B.floor, vx = this.VX, vy = -Math.sqrt(2 * this.G * this.lift(q)), end = 'short', bonked = false;
+    for (let k = 0; k < 360; k++) {
+      const dt = 1 / 120, ox = x, oy = y;
+      vy += this.G * dt; x += vx * dt; y += vy * dt;
+      // into the side of the arm or the backrest: bonk, and drop back
+      for (const b of [B.arm, B.back]) if (!bonked && ox < b.x0 && x >= b.x0 && y > b.top) { x = b.x0 - 1; vx = -vx * 0.3; bonked = true; end = 'bonk'; }
+      // coming down onto the seat (or the arm's top): landed
+      if (!bonked && vy > 0) {
+        if (oy <= B.seat.top && y >= B.seat.top && x >= B.seat.x0 && x <= B.seat.x1) { y = B.seat.top; path.push({ x, y }); return { path, end: 'seat' }; }
+        if (oy <= B.arm.top && y >= B.arm.top && x >= B.arm.x0 && x <= B.arm.x1) { y = B.arm.top; path.push({ x, y }); return { path, end: 'seat' }; }
+        if (oy <= B.back.top && y >= B.back.top && x >= B.back.x0 && x <= B.back.x1) { end = 'over'; }
+      }
+      if (x > W + 20) { path.push({ x, y }); return { path, end: 'over' }; }
+      if (y >= B.floor && vy > 0) { y = B.floor; path.push({ x, y }); return { path, end: bonked ? 'bonk' : x > B.back.x0 ? 'over' : 'short' }; }
+      path.push({ x, y });
+    }
+    return { path, end };
   }
   // A plump red couch seen from the side, its seat cushion exactly th thick at
   // seat — the band you have to land in. Legs on the floor, an armrest at the
@@ -2089,9 +2146,16 @@ class HoldRelease extends Microgame {
     return { x, w, y, h, floor, cx0, cw, seat, th };
   }
   update(dt, input) {
-    if (this.jumpT >= 0) {                   // in the air: play the leap out, then score it
+    if (this.jumpT >= 0) {                   // in the air: fly the path, then score it
       this.jumpT += dt;
-      if (this.jumpT >= 0.6) { if (this.ok) { Sfx.boop(); this.succeed(); } else { Sfx.thud(); buzz(60); FX.shake(3); this.lose(); } }
+      const i = Math.floor(this.jumpT * 120);
+      if (this.fl.end === 'bonk' && !this.bonkSfx) {   // the bonk happens when the path turns back
+        const at = this.fl.path.findIndex((q, k) => k && q.x < this.fl.path[k - 1].x);
+        if (at >= 0 && i >= at) { this.bonkSfx = true; Sfx.thud(); buzz(60); FX.shake(3); }
+      }
+      if (i >= this.fl.path.length + 18) {
+        if (this.ok) { Sfx.boop(); this.succeed(); } else { if (this.fl.end !== 'bonk') Sfx.thud(); this.lose(); }
+      }
       return;
     }
     if (input.down) {
@@ -2100,9 +2164,9 @@ class HoldRelease extends Microgame {
       if (this.p > 1) { this.p = 1; this.dir = -1; }
       if (this.p < 0) { this.p = 0; this.dir = 1; }
     } else if (this.armed) {
-      // let go: the shiba leaps as high as you charged — onto the cushion if
-      // that's the couch's height, else it bonks the front and drops back
-      this.ok = Math.abs(this.p - this.zoneAt) < this.zone / 2;
+      // let go: the shiba leaps with the power you charged, and the jump plays out for real
+      this.fl = this.flight(this.p);
+      this.ok = this.fl.end === 'seat';
       this.jumpT = 0; this.playingOut = true; this.armed = false; Sfx.whoosh(); buzz(15);
     }
   }
@@ -2111,13 +2175,13 @@ class HoldRelease extends Microgame {
     // the jump meter on the left: how high the shiba will go
     const { x, w, y, h, floor, cx0, cw, seat, th } = this.geo();
     g.rect(x, y, w, h, PAL.mid);
-    g.rect(x, y + (1 - this.zoneAt - this.zone / 2) * h, w, this.zone * h, PAL.accent);
+    g.rect(x, y + (1 - this.bandHi) * h, w, (this.bandHi - this.bandLo) * h, PAL.accent);   // where it really lands on the seat
     const py = y + (1 - this.p) * h;
     g.rect(x - 3, py - 2, w + 6, 4, PAL.ink);
     // the couch, its seat at the height the zone marks
     HoldRelease.couch(cx0, cw, seat, th, floor);
-    // the aim line: where the jump tops out right now
-    ctx.globalAlpha = 0.5; g.rect(x + w + 4, py - 1, 64, 2, PAL.ink); ctx.globalAlpha = 1;
+    // the aim line: how high the jump would go at this charge
+    if (this.jumpT < 0) { ctx.globalAlpha = 0.5; g.rect(x + w + 4, floor - this.lift(this.p) - 1, 64, 2, PAL.ink); ctx.globalAlpha = 1; }   // the paws top out here
     g.rect(0, floor, W, 2, PAL.mid);
     // the shiba: crouched on the floor winding up, then leaping. Its feet sit
     // a quarter of the sprite below its centre, so floor - 14 stands it on the floor.
@@ -2126,15 +2190,10 @@ class HoldRelease extends Microgame {
       const fr = this.armed ? (Math.floor(this.t * 10) % 2) : 0;
       g.sprite('runjump', 52, floor - foot, { w: S, h: S, frame: fr });
     } else {
-      // a hop from the floor that tops out where the meter was, landing on
-      // the cushion — or short of the couch, back on the floor
-      const k = Math.min(1, this.jumpT / 0.6), top = y + (1 - this.p) * h;
-      const x1 = this.ok ? cx0 + 22 : cx0 - 10, y1 = this.ok ? seat - th / 2 : floor;
-      const y0 = floor, mid = Math.min(top, y1, y0) - 4;
-      const px = 52 + (x1 - 52) * k;
-      const up = k < 0.5 ? k / 0.5 : 1, down = k < 0.5 ? 0 : (k - 0.5) / 0.5;
-      const py = k < 0.5 ? y0 + (mid - y0) * (1 - (1 - up) * (1 - up)) : mid + (y1 - mid) * down * down;
-      g.sprite('runjump', px, py - foot, { w: S, h: S, frame: k < 0.4 ? 2 : k < 0.6 ? 3 : 4 });
+      // the real flight: up, over and down, or bonk and drop back
+      const P = this.fl.path, i = Math.min(P.length - 1, Math.floor(this.jumpT * 120)), q = P[i], prev = P[Math.max(0, i - 1)];
+      const rising = q.y < prev.y, landed = i >= P.length - 1;
+      g.sprite('runjump', q.x, q.y - foot, { w: S, h: S, frame: landed ? 0 : rising ? 2 : 4 });
     }
     g.text(this.jumpT >= 0 ? (this.ok ? 'UP ON THE COUCH!' : 'BONK!') : this.armed ? 'LET GO AT THE COUCH!' : 'HOLD TO CHARGE',
            CX, BOT - 6, 8, this.jumpT >= 0 ? (this.ok ? PAL.accent : PAL.bad) : this.armed ? PAL.accent : PAL.mid);
@@ -2150,7 +2209,15 @@ class Dodge extends Microgame {
     this.blocks = [];
     this.spawn = 0.15;
     this.every = this.byD(0.62, 0.50, 0.42);
-    this.fall = this.byD(85, 105, 128);
+    // the pots really fall: a gentle start, faster and faster, about as long a
+    // drop as before; on the ground they smash into shards
+    this.grav = this.byD(70, 92, 120); this.v0 = this.byD(22, 28, 34);
+    this.shards = [];
+  }
+  smash(b, y) {
+    for (let k = 0; k < 7; k++) this.shards.push({ x: b.x + (Math.random() - 0.5) * b.w, y, vx: (Math.random() - 0.5) * 140, vy: -60 - Math.random() * 90,
+      r: Math.random() * 6, s: 2 + Math.floor(Math.random() * 3), c: k < 5 ? PAL.bad : k === 5 ? SCENE.dirt : PAL.accent, t: 0, bounced: false });
+    Sfx.crunch(); Sfx.thud();
   }
   update(dt, input) {
     // tracks your finger directly; a lerp left safe columns unreachable
@@ -2165,15 +2232,21 @@ class Dodge extends Microgame {
         if (this.blocks.every(b => b.y > TOP + 50 || Math.abs(b.x - x) > 52)) break;
         x = 14 + Math.random() * (W - 28);
       }
-      this.blocks.push({ x, y: TOP - 8, w: 12 + Math.random() * 10 });
+      this.blocks.push({ x, y: TOP - 8, w: 12 + Math.random() * 10, vy: this.v0, rot: 0, spin: (Math.random() - 0.5) * 1.6 });
     }
     for (const b of this.blocks) {
-      b.y += this.fall * dt;
+      b.vy += this.grav * dt; b.y += b.vy * dt; b.rot += b.spin * dt;
+      if (b.y >= BOT - 9) { b.y = BOT + 99; this.smash(b, BOT - 6); continue; }   // hits the ground
       // hitbox is the body core (~7px), not the drawn sprite, so ears/tail
       // clipping a pot doesn't feel unfair
-      if (Math.abs(b.y - this.py) < 9 && Math.abs(b.x - this.px) < b.w / 2 + 7) { buzz(60); Sfx.crunch(); this.lose(); }
+      if (Math.abs(b.y - this.py) < 9 && Math.abs(b.x - this.px) < b.w / 2 + 7) { buzz(60); this.smash(b, b.y); b.y = BOT + 99; this.lose(); }
     }
     this.blocks = this.blocks.filter(b => b.y < BOT + 12);
+    for (const sh of this.shards) {   // shards fly, bounce once, and fade
+      sh.t += dt; sh.vy += 420 * dt; sh.x += sh.vx * dt; sh.y += sh.vy * dt; sh.r += sh.vx * dt * 0.1;
+      if (sh.y > BOT - 5 && sh.vy > 0) { sh.y = BOT - 5; if (!sh.bounced) { sh.vy *= -0.35; sh.vx *= 0.6; sh.bounced = true; } else { sh.vy = 0; sh.vx *= 0.8; } }
+    }
+    this.shards = this.shards.filter(sh => sh.t < 1.1);
   }
   draw(g) {
     g.clear();
@@ -2182,7 +2255,12 @@ class Dodge extends Microgame {
     for (const b of this.blocks) {
       // a shadow on the ground warns where each one will land
       ctx.globalAlpha = Math.min(0.5, Math.max(0, (b.y - TOP) / (BOT - TOP))); g.rect(b.x - b.w / 2, BOT - 5, b.w, 2, PAL.mid); ctx.globalAlpha = 1;
-      g.pot(b.x, b.y, b.w);
+      ctx.save(); ctx.translate(b.x, b.y); ctx.rotate(b.rot); g.pot(0, 0, b.w); ctx.restore();
+    }
+    for (const sh of this.shards) {
+      ctx.globalAlpha = Math.min(1, (1.1 - sh.t) * 3);
+      ctx.save(); ctx.translate(sh.x, sh.y); ctx.rotate(sh.r); g.rect(-sh.s / 2, -sh.s / 2, sh.s, sh.s - 1, sh.c); ctx.restore();
+      ctx.globalAlpha = 1;
     }
     g.sprite('hero', this.px, this.py - 4, { w: 24, h: 30, frame: Math.floor(this.t * 14) % 9 });
     g.rect(0, BOT - 4, W, 4, PAL.mid);
@@ -2551,64 +2629,96 @@ class PumpBalloon extends Microgame {
   }
 }
 
-// 18. CUT — cut the rope with the bone so it drops to the shiba
+// 18. CUT — Cut the Rope: the bone swings on its rope; cut it at the right
+// moment so it flies into the shiba's mouth. Never the chocolate.
 class CutRope extends Microgame {
-  static meta = { id: 'cut', env: 'wall@262', prompt: 'CUT!', hint: 'swipe', duration: 4.0,
-    how: 'SWIPE ACROSS THE ROPE\nHOLDING THE BONE' };
+  static meta = { id: 'cut', env: 'wall@262', prompt: 'CUT!', hint: 'swipe', duration: 4.6, minDuration: 4.0,
+    how: 'SWIPE THE ROPE WHEN THE\nBONE WILL FALL TO THE DOG' };
   init() {
-    this.n = this.byD(2, 3, 4);
-    this.ropes = [];
-    const gap = (W - 40) / (this.n - 1 || 1);
-    for (let i = 0; i < this.n; i++) this.ropes.push({ x: 20 + gap * i + (this.n === 1 ? gap / 2 : 0), len: 0.75 + Math.random() * 0.25 });
-    this.target = Math.floor(Math.random() * this.n);
-    this.y0 = TOP + 30; this.y1 = BOT - 70;
-    this.cut = -1;            // which rope got cut (-1 = none yet)
-    this.cutAt = 0;           // y where the swipe crossed
-    this.anim = 0;            // seconds since the cut, drives the split + fall
+    this.G = 900;                              // gravity, px/s² (the swing and the fall share it)
+    this.y0 = TOP + 30;                        // the beam
+    const n = this.byD(1, 2, 2);
+    const xs = n === 1 ? [CX] : [52, 128];
+    this.target = Math.floor(Math.random() * n);
+    // each item swings as a pendulum: angle a from straight down, speed va
+    this.ropes = xs.map((x, i) => {
+      const L = 78 + Math.random() * 22, amp = this.byD(0.5, 0.62, 0.72) * (0.85 + Math.random() * 0.3);
+      return { px: x, L, a: (Math.random() < 0.5 ? -1 : 1) * amp, va: 0, cut: false, bone: i === this.target };
+    });
+    // the shiba sits where the bone's swing turns, so a cut there drops it in
+    const T = this.ropes[this.target], side = T.px < CX ? 1 : T.px > CX ? -1 : (Math.random() < 0.5 ? -1 : 1);
+    this.dogX = Math.max(26, Math.min(W - 26, T.px + side * T.L * Math.sin(Math.abs(T.a)) * 0.9));
+    this.mouthY = BOT - 34;
+    this.falling = [];                         // cut pieces in the air
+    this.endT = 0;
   }
-  end(r) { return this.y0 + (this.y1 - this.y0) * r.len; }
+  item(r) { return { x: r.px + Math.sin(r.a) * r.L, y: this.y0 + Math.cos(r.a) * r.L }; }
+  // does segment p-q cross segment a-b?
+  crosses(p, q, a, b) {
+    const d = (u, v, w) => (w.x - u.x) * (v.y - u.y) - (w.y - u.y) * (v.x - u.x);
+    return d(p, q, a) * d(p, q, b) < 0 && d(a, b, p) * d(a, b, q) < 0;
+  }
   update(dt, input) {
-    if (this.cut >= 0) {                    // playing the split animation
-      this.anim += dt;
-      if (this.anim > 0.45) { if (this.cut === this.target) this.succeed(); else this.lose(); }
-      return;
-    }
+    // swing (a real pendulum: a'' = -g/L sin a)
+    for (const r of this.ropes) if (!r.cut) { r.va += -this.G / r.L * Math.sin(r.a) * dt; r.a += r.va * dt; }
     const sw = input.swipe;
-    if (!sw || sw.x0 == null) return;
-    const midY = (sw.y0 + sw.y1) / 2;
-    for (let i = 0; i < this.n; i++) {
-      const r = this.ropes[i], rx = r.x;
-      if (midY < this.y0 - 8 || midY > this.end(r) + 4) continue;   // missed this rope's length
-      if ((sw.x0 - rx) * (sw.x1 - rx) < 0) {                        // the swipe crossed this rope
-        this.cut = i; this.anim = 0;
-        this.cutAt = Math.max(this.y0 + 6, Math.min(this.end(r) - 6, midY));
-        FX.hit(rx, this.cutAt, i === this.target ? PAL.accent : PAL.bad);
-        Sfx.whoosh();
-        if (i === this.target) setTimeout(() => Sfx.chomp(), 300); else { buzz(70); FX.shake(3); }
-        return;
+    if (sw && sw.x0 != null && !this.falling.length) {
+      for (const r of this.ropes) {
+        if (r.cut) continue;
+        const it = this.item(r);
+        if (!this.crosses({ x: sw.x0, y: sw.y0 }, { x: sw.x1, y: sw.y1 }, { x: r.px, y: this.y0 }, it)) continue;
+        // cut: the item flies off along its swing, at the swing's speed
+        r.cut = true;
+        const v = r.va * r.L;
+        this.falling.push({ x: it.x, y: it.y, vx: Math.cos(r.a) * v, vy: -Math.sin(r.a) * v, rot: r.a, spin: r.va * 0.6, bone: r.bone, r });
+        r.stub = 0;
+        FX.hit((sw.x0 + sw.x1) / 2, (sw.y0 + sw.y1) / 2, r.bone ? PAL.accent : PAL.bad); Sfx.whoosh();
+        if (!r.bone) { buzz(70); FX.shake(3); }
+        break;
       }
     }
+    for (const r of this.ropes) if (r.cut) r.stub = Math.min(1, (r.stub || 0) + dt * 3);
+    // the cut piece falls: into the mouth, onto the floor, or (chocolate) a loss
+    for (const f of this.falling) {
+      if (f.done) continue;
+      f.vy += this.G * dt; f.x += f.vx * dt; f.y += f.vy * dt; f.rot += f.spin * dt;
+      if (f.bone && f.vy > 0 && f.y >= this.mouthY - 6 && Math.abs(f.x - this.dogX) < 17) {
+        f.done = true; f.eaten = true; Sfx.chomp(); buzz(20); FX.burst(this.dogX, this.mouthY, PAL.accent, 10, 60); this.endT = 0.25; this.win = true;
+      } else if (f.y > BOT - 8) {
+        f.done = true; f.y = BOT - 8; Sfx.thud(); this.endT = 0.3; this.win = false;
+        if (!f.bone) Sfx.fail();
+      }
+    }
+    if (this.endT > 0) { this.endT -= dt; if (this.endT <= 0) { if (this.win) this.succeed(); else this.lose(); } }
+    this.playingOut = this.falling.length > 0 && !this.finished;   // a piece in the air gets to land
   }
   draw(g) {
     g.clear();
     g.rect(0, this.y0 - 4, W, 4, PAL.ink);       // the beam they hang from
-    // the shiba waiting under the bone, mouth open
-    const tx = this.ropes[this.target].x;
-    g.sprite('shiba', tx, BOT - 22, { w: 40, h: 42, frame: 0 });   // the whole dog, sat on the floor
-    this.ropes.forEach((r, i) => {
-      const e = this.end(r), bone = i === this.target;
-      let itemY = e + 6;
-      if (i === this.cut) {
-        const k = this.anim / 0.45, recoil = k * 12;
-        g.rect(r.x - 1, this.y0, 2, Math.max(0, this.cutAt - recoil - this.y0), PAL.mid);   // top piece springs up
-        itemY = e + 6 + k * k * (BOT - e);                                                  // the rest drops
-        g.rect(r.x - 1, this.cutAt + k * k * (BOT - e), 2, Math.max(0, e - this.cutAt), PAL.mid);
+    // the shiba, sat on the floor where the bone's swing turns
+    const eat = this.falling.some(f => f.eaten);
+    g.sprite('shiba', this.dogX, BOT - 22, { w: 40, h: 42, frame: eat ? 1 + Math.floor(this.t * 14) % 7 : 0 });
+    for (const r of this.ropes) {
+      g.rect(r.px - 3, this.y0 - 1, 6, 4, PAL.mid);                         // the hook
+      if (!r.cut) {
+        const it = this.item(r);
+        g.line(r.px, this.y0, it.x, it.y, PAL.ink, 1.5);
+        ctx.save(); ctx.translate(it.x, it.y + 6); ctx.rotate(r.a);
+        if (r.bone) g.bone(0, 0, 26); else g.choc(0, 0, 26);
+        ctx.restore();
       } else {
-        g.rect(r.x - 1, this.y0, 2, e - this.y0, PAL.mid);
+        // the stub left on the hook swings slack and shortens
+        const k = r.stub, len = (1 - k * 0.6) * 18;
+        g.line(r.px, this.y0, r.px + Math.sin(r.a * (1 - k)) * len, this.y0 + len, PAL.ink, 1.5);
       }
-      if (bone) g.bone(r.x, itemY, 26); else g.choc(r.x, itemY, 26);
-    });
-    if (this.cut < 0) g.text('CUT THE BONE DOWN!', CX, TOP + 20, 8, PAL.mid);
+    }
+    for (const f of this.falling) {
+      if (f.eaten) continue;
+      ctx.save(); ctx.translate(f.x, f.y + 6); ctx.rotate(f.rot);
+      if (f.bone) g.bone(0, 0, 26); else g.choc(0, 0, 26);
+      ctx.restore();
+    }
+    if (!this.falling.length) g.text('CUT IT OVER THE DOG!', CX, TOP + 20, 8, PAL.ink);
   }
 }
 
@@ -2813,7 +2923,10 @@ class FlickShot extends Microgame {
     how: 'SWIPE UP TO THROW\nTHE BALL TO THE SHIBA' };
   init() {
     this.ox = CX; this.oy = BOT - 26;
-    this.ball = { x: this.ox, y: this.oy, vx: 0, vy: 0, flying: false, z: 0 };
+    // seen from above: x, y on the sand, z the height. A throw lobs the ball up;
+    // it lands, bounces lower each time, and rolls to a stop
+    this.ball = { x: this.ox, y: this.oy, vx: 0, vy: 0, flying: false, z: 0, vz: 0 };
+    this.G = 420; this.sea = 56;
     // the shiba runs back and forth across the far end of the yard
     this.dy = TOP + 58 + Math.random() * 26;            // running the wet sand at the water's edge
     this.dx = 30 + Math.random() * (W - 60);
@@ -2829,25 +2942,35 @@ class FlickShot extends Microgame {
         // throw along the swipe; keyboard swipes carry no points, so straight up
         let ax = sw.x0 != null ? sw.x1 - sw.x0 : 0, ay = sw.y0 != null ? sw.y1 - sw.y0 : -1;
         const d = Math.hypot(ax, ay) || 1;
-        this.ball.vx = ax / d * 280; this.ball.vy = ay / d * 280;
+        this.ball.vx = ax / d * 260; this.ball.vy = ay / d * 260; this.ball.vz = 110;
         this.ball.flying = true; Sfx.whoosh(); buzz(15);
       }
       return;
     }
     const b = this.ball;
-    b.x += b.vx * dt; b.y += b.vy * dt; b.z += dt;
-    if (Math.hypot(b.x - this.dx, b.y - this.dy) < this.catchR) { Sfx.bark(); FX.hit(this.dx, this.dy, PAL.accent); this.succeed(); return; }
-    if (b.y < TOP - 10 || b.x < -10 || b.x > W + 10) { Sfx.splash(); this.lose(); }   // in the sea
+    b.x += b.vx * dt; b.y += b.vy * dt;
+    b.vz -= this.G * dt; b.z += b.vz * dt;
+    if (b.z <= 0) {   // on the sand: bounce lower each time, then roll, slowing down
+      b.z = 0;
+      if (b.vz < -40) { b.vz = -b.vz * 0.45; Sfx.boop(); FX.burst(b.x, b.y, SCENE.sandLo || PAL.mid, 4, 30); }
+      else { b.vz = 0; const k = Math.max(0, 1 - 2.2 * dt); b.vx *= k; b.vy *= k; }
+    }
+    // the shiba catches it when it's low enough to grab, bouncing or rolling
+    if (b.z < 16 && Math.hypot(b.x - this.dx, b.y - this.dy) < this.catchR) { Sfx.bark(); FX.hit(this.dx, this.dy, PAL.accent); this.succeed(); return; }
+    if (b.y < this.sea && b.z < 2) { Sfx.splash(); FX.burst(b.x, this.sea, PAL.ink, 8, 50); this.lose(); return; }   // in the sea
+    if (b.x < -10 || b.x > W + 10 || b.y < TOP - 10 || (b.z === 0 && Math.hypot(b.vx, b.vy) < 12)) this.lose();   // off the beach, or it stopped short
   }
   draw(g) {
     g.clear();
     // the line in the sand you throw from
     for (let x = 24; x < W - 24; x += 6) g.rect(x, this.oy + 12, 3, 1, PAL.bg);
     g.sprite(this.dvx > 0 ? 'swiperight' : 'swipeleft', this.dx, this.dy, { w: 58, h: 58, frame: Math.floor(this.t * 16) % 9 });
-    // the ball shrinks a little as it flies away from you
-    const r = this.ball.flying ? Math.max(3.5, 6 - this.ball.z * 3) : 6;
-    g.circle(this.ball.x, this.ball.y, r + 1, PAL.bg);    // dark rim so it reads on sand
-    g.tennis(this.ball.x, this.ball.y, r);
+    // its shadow stays on the sand; the ball rides above it by its height, and
+    // looks a touch bigger the higher it is
+    const b = this.ball, r = 5 + Math.min(3, b.z / 14);
+    if (b.flying) { ctx.globalAlpha = 0.3; g.rect(b.x - 4, b.y + 2, 8, 2, PAL.bg); ctx.globalAlpha = 1; }
+    g.circle(b.x, b.y - b.z, r + 1, PAL.bg);    // dark rim so it reads on sand
+    g.tennis(b.x, b.y - b.z, r);
     if (!this.ball.flying) {
       const a = Math.sin(this.t * 6) * 3;
       g.line(this.ox, this.oy - 12 - a, this.ox, this.oy - 22 - a, PAL.bg, 2);
@@ -4266,42 +4389,87 @@ class Dandelion extends Microgame {
   }
 }
 
-// TAP — a shiba tower: shibas run in from either side; tap to drop each one, and it freezes mid-run on the tower
+// TAP — a shiba tower, Tower Bloxx-style: shibas run in from either side; tap
+// to drop each one. It falls, lands on the one below and freezes mid-run, but
+// one that lands more than half off the edge tips over, a tower leaning too far
+// topples, and the taller it gets the more it sways.
 class StackBlocks extends Microgame {
-  static meta = { id: 'stack', env: 'room@270', prompt: 'STACK!', hint: 'tap', duration: 5.0, minDuration: 4.2,
-    how: 'TAP TO DROP EACH SHIBA\nONTO THE TOWER' };
+  static meta = { id: 'stack', env: 'room@270', prompt: 'STACK!', hint: 'tap', duration: 5.4, minDuration: 4.6,
+    how: 'TAP TO DROP EACH SHIBA\nLAND IT ON THE ONE BELOW' };
   init() {
     this.need = this.byD(3, 4, 5); this.done = 0;
     this.baseX = CX; this.stackY = BOT - 6;   // the floor
     this.LH = 20;                             // one running shiba's height: each lands on the back of the one below
+    this.S = 14;                              // half a shiba's body: hang off more than this and it tips
     this.sp = this.byD(90, 115, 140);
-    this.tol = this.byD(14, 11, 9);
-    this.leans = [];                          // where each landed (so the tower leans a little) and which way it ran
+    this.leans = [];                          // each landed one: where (dx from the base), which way it ran, its pose
     this.drop = null;                         // the one falling, between the tap and the landing
+    this.tumble = [];                         // shibas falling off: little rigid bodies
+    this.sway = 0; this.endT = 0; this.perfect = 0;
     this.spawn(Math.random() < 0.5 ? 1 : -1);
   }
   spawn(dir) { this.dir = dir; this.bx = dir > 0 ? 14 : W - 14; this.runT = 0; }
   topY() { return this.stackY - 4 - this.done * this.LH; }   // where the next one's paws land
+  swayAt(i) { return Math.sin(this.t * 2.4) * this.sway * (i + 1) / Math.max(4, this.need); }
+  xAt(i) { return this.baseX + this.leans[i].dx + this.swayAt(i); }
+  // knock shibas from level `from` up off the tower, falling toward `side`
+  topple(from, side) {
+    for (let i = from; i < this.leans.length; i++) {
+      const L = this.leans[i];
+      this.tumble.push({ x: this.xAt(i), y: this.stackY - 4 - i * this.LH - 10, vx: side * (30 + (i - from) * 25), vy: -20, rot: 0, av: side * (4 + (i - from)), dir: L.dir, f: L.f });
+    }
+    this.leans.length = from; this.done = from;
+    Sfx.whoosh(); buzz(60); FX.shake(4);
+  }
   update(dt, input) {
+    // the shibas tumbling off fall to the floor; the last to land ends it
+    for (const b of this.tumble) {
+      if (b.down) continue;
+      b.vy += 1100 * dt; b.x += b.vx * dt; b.y += b.vy * dt; b.rot += b.av * dt;
+      if (b.y > this.stackY - 8) { b.y = this.stackY - 8; b.down = true; Sfx.thud(); FX.burst(b.x, this.stackY, PAL.mid, 6, 40); }
+    }
+    if (this.tumble.length) {
+      this.playingOut = true;
+      if (this.tumble.every(b => b.down) && !this.endT) { this.endT = 0.35; this.result = 'lose'; }
+    }
+    // the ending plays out (the tower cheering, or the fall landing), then it counts
+    if (this.endT) { this.endT -= dt; if (this.endT <= 0) { this.playingOut = false; this.result === 'win' ? this.succeed() : this.lose(); } return; }
+    if (this.perfect > 0) this.perfect -= dt;
     if (this.drop) {
-      this.drop.t += dt;
-      if (this.drop.t >= 0.2) {
-        this.leans.push({ dx: this.drop.x - this.baseX, dir: this.drop.dir, f: this.drop.f }); this.done++; this.drop = null;
-        Sfx.squeak(); buzz(12); FX.hit(this.baseX, this.topY() + this.LH - 6, PAL.accent);
-        if (this.done >= this.need) { Sfx.bark(); this.succeed(); return; }
+      // falling, faster and faster, onto whatever is below
+      this.drop.vy += 1200 * dt; this.drop.y += this.drop.vy * dt;
+      if (this.drop.y >= this.topY()) {
+        const d = this.drop, under = this.done ? this.xAt(this.done - 1) : this.baseX, half = this.done ? this.S : 26;
+        const rel = d.x - under;
+        this.drop = null; this.playingOut = false;
+        if (Math.abs(rel) > half) {   // more than half off the edge: it tips and falls
+          this.leans.push({ dx: d.x - this.baseX - this.swayAt(this.done), dir: d.dir, f: d.f }); this.done++;
+          this.topple(this.done - 1, Math.sign(rel)); return;
+        }
+        this.leans.push({ dx: d.x - this.baseX - this.swayAt(this.done), dir: d.dir, f: d.f }); this.done++;
+        this.squash = 0.12;
+        if (Math.abs(rel) < 3) { this.perfect = 0.6; Sfx.step(Math.min(7, this.done + 2)); FX.burst(d.x, this.topY() + this.LH, PAL.accent, 10, 60); }
+        Sfx.squeak(); buzz(12);
+        // the tower's balance: for each level, does the weight above it sit over it?
+        for (let k = 0; k < this.done; k++) {
+          let sum = 0; for (let m = k; m < this.done; m++) sum += this.leans[m].dx;
+          const com = sum / (this.done - k), support = k ? this.leans[k - 1].dx : 0, lim = k ? this.S : 26;
+          if (Math.abs(com - support) > lim) { this.topple(k, Math.sign(com - support)); return; }
+        }
+        // a lean, or just more height, makes it sway more
+        const comAll = this.leans.reduce((a, L) => a + L.dx, 0) / this.done;
+        this.sway = Math.min(6, Math.abs(comAll) * 0.35 + this.done * 0.5);
+        if (this.done >= this.need) { Sfx.bark(); this.endT = 0.5; this.result = 'win'; this.playingOut = true; return; }
         this.spawn(Math.random() < 0.5 ? 1 : -1); this.sp += 12;
       }
       return;
     }
+    if (this.squash > 0) this.squash -= dt;
     this.runT += dt;
     this.bx += this.dir * this.sp * dt;
     if (this.bx < 14) { this.bx = 14; this.dir = 1; }
     if (this.bx > W - 14) { this.bx = W - 14; this.dir = -1; }
-    for (const t of input.taps) {
-      if (Math.abs(this.bx - this.baseX) <= this.tol) { this.drop = { x: this.bx, y0: this.runY(), t: 0, dir: this.dir, f: this.frame() }; Sfx.whoosh(); }
-      else { buzz(90); FX.shake(4); Sfx.thud(); this.lose(); }
-      return;
-    }
+    if (input.taps.length) { this.drop = { x: this.bx, y: this.runY(), vy: 0, dir: this.dir, f: this.frame() }; this.playingOut = true; Sfx.whoosh(); }
   }
   // paws of the running shiba: a little above the tower top
   runY() { return this.topY() - 30; }
@@ -4314,20 +4482,24 @@ class StackBlocks extends Microgame {
     g.rect(this.baseX - 26, this.stackY - 6, 52, 6, PAL.bad); g.rect(this.baseX - 22, this.stackY - 8, 44, 2, PAL.bad);
     if (this.done === 0 && !this.drop) { ctx.globalAlpha = 0.35; g.line(this.baseX, this.stackY - 8, this.baseX, TOP + 30, PAL.accent, 1); ctx.globalAlpha = 1; }
     // the tower, bottom up, so each one sits in front of the one it's on
-    const top = this.finished && this.won;
+    const cheer = this.result === 'win';
     for (let i = 0; i < this.done; i++) {
       const L = this.leans[i], paws = this.stackY - 4 - i * this.LH;
+      const sq = i === this.done - 1 && this.squash > 0 ? 3 : 0;   // the newest one squashes as it lands
       // frozen mid-run; the top one gallops on the spot when the tower is done
-      this.runner(this.baseX + L.dx, paws, L.dir, top && i === this.done - 1 ? this.frame() : L.f);
+      this.runner(this.xAt(i), paws + sq, L.dir, cheer && i === this.done - 1 ? this.frame() : L.f);
     }
-    if (this.drop) {   // falling onto the tower, frozen in the pose it was tapped in
-      const k = Math.min(1, this.drop.t / 0.2), paws = this.drop.y0 + (this.topY() - this.drop.y0) * k * k;
-      this.runner(this.drop.x, paws, this.drop.dir, this.drop.f);
-    } else if (!this.finished) {   // the next one, running across
+    if (this.drop) this.runner(this.drop.x, this.drop.y, this.drop.dir, this.drop.f);   // falling, frozen in the pose it was tapped in
+    else if (!this.finished && !this.endT && !this.tumble.length) {   // the next one, running across
       const paws = this.runY();
       this.runner(this.bx, paws, this.dir, this.frame());
       ctx.globalAlpha = 0.3; g.line(this.bx, paws + 2, this.bx, this.topY(), PAL.mid, 1); ctx.globalAlpha = 1;
     }
+    for (const b of this.tumble) {   // tipping off and falling, spinning
+      ctx.save(); ctx.translate(b.x, b.y); ctx.rotate(b.rot);
+      g.sprite(b.dir > 0 ? 'swiperight' : 'swipeleft', 0, -4, { w: 56, h: 56, frame: b.f }); ctx.restore();
+    }
+    if (this.perfect > 0) g.outline('PERFECT!', CX, this.topY() - 40, 12, PAL.accent);
     g.text('TAP TO DROP', CX, TOP + 22, 8, PAL.mid);
     for (let i = 0; i < this.need; i++) g.rect(W - 8 - i * 8, TOP + 4, 5, 5, i < this.done ? PAL.accent : PAL.mid);
   }

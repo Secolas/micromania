@@ -156,7 +156,24 @@ into the grass or floor below the horizon, not on the line or up in the sky; a
 head-only face is used only where it peeks out of something (a tub, a hedge, a
 dog bed). Otherwise the whole sitting shiba is used, since its art is cut flat
 at the paws. The bathroom tiles stop at the play field's edge, the day clouds
-drift below the instruction line, and CROSS has a tarmac road. KNOCK IT is drawn like Angry Birds: a wooden Y slingshot on a mound with two rubber bands and a pouch (the back band behind the shiba, the front one in front), a dotted aim and trail, and wooden crates on a stone slab with simple physics: they fall, bounce, slide, roll over to land flat and stack on each other, so a crate shot out of the middle drops the ones above it. A game never puts
+drift below the instruction line, and CROSS has a tarmac road. KNOCK IT is drawn like Angry Birds: a wooden Y slingshot on a mound with two rubber bands and a pouch (the back band behind the shiba, the front one in front), a dotted aim and trail, and wooden crates on a stone slab with simple physics: they fall, bounce, slide, roll over to land flat and stack on each other, so a crate shot out of the middle drops the ones above it.
+
+More games run on real physics (gravity and momentum) rather than canned
+animations:
+
+- **CUT** is Cut the Rope: the bone swings on its rope as a pendulum, and a cut
+  sends it off with the swing's speed, so you time it to drop into the mouth.
+- **STACK** is Tower Bloxx: every tap drops a shiba that falls and lands; more
+  than half off the one below and it tips off, a tower leaning too far
+  topples, and it sways as it grows (dead centre gets a PERFECT!).
+- **DODGE**: the pots speed up as they fall, tumble, and smash into shards.
+- **CATCH**: the treats speed up as they fall and bounce off the edge of the
+  dog's head when you're just off (and can still be caught).
+- **FETCH**: the ball is lobbed (its height and shadow are simulated), lands,
+  bounces lower each time and rolls; the shiba grabs it when it's low.
+- **CHARGE**: a real jump: the charge is the height, the run-up is the same,
+  so too low hits the couch's arm and too high flies into the backrest. The
+  yellow band is computed from that flight, so it's exactly where it lands. A game never puts
 a second shiba right above the shelf mascot (PLUCK and BLOW just have the mascot
 watching). STACK is a shiba tower: shibas run in from either side and you tap to
 drop each one; it freezes mid-run on the back of the one below.
