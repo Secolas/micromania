@@ -97,8 +97,9 @@ so wins and fails always feel the same:
 
 - **Win:** a short hit-stop with a white flash and a ring where you tapped (or the
   centre, for tilt, camera, blow and shake games). Then **GOOD!** slams in,
-  tilted, with confetti from the top corners. The mascot hops, and from two wins
-  in a row a **xN STREAK!** badge pops under the stamp.
+  tilted, with confetti from the top corners. From two wins in a row a
+  **xN STREAK!** badge pops under the stamp. (The mascot cheers but never
+  moves: its art is cut flat at the feet, which only the shelf hides.)
 - **Fail:** **FAIL!** slams in on the red screen, with no flash and no confetti.
 - **Stage clear** (RUN) adds a bigger burst of confetti.
 

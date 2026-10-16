@@ -4771,16 +4771,7 @@ const Mascot = {
 
   draw(g) {
     g.rect(0, BOT, W, 1, PAL.mid);                                      // shelf divider
-    // cheering: hop for joy, squashing on take-off and landing
-    let air = 0, sq = 1;
-    if (this.mode === 'cheer' && this.t < 0.6) {
-      const k = this.t / 0.6;
-      air = Math.max(0, Math.sin(Math.min(1, (k - 0.12) / 0.76) * Math.PI)) * 14;
-      sq = k < 0.12 ? 0.82 : k > 0.86 ? 0.84 : 1.06;
-    }
-    ctx.save(); ctx.translate(this.x, this.y + this.SH / 2 - air); ctx.scale(1 / sq, sq);
-    g.sprite('shiba', 0, -this.SH / 2, { w: this.SW, h: this.SH, frame: this.frame() });
-    ctx.restore();
+    g.sprite('shiba', this.x, this.y, { w: this.SW, h: this.SH, frame: this.frame() });   // never moves: the art is cut flat at its feet
   }
 };
 
@@ -5396,7 +5387,7 @@ const Engine = {
     }
 
     if (s === 'PHOTO') {
-      this.photoReveal = Math.min(1, (this.photoReveal || 0) + dt * 1.2);
+      this.photoReveal = Math.min(1, (this.photoReveal || 0) + dt * 4);   // a quick camera flash, gone in a quarter second
       if (this.timer <= 0 || Input.justDown) {
         Engine.lastPhoto = null;
         this.advance();
@@ -5985,10 +5976,9 @@ const Engine = {
         // draw pixelated + tinted to the game's palette for a retro look
         ctx.save();
         ctx.imageSmoothingEnabled = false;
-        const rev = Math.min(1, this.photoReveal || 1);
-        ctx.globalAlpha = rev;
-        ctx.drawImage(photo, px, py, pw, ph);
+        ctx.drawImage(photo, px, py, pw, ph);   // shown at once: a fade-in left a blank card for a second
         ctx.restore();
+        ctx.globalAlpha = 1 - Math.min(1, this.photoReveal || 0); g.rect(px, py, pw, ph, PAL.ink); ctx.globalAlpha = 1;
         // scanlines, kept faint — at this scale a line every third row banded
         // the whole picture, and any tint on top just tinted the person
         ctx.globalAlpha = 0.08;
