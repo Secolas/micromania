@@ -8,7 +8,7 @@ export default async function ({ url, launch }) {
   const clip = await page.locator('#game').boundingBox();
   const click = (vx, vy) => page.mouse.click(clip.x + vx / 180 * clip.width, clip.y + vy / 320 * clip.height);
   const B = await page.evaluate(() => ({ run: Engine.BTN_RUN, classic: Engine.BTN_CLASSIC, album: Engine.BTN_ALBUM, set: Engine.BTN_SET }));
-  await page.evaluate(() => { Engine.sensors = false; Input.camDenied = Input.micDenied = true; Engine._lastState = null; Engine.state = 'TITLE'; });
+  await page.evaluate(() => { Engine.sensors = false; Input.camDenied = Input.micDenied = true; Prefs.set('tutorial', true); Engine._lastState = null; Engine.state = 'TITLE'; });
   await page.waitForTimeout(200);
   await click(90, B.run.y + 12); await page.waitForTimeout(100);
   eq(await page.evaluate(() => [Engine.state, Engine.titleT > 2]), ['TITLE', true], 'a tap mid-intro skips it and stays on the title');

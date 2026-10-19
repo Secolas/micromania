@@ -25,6 +25,10 @@ export default async function ({ url, launch }) {
     const step = n => { for (let i = 0; i < n; i++) { Input.beginStep(); Engine.update(STEP); Engine.draw(); } };
     for (const st of ['TITLE', 'SETTINGS', 'ALBUM', 'PERMS']) { where = st; Engine.state = st; Engine.titleT = 9; Engine.draw(); }
     Engine.permWait = true; where = 'PERMS wait'; Engine.draw(); Engine.permWait = false;
+    for (const st of ['TUTORIAL', 'TUTDONE']) { where = st; Engine.tut = { step: 0, tries: 0, mode: 'run' }; Engine.state = st; Engine.draw(); }
+    Engine.tutCats().forEach((c, i) => { for (const ok of [true, false]) { where = 'TUTCAT ' + c.label + ok; Engine.tut = { step: i, tries: 0, mode: 'run', cat: { ...c, ok, off: c.off || 'CAMERA' } }; Engine.state = 'TUTCAT'; Engine.timer = 1; Engine.draw(); } });
+    Engine.startRound(TapBug, 1); Engine.state = 'PLAYING'; where = 'practice HUD'; Engine.draw(); Engine.tut = null;
+    Engine.state = 'PLAYING'; Engine.paused = true; where = 'PAUSED'; Engine.draw(); Engine.resumeT = 1.2; where = 'resuming'; Engine.draw(); Engine.paused = false; Engine.resumeT = 0;
     Run.best = 20; Engine.best = 999; where = 'TITLE best'; Engine.state = 'TITLE'; Engine.draw();
     for (const m of ['classic', 'run']) { Engine.mode = m; if (m === 'run') Run.start(); where = 'GAMEOVER ' + m; Engine.state = 'GAMEOVER'; Engine.draw(); }
     for (const m of ['classic', 'run']) {

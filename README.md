@@ -16,6 +16,43 @@ popup (plus motion/tilt on iOS), up front, so no round ever stops for a
 permission prompt; TOUCH ONLY plays every game on its touch fallback. It is
 skipped when the browser says both are already granted.
 
+**New games wait for you**: the first time you ever meet a game, its prompt
+says NEW GAME! and waits for TAP WHEN READY instead of counting down. After
+that it's remembered.
+
+**Surprises**: once things get going, a prompt can start out normal and then
+have a stamp slam down on the game's title:
+- **REVERSE!** (drag and tilt games only): your touch lands where you press, but
+  everything after moves the opposite way (swipes flip, tilt flips). Bosses
+  after the first one (the DODGE and SQUEEZE drag bosses) flip half the time;
+  ordinary drag/tilt games one time in five once the speed is up.
+- **DOUBLE BONUS!** (RUN, any game): a win doubles that game's mult. One game
+  in eight once it's warmed up, one in four on bosses.
+- **+1 LIFE!** (CLASSIC, any game, only when you've lost a life): win it and a
+  life comes back (never above 4). The score stays a plain count of wins.
+  One game in seven once it's warmed up, about one in three on bosses.
+
+A tag stays on screen while you play. A game you're meeting for the first time
+never gets a surprise. For testing, `?reverse` makes every round a reversed
+drag/tilt game and `?double` gives every round the mode's bonus (DOUBLE BONUS in RUN, +1 LIFE in CLASSIC).
+
+**First time**: the first RUN or CLASSIC starts with a short tutorial that
+explains the five kinds of game, one card each: TAP, DRAG, CAMERA, SOUND and
+TILT/SHAKE. Each card plays a short animation of the move (a finger tapping or dragging,
+a hand waving at the camera, a face blowing into the mic, a hand tilting and
+shaking the phone), says what to do, and shows the tag you'll see before those
+games, then a practice game where nothing is lost and a miss gets one more go.
+If a sensor is off, its card says those games are skipped and where to turn it
+on. Then YOU'RE READY! and the mode you picked. SKIP is always there, and
+SETTINGS > HOW TO PLAY replays it. Every prompt shows its kind ("DRAG GAME",
+"CAMERA GAME"...) and plays the same animation, so you know how to play before the clock
+starts (a camera, mic or motion game that fell back to touch shows the touch).
+
+**Pause**: leaving the app (a call, a message, the home button) pauses any
+screen with a clock running, and so does the pause button in the middle of the
+top bar. PAUSED offers RESUME, which counts 3-2-1 back into a game with its
+clock where it was, and QUIT to the title.
+
 **SETTINGS** (on the title menu) has switches for SOUND, MUSIC (the backing
 beat) and VIBRATION, and for each sensor: CAMERA, MICROPHONE and MOTION. Turning
 a sensor on asks the browser right there; turning it off stops it now and keeps
@@ -156,7 +193,24 @@ into the grass or floor below the horizon, not on the line or up in the sky; a
 head-only face is used only where it peeks out of something (a tub, a hedge, a
 dog bed). Otherwise the whole sitting shiba is used, since its art is cut flat
 at the paws. The bathroom tiles stop at the play field's edge, the day clouds
-drift below the instruction line, and CROSS has a tarmac road. A game never puts
+drift below the instruction line, and CROSS has a tarmac road. KNOCK IT is drawn like Angry Birds: a wooden Y slingshot on a mound with two rubber bands and a pouch (the back band behind the shiba, the front one in front), a dotted aim and trail, and wooden crates on a stone slab with simple physics: they fall, bounce, slide, roll over to land flat and stack on each other, so a crate shot out of the middle drops the ones above it.
+
+More games run on real physics (gravity and momentum) rather than canned
+animations:
+
+- **CUT** is Cut the Rope: the bone swings on its rope as a pendulum, and a cut
+  sends it off with the swing's speed, so you time it to drop into the mouth.
+- **STACK** is Tower Bloxx: every tap drops a shiba that falls and lands; more
+  than half off the one below and it tips off, a tower leaning too far
+  topples, and it sways as it grows (dead centre gets a PERFECT!).
+- **DODGE**: the pots speed up as they fall, tumble, and smash into shards.
+- **CATCH**: the treats speed up as they fall and bounce off the edge of the
+  dog's head when you're just off (and can still be caught).
+- **FETCH**: the ball is lobbed (its height and shadow are simulated), lands,
+  bounces lower each time and rolls; the shiba grabs it when it's low.
+- **CHARGE**: a real jump: the charge is the height, the run-up is the same,
+  so too low hits the couch's arm and too high flies into the backrest. The
+  yellow band is computed from that flight, so it's exactly where it lands. A game never puts
 a second shiba right above the shelf mascot (PLUCK and BLOW just have the mascot
 watching). STACK is a shiba tower: shibas run in from either side and you tap to
 drop each one; it freezes mid-run on the back of the one below.
@@ -175,10 +229,23 @@ the sensor games say what is happening (the soda fizzes harder, the sleeping
 shiba snores and goes "huh?" when you twitch, the shiba sniffing for you while HIDE's lens
 is uncovered).
 
-`Beat` is the backing loop — kick, snare, hats and a bass line, scheduled
-ahead on the audio clock. It starts on GO, speeds up with `Engine.speed`, is
-off on menus and in the shop, follows the SOUND and MUSIC switches, and drops out while a mic game is
-listening so the speaker can't count as a blow.
+Sound is synthesised live (no audio files), WarioWare Touched-style:
+
+- **Effects** (`Sfx`) are proper synth voices (envelopes, pitch slides,
+  vibrato, filters) through one mix bus with a compressor and a little room
+  reverb: the bark is two buzzy "wuf"s through a mouth-shaped filter, a win is
+  "ding-ding-DING!" up the chord, a fail is the "bwom-bwom" buzzer.
+- **Stings** mark each beat of the loop: a get-ready lick before every
+  microgame (a low "dun-dun-dun-DUN" for a boss), GO! after the countdown, a
+  siren-and-fanfare SPEED UP, a STAGE CLEAR fanfare and the GAME OVER slide.
+- **Music** (`Music`) is a small chiptune sequencer playing four songs written
+  as 16th-note steps: a bouncy title tune (menus), a funky groove under the
+  microgames that speeds up with every SPEED UP, a darker boss theme, and a
+  laid-back shop tune. It follows the SOUND and MUSIC switches and drops out
+  while a mic game is listening, so the speaker can't count as a blow.
+
+`tests/audio.test.mjs` renders every sound and song offline and checks none is
+silent or clipping.
 
 Props are drawn in code in the five palette colours (`g.bone`, `g.choc`,
 `g.paw`, `g.doghouse`, `g.tennis`, `g.pot`, `g.car`, `g.fence`), so new scenes
@@ -214,6 +281,9 @@ Chromium against the real page (served over http by `tests/run.mjs`).
 | `album`, `settings` | saving, paging, opening, sharing and deleting photos; every switch, saved across a reload |
 | `camera` | live frames from a fake camera, and recovery when the feed stalls |
 | `pwa` | manifest, icons, the service worker, and starting with the network off |
+| `reverse` | REVERSE mirrors a drag about where it went down and only applies to drag/tilt games; a new game's prompt waits for READY, then remembers |
+| `tutorial`, `pause` | the first-time tutorial (practice costs nothing, a miss replays, SKIP, replay from SETTINGS); pausing on leaving the app, RESUME's 3-2-1 with the clock intact, QUIT |
+| `audio` | every effect, sting and song renders audibly without clipping; the right song plays on each screen |
 
 To use a browser that's already installed instead of Playwright's own, set
 `CHROMIUM_PATH=/path/to/chromium`.

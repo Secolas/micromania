@@ -6,10 +6,12 @@ export function eq(a, b, msg) {
 
 // A page on the game with the frame loop stopped (unless live), so a test steps
 // the engine itself. Page errors fail the test.
-export async function openGame(launch, url, { args = [], context = {}, viewport = { width: 360, height: 640 }, wait = 600, query = '', live = false } = {}) {
+export async function openGame(launch, url, { args = [], context = {}, viewport = { width: 360, height: 640 }, wait = 600, query = '', live = false, readyGate = false } = {}) {
   const browser = await launch(args);
   const ctx = await browser.newContext({ viewport, ...context });
   const page = await ctx.newPage();
+  // the first-time READY wait would hold every prompt; tests that want it pass readyGate
+  if (!readyGate) await ctx.addInitScript(() => { try { localStorage.setItem('micromania.readyGate', '0'); } catch (e) {} });
   const errors = [];
   page.on('pageerror', e => errors.push(String(e)));
   await page.goto(url + query);
