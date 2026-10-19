@@ -252,6 +252,7 @@ const Assets = {
     fence:    { src: 'art/fence.png',    fw: 21,  fh: 12,  frames: 1,  fps: 1  },
     gatepost: { src: 'art/gatepost.png', fw: 6,   fh: 14,  frames: 1,  fps: 1  },
     pot:      { src: 'art/pot.png',      fw: 18,  fh: 22,  frames: 2,  fps: 1  },
+    tub:      { src: 'art/tub.png',      fw: 132, fh: 64,  frames: 1,  fps: 1  },
   },
   cache: {},
   load() {
@@ -4882,12 +4883,9 @@ class BathTime extends Microgame {
     for (const f of this.flying) { f.t += dt; f.x += f.vx * dt; f.y += f.vy * dt; f.vy += 260 * dt; }
     this.flying = this.flying.filter(f => f.t < 0.8);
   }
-  // the tub: white enamel, a rim, little feet, the water line (DRY OFF sits in it too)
-  static tub(y) {
-    g.rect(28, y, 124, 52, PAL.ink); g.rect(24, y - 4, 132, 8, PAL.ink); g.rect(24, y + 2, 132, 2, PAL.mid);
-    g.rect(34, y + 52, 8, 8, PAL.mid); g.rect(138, y + 52, 8, 8, PAL.mid);
-    g.rect(36, y + 8, 108, 2, SCENE.sea1);
-  }
+  // the tub (art/tub.png): white enamel, a rim with the water in it, little
+  // feet; its rim's top at y - 4, x 24..156 (DRY OFF sits in it too)
+  static tub(y) { g.sprite('tub', CX, y + 28); }
   bubble(x, y, r) { g.circle(x, y, r + 1, PAL.mid); g.circle(x, y, r, PAL.ink); g.circle(x - r * 0.35, y - r * 0.35, Math.max(1, r * 0.22), SCENE.dayCloud); }
   draw(g) {
     g.clear();
