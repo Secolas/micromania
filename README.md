@@ -26,12 +26,15 @@ have a stamp slam down on the game's title:
   everything after moves the opposite way (swipes flip, tilt flips). Bosses
   after the first one (the DODGE and SQUEEZE drag bosses) flip half the time;
   ordinary drag/tilt games one time in five once the speed is up.
-- **DOUBLE!** (any game): a win counts twice in CLASSIC and doubles the mult in
-  RUN. One game in eight once it's warmed up, one in four on bosses.
+- **DOUBLE BONUS!** (RUN, any game): a win doubles that game's mult. One game
+  in eight once it's warmed up, one in four on bosses.
+- **+1 LIFE!** (CLASSIC, any game, only when you've lost a life): win it and a
+  life comes back (never above 4). The score stays a plain count of wins.
+  One game in seven once it's warmed up, about one in three on bosses.
 
 A tag stays on screen while you play. A game you're meeting for the first time
 never gets a surprise. For testing, `?reverse` makes every round a reversed
-drag/tilt game and `?double` makes every round DOUBLE.
+drag/tilt game and `?double` gives every round the mode's bonus (DOUBLE BONUS in RUN, +1 LIFE in CLASSIC).
 
 **First time**: the first RUN or CLASSIC starts with a short tutorial that
 explains the five kinds of game, one card each: TAP, DRAG, CAMERA, SOUND and

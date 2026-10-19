@@ -37,10 +37,15 @@ export default async function ({ url, launch }) {
   assert(Math.abs(x0 - 90) < 2, 'the press lands where you touch: ' + x0);
   assert(Math.abs(x1 - 50) < 2, 'moving right moves left: ' + x1);
   eq(await page.evaluate(() => { Engine.forceSurprise = null; Engine.state = 'RESULT'; Engine.update(STEP); return Input.rev; }), false, 'off again outside the round');
-  // DOUBLE: a win counts twice
-  await page.evaluate(() => { Engine.forceSurprise = 'double'; Engine.score = 0; Engine.startRound(CatchCoin, 1); Engine.state = 'PLAYING'; Engine.timer = Engine.duration; Engine.game.succeed(); });
+  // the bonus: +1 LIFE in CLASSIC (score stays a count of wins), DOUBLE BONUS in RUN
+  await page.evaluate(() => { Engine.forceSurprise = 'double'; Engine.score = 0; Engine.lives = 2; Engine.startRound(CatchCoin, 1); Engine.state = 'PLAYING'; Engine.timer = Engine.duration; Engine.game.succeed(); });
   await step(1);
-  eq(await page.evaluate(() => [Engine.surprise, Engine.result, Engine.score]), ['double', 'WIN', 2], 'a DOUBLE win scores 2');
-  await page.evaluate(() => { Engine.forceSurprise = null; });
+  eq(await page.evaluate(() => [Engine.surprise, Engine.result, Engine.score, Engine.lives]), ['life', 'WIN', 1, 3], 'a +1 LIFE win gives a life back');
+  const run = await page.evaluate(() => {
+    Engine.mode = 'run'; Run.start(); Run.beginStage(); Engine.startRound(CatchCoin, 1);
+    const s = Engine.surprise; Run.onResult(true, 0); return [s, Run.last.rows.some(r => r[0] === 'DOUBLE BONUS')];
+  });
+  eq(run, ['double', true], 'RUN gets DOUBLE BONUS');
+  await page.evaluate(() => { Engine.forceSurprise = null; Engine.mode = 'classic'; });
   await done();
 }
