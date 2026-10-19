@@ -5328,8 +5328,8 @@ const Run = {
     { id: 'paws',  name: 'QUICK PAWS',  tag: 'PAWS', art: ['whack', 0],      price: 4, group: 'TAP',    lines: ['TAP GAMES', '+15 CHIPS'] },
     { id: 'zoom',  name: 'ZOOMIES',     tag: 'ZOOM', art: ['swiperight', 0, 1.6], price: 5, group: 'DRAG', lines: ['DRAG GAMES', '+20 CHIPS'] },
     { id: 'star',  name: 'CAMERA STAR', tag: 'STAR', art: ['flydog', 3],     price: 6, group: 'CAMERA', lines: ['CAMERA GAMES', 'x2 CHIPS'] },
-    { id: 'lung',  name: 'BIG LUNGS',   tag: 'LUNG', art: ['pumpdog', 6],    price: 5, group: 'BLOW',   lines: ['BLOW GAMES', '+4 MULT'] },
-    { id: 'wiggle', name: 'WIGGLE BUTT', tag: 'WIGL', art: ['dryshake', 0],  price: 5, group: 'SHAKE',  lines: ['SHAKE GAMES', '+4 MULT'] },
+    { id: 'lung',  name: 'BIG LUNGS',   tag: 'LUNG', art: ['pumpdog', 6],    price: 5, group: 'BLOW',   lines: ['SOUND GAMES', '+4 MULT'] },
+    { id: 'wiggle', name: 'WIGGLE BUTT', tag: 'WIGL', art: ['dryshake', 0],  price: 5, group: 'SHAKE',  lines: ['TILT/SHAKE GAMES', '+4 MULT'] },
     { id: 'hot',   name: 'HOT STREAK',  tag: 'HOT',  art: ['face', 0],       price: 6, lines: ['STREAK MULT', 'COUNTS x2'] },
     { id: 'good',  name: 'GOOD BOY',    tag: 'GOOD', art: ['shiba', 3],      price: 5, lines: ['1ST FAIL EACH', 'STAGE IS FREE'] },
     { id: 'fast',  name: 'SPEEDY',      tag: 'FAST', art: ['runjump', 2],    price: 4, lines: ['SPEED BONUS', 'x2'] },
@@ -5799,7 +5799,8 @@ const Engine = {
 
     // starting a run is handled in release(), inside the tap itself
     if (s === 'TUTDONE' && this.timer <= 0) { this.finishTutorial(); return; }
-    if (s === 'TITLE' || s === 'GAMEOVER' || s === 'ALBUM' || s === 'SETTINGS' || s === 'TUTORIAL' || s === 'TUTDONE') {
+    if (s === 'TUTCAT' && this.timer <= 0) { this.tut.cat.ok ? this.tutPlay() : this.tutNext(); return; }
+    if (s === 'TITLE' || s === 'GAMEOVER' || s === 'ALBUM' || s === 'SETTINGS' || s === 'TUTORIAL' || s === 'TUTCAT' || s === 'TUTDONE') {
       Mascot.set(s === 'GAMEOVER' ? 'sad' : 'watch');
       return;
     }
@@ -6001,7 +6002,8 @@ const Engine = {
   ALB_NEXT:    { x: W - 46, y: BOT - 26, w: 30, h: 20 },
   // the menu-style screens: black with drifting paw prints and a pixel frame,
   // and no mascot on the shelf
-  MENU_SCREENS: ['SETTINGS', 'ALBUM', 'PERMS', 'GAMEOVER', 'TUTORIAL', 'TUTDONE'],
+  MENU_SCREENS: ['SETTINGS', 'ALBUM', 'PERMS', 'GAMEOVER', 'TUTORIAL', 'TUTCAT', 'TUTDONE'],
+  groupLabel(gr) { return { TAP: 'TAP', DRAG: 'DRAG', CAMERA: 'CAMERA', BLOW: 'SOUND', SHAKE: 'TILT/SHAKE' }[gr] || gr; },
   menuBg() {
     g.rect(0, 0, W, H, PAL.bg);
     const t = (this.time * 6) % 24, c = '#1c1c1c';
@@ -6040,7 +6042,8 @@ const Engine = {
     if (s === 'ALBUM') { this.albumRelease(p); return; }
     if (s === 'TITLE' && this.timer <= 0 && this.hit(this.BTN_SET, p)) { Sfx.unlock(); Sfx.tap(); this.state = 'SETTINGS'; return; }
     if (s === 'SETTINGS') { this.settingsRelease(p); return; }
-    if (s === 'TUTORIAL' && this.timer <= 0) { Sfx.unlock(); Sfx.tap(); this.tutRound(0); return; }
+    if (s === 'TUTORIAL' && this.timer <= 0) { Sfx.unlock(); Sfx.tap(); this.tutCard(0); return; }
+    if (s === 'TUTCAT' && this.timer < 1.6) { Sfx.tap(); this.tut.cat.ok ? this.tutPlay() : this.tutNext(); return; }
     if (s === 'TUTDONE' && this.timer <= 0.8) { Sfx.tap(); this.finishTutorial(); return; }
     if (s === 'TITLE' && this.timer <= 0) {
       const mode = this.hit(this.BTN_RUN, p) ? 'run' : this.hit(this.BTN_CLASSIC, p) ? 'classic' : null;
@@ -6505,23 +6508,36 @@ const Engine = {
   },
 
   // ── TUTORIAL ───────────────────────────────────────────────────────────────
-  // The first time you play: a how-to card, three practice games (a tap one,
-  // a drag one, and a camera one, or a swipe one without a camera) where
-  // nothing is lost and a miss gets one more go, then YOU'RE READY! and the
-  // mode you picked. SKIP is always there; SETTINGS > HOW TO PLAY replays it.
+  // The first time you play: a how-to card, then each KIND of game in turn
+  // (TAP, DRAG, CAMERA, SOUND, TILT/SHAKE): a card saying what it means and
+  // showing the tag you'll see before those games, then a practice one where
+  // nothing is lost and a miss gets one more go. A kind this phone can't do
+  // (sensor off, or none) gets its card only, saying how to turn it on. Then
+  // YOU'RE READY! and the mode you picked. SKIP is always there; SETTINGS >
+  // HOW TO PLAY replays it.
   TUT_SKIP: { x: W - 42, y: 1, w: 38, h: 16 },          // in the top bar during practice
-  TUT_SKIP_CARD: { x: W - 52, y: 14, w: 38, h: 16 },    // inside the frame on the how-to card
-  tutSkip() { return this.state === 'TUTORIAL' ? this.TUT_SKIP_CARD : this.TUT_SKIP; },
+  TUT_SKIP_CARD: { x: W - 52, y: 14, w: 38, h: 16 },    // inside the frame on the cards
+  tutSkip() { return ['TUTORIAL', 'TUTCAT'].includes(this.state) ? this.TUT_SKIP_CARD : this.TUT_SKIP; },
   tut: null,
-  tutGames() { return [TapBug, CatchCoin, Input.camReady ? MoveCam : SwipeArrow]; },
+  tutCats() {
+    return [
+      { label: 'TAP', hint: 'tap', lines: ['TAP THE SCREEN'], game: TapBug, ok: true },
+      { label: 'DRAG', hint: 'drag', lines: ['KEEP YOUR FINGER DOWN', 'AND MOVE IT'], game: CatchCoin, ok: true },
+      { label: 'CAMERA', hint: 'move', lines: ['MOVE IN FRONT', 'OF THE CAMERA'], game: MoveCam, ok: Input.camReady || Input.camPending, off: 'CAMERA' },
+      { label: 'SOUND', hint: 'blow', lines: ['BLOW OR SHOUT', 'INTO THE MIC'], game: BlowSail, ok: Input.micReady || Input.micPending, off: 'MICROPHONE' },
+      { label: 'TILT/SHAKE', hint: 'shake', lines: ['TILT OR SHAKE', 'YOUR PHONE'], game: Input.tiltReady ? BalanceBall : SodaShake, ok: Input.tiltReady || Input.motionReady, off: 'MOTION' },
+    ];
+  },
   startTutorial(mode) { this.reset(); this.tut = { step: -1, tries: 0, mode }; this.mode = 'classic'; this.state = 'TUTORIAL'; this.timer = 0.4; },
-  tutRound(i) { this.tut.step = i; this.speed = 1; this.startRound(this.tutGames()[i], 1); },
+  // the card for kind i, then (if this phone can play it) its practice game
+  tutCard(i) { this.tut.step = i; this.tut.tries = 0; this.tut.cat = this.tutCats()[i]; this.state = 'TUTCAT'; this.timer = this.tut.cat.ok ? 2.4 : 3.2; },
+  tutPlay() { this.speed = 1; this.startRound(this.tut.cat.game, 1); },
+  tutNext() { if (this.tut.step < 4) this.tutCard(this.tut.step + 1); else { this.state = 'TUTDONE'; this.timer = 2.2; Sfx.clear(); } },
+  tutRound(i) { this.tutCard(i); },
   tutAdvance() {
     const T = this.tut;
-    if (this.result !== 'WIN' && T.tries < 1) { T.tries++; this.startRound(this.tutGames()[T.step], 1); return; }   // one more go
-    T.tries = 0;
-    if (T.step < 2) { this.tutRound(T.step + 1); return; }
-    this.state = 'TUTDONE'; this.timer = 2.2; Sfx.clear();
+    if (this.result !== 'WIN' && T.tries < 1) { T.tries++; this.tutPlay(); return; }   // one more go
+    this.tutNext();
   },
   finishTutorial() {
     Prefs.set('tutorial', true);
@@ -6537,8 +6553,27 @@ const Engine = {
       return;
     }
     const K = this.TUT_SKIP_CARD; g.box(K.x, K.y, K.w, K.h, PAL.mid); g.text('SKIP', K.x + K.w / 2, K.y + 11, 8, PAL.ink);
+    if (this.state === 'TUTCAT') {   // one kind of game: its tag, its icon, what to do
+      const c = this.tut.cat, n = this.tut.step + 1;
+      g.text(n + ' / 5', 22, K.y + 11, 8, PAL.ink, 'left');
+      g.outline(c.label, CX, TOP + 70, 20, PAL.accent);
+      ctx.save(); ctx.translate(CX, CY - 22); ctx.scale(2.5, 2.5); g.hint(c.hint, 0, 0); ctx.restore();
+      c.lines.forEach((l, i) => g.text(l, CX, CY + 22 + i * 13, 10, PAL.ink));
+      if (c.ok) {
+        // the tag they'll meet before these games, just as the prompt shows it
+        g.text('BEFORE THESE GAMES YOU SEE', CX, CY + 66, 8, PAL.ink);
+        g.rect(CX - 50, CY + 72, 100, 16, PAL.bg); g.box(CX - 50, CY + 72, 100, 16, PAL.accent);
+        g.text(c.label + ' GAME', CX, CY + 84, 8, PAL.accent);
+        if (this.timer < 1.6 && Math.floor(this.time * 2) % 2) g.text("TAP TO TRY ONE", CX, BOT - 6, 10, PAL.accent);
+      } else {
+        g.text('YOUR ' + c.off + ' IS OFF,', CX, CY + 66, 8, PAL.bad);
+        g.text('SO THESE GAMES ARE SKIPPED.', CX, CY + 77, 8, PAL.bad);
+        g.text('TURN IT ON IN SETTINGS.', CX, CY + 88, 8, PAL.ink);
+      }
+      return;
+    }
     g.text('HOW TO PLAY', CX, TOP + 50, 14, PAL.accent);
-    const lines = ['EACH GAME LASTS', 'A FEW SECONDS.', '', 'READ THE WORD,', 'THEN DO IT FAST!', '', "LET'S PRACTISE 3.", 'NOTHING TO LOSE.'];
+    const lines = ['EACH GAME LASTS', 'A FEW SECONDS.', '', 'READ THE WORD,', 'THEN DO IT FAST!', '', 'THERE ARE 5 KINDS', "OF GAME. LET'S TRY", 'EACH ONE.'];
     lines.forEach((l, i) => l && g.text(l, CX, TOP + 82 + i * 14, 9, PAL.ink));
     if (Math.floor(this.time * 2) % 2) g.text('TAP TO START', CX, BOT - 16, 10, PAL.accent);
   },
@@ -6591,7 +6626,7 @@ const Engine = {
 
     if (s === 'ALBUM') { this.drawAlbumScreen(); return; }
     if (s === 'SETTINGS') { this.drawSettings(); return; }
-    if (s === 'TUTORIAL' || s === 'TUTDONE') { this.drawTutorialCard(); return; }
+    if (s === 'TUTORIAL' || s === 'TUTCAT' || s === 'TUTDONE') { this.drawTutorialCard(); return; }
 
     if (s === 'PERMS') {
       g.text('CAMERA + MIC', CX, CY - 62, 12, PAL.accent);
@@ -6652,10 +6687,10 @@ const Engine = {
       g.rect(0, CY - 34, W, 44, this.isBoss ? PAL.ink : PAL.accent);
       g.text(m.prompt, CX, CY - 4, m.prompt.length > 9 ? 13 : m.prompt.length > 6 ? 18 : 22, PAL.bg);
       g.hint(m.hint, CX, CY + 40);
-      if (this.mode === 'run') {
-        const b = Run.boosts(m), y = this.isBoss ? CY - 66 : CY - 46;
-        g.text(Run.group(m) + ' GAME' + (b.length ? '  ·  ' + b.map(t => t.name).join(' + ') + '!' : ''), CX, y, 8, b.length ? PAL.accent : PAL.ink);
-      }
+      // the kind of game it is (TAP, DRAG, CAMERA, SOUND, TILT/SHAKE), the same
+      // tag the tutorial teaches, plus any RUN treats it boosts
+      const b = this.mode === 'run' ? Run.boosts(m) : [], ty = this.isBoss ? CY - 66 : CY - 46;
+      g.text(this.groupLabel(Run.group(m)) + ' GAME' + (b.length ? '  ·  ' + b.map(t => t.name).join(' + ') + '!' : ''), CX, ty, 8, b.length ? PAL.accent : PAL.ink);
       this.howTo(m).split('\n').forEach((line, i) => g.text(line, CX, CY + 72 + i * 13, 9, PAL.ink));
       this.drawHud();
       return;
@@ -6747,7 +6782,7 @@ const Engine = {
 
   drawHud() {
     if (this.tut) {   // practice: no lives to lose, and a way out
-      g.text('PRACTICE ' + (this.tut.step + 1) + ' / 3', 6, 13, 8, PAL.accent, 'left');
+      g.text('PRACTICE ' + (this.tut.step + 1) + ' / 5', 6, 13, 8, PAL.accent, 'left');
       const S = this.TUT_SKIP; g.box(S.x, S.y, S.w, S.h, PAL.mid); g.text('SKIP', S.x + S.w / 2, S.y + 11, 8, PAL.ink);
       g.rect(0, TOP - 1, W, 1, PAL.mid);
       return;

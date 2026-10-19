@@ -15,17 +15,20 @@ export default async function ({ url, launch }) {
     Engine.release({ x: CX, y: Engine.BTN_RUN.y + 10 });
     out.first = [Engine.state, !!Engine.tut, Engine.tut && Engine.tut.mode];
     step(30); Engine.release({ x: CX, y: CY });
-    const games = [];
-    // game 1: lose it (no life lost, same game again), then win; games 2 and 3: win
-    for (let k = 0; k < 4; k++) {
-      until(() => Engine.state === 'PLAYING');
-      games.push(Engine.game.meta.id + (k === 0 ? ':lose' : ':win'));
+    const games = [], cards = [];
+    // each kind: its card; then (if this browser can play it) a practice game.
+    // The first game is lost once (no life lost, same game again), then won.
+    let lost = false;
+    for (let k = 0; k < 12 && Engine.state !== 'TUTDONE'; k++) {
+      until(() => ['TUTCAT', 'PLAYING', 'TUTDONE'].includes(Engine.state));
+      if (Engine.state === 'TUTCAT') { cards.push(Engine.tut.cat.label + (Engine.tut.cat.ok ? '' : ':off')); step(100); Engine.release({ x: CX, y: CY }); continue; }
+      if (Engine.state !== 'PLAYING') break;
       step(5);
-      if (k === 0) Engine.game.lose(); else Engine.game.succeed();
-      step(2);
-      out['lives' + k] = Engine.lives;
+      if (!lost) { lost = true; games.push(Engine.game.meta.id + ':lose'); Engine.game.lose(); } else { games.push(Engine.game.meta.id + ':win'); Engine.game.succeed(); }
+      step(2); out['lives' + games.length] = Engine.lives;
       until(() => Engine.state !== 'RESULT' && Engine.state !== 'PHOTO');
     }
+    out.cards = cards;
     out.games = games;
     until(() => Engine.state === 'TUTDONE'); out.done = Engine.state;
     until(() => Engine.state !== 'TUTDONE');
@@ -41,8 +44,9 @@ export default async function ({ url, launch }) {
     return out;
   });
   eq(r.first, ['TUTORIAL', true, 'run'], 'the first RUN starts with HOW TO PLAY');
-  eq(r.games, ['tap:lose', 'tap:win', 'catch:win', 'swipe:win'], 'a miss replays the game; then tap, drag and (no camera) swipe');
-  eq([r.lives0, r.lives1, r.lives3], [4, 4, 4], 'practice costs no lives');
+  eq(r.cards, ['TAP', 'DRAG', 'CAMERA:off', 'SOUND:off', 'TILT/SHAKE:off'], 'a card for each kind; the ones this browser cannot do say so');
+  eq(r.games, ['tap:lose', 'tap:win', 'catch:win'], 'a miss replays the game; tap and drag are practised');
+  eq([r.lives1, r.lives2, r.lives3], [4, 4, 4], 'practice costs no lives');
   eq(r.done, 'TUTDONE', "YOU'RE READY! at the end");
   eq(r.after.slice(0, 3), ['READY', 'run', '1'], 'then the run starts, and the tutorial is remembered');
   eq(r.second, 'READY', 'the next start goes straight in');

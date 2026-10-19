@@ -16,11 +16,14 @@ popup (plus motion/tilt on iOS), up front, so no round ever stops for a
 permission prompt; TOUCH ONLY plays every game on its touch fallback. It is
 skipped when the browser says both are already granted.
 
-**First time**: the first RUN or CLASSIC starts with a short tutorial: a HOW TO
-PLAY card, then three practice games (a tap one, a drag one, and a camera one,
-or a swipe one without a camera) where nothing is lost and a miss gets one more
-go, then YOU'RE READY! and the mode you picked. SKIP is always there, and
-SETTINGS > HOW TO PLAY replays it.
+**First time**: the first RUN or CLASSIC starts with a short tutorial that
+explains the five kinds of game, one card each: TAP, DRAG, CAMERA, SOUND and
+TILT/SHAKE. Each card shows what to do and the tag you'll see before those
+games, then a practice game where nothing is lost and a miss gets one more go.
+If a sensor is off, its card says those games are skipped and where to turn it
+on. Then YOU'RE READY! and the mode you picked. SKIP is always there, and
+SETTINGS > HOW TO PLAY replays it. Every prompt shows its kind ("DRAG GAME",
+"CAMERA GAME"...) so you know how to play before the clock starts.
 
 **Pause**: leaving the app (a call, a message, the home button) pauses any
 screen with a clock running, and so does the pause button in the middle of the
