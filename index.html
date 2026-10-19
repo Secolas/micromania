@@ -253,6 +253,7 @@ const Assets = {
     gatepost: { src: 'art/gatepost.png', fw: 6,   fh: 14,  frames: 1,  fps: 1  },
     pot:      { src: 'art/pot.png',      fw: 18,  fh: 22,  frames: 2,  fps: 1  },
     tub:      { src: 'art/tub.png',      fw: 132, fh: 64,  frames: 1,  fps: 1  },
+    lawn:     { src: 'art/lawn.png',     fw: 16,  fh: 16,  frames: 14, fps: 1  },
   },
   cache: {},
   load() {
@@ -1664,10 +1665,19 @@ const Env = {
     const [kind, arg] = spec.split('@');
     const y = arg ? +arg : BOT;
     if (kind === 'lawn') {
-      // mown stripes, darker patches, tufts and the odd flower
-      for (let i = 0; i < W; i += 30) R(i, TOP, 15, BOT - TOP, SCENE.grass), R(i + 15, TOP, 15, BOT - TOP, SCENE.grassLo);
-      tufts(TOP, BOT, 70);
-      for (let i = 0; i < 7; i++) { const fx = rnd() * W, fy = TOP + rnd() * (BOT - TOP); R(fx, fy, 2, 2, i % 2 ? PAL.accent : PAL.ink); }
+      // mown stripes of grass tiles (art/lawn.png, 16x16): light and dark
+      // columns, mostly plain, now and then a tuft or a daisy
+      const a = Assets.get('lawn'), T = 16, plain = [[0, 1, 2, 3], [6, 7, 8, 9]], deco = [[4, 5], [10, 11, 12, 13]];
+      if (!a) {
+        for (let i = 0; i < W; i += 30) R(i, TOP, 15, BOT - TOP, SCENE.grass), R(i + 15, TOP, 15, BOT - TOP, SCENE.grassLo);
+      } else {
+        x.save(); x.beginPath(); x.rect(0, TOP, W, BOT - TOP); x.clip();
+        for (let col = 0; col * T < W; col++) for (let ty = TOP; ty < BOT; ty += T) {
+          const set = rnd() < 0.12 ? deco[col % 2] : plain[col % 2], f = set[Math.floor(rnd() * set.length)];
+          x.drawImage(a.img, f * T, 0, T, T, col * T, ty, T, T);
+        }
+        x.restore();
+      }
     } else if (kind === 'sky') {
       sky(TOP, BOT);
     } else if (kind === 'field') {
