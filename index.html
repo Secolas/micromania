@@ -4074,7 +4074,11 @@ class HeadBang extends Microgame {
     this.thr = 0.07;                                // below this is just standing there
     this.gain = this.byD(1.9, 1.6, 1.35);           // real headbanging (motion ~0.3) fills it in 2.5-3.7s
     this.ph = 0; this.step = 0; this.stepT = 0; this.flash = 0;
+    this.pow = 0; this.lvl = 0; this.lvlPop = 0; this.sparkT = 0;
   }
+  // how hard you're rocking right now, said out loud: 0 = not enough (the
+  // meter drains), then GOOD, ROCKIN', INSANE
+  static LEVELS = [['BANG HARDER!', 0], ['GOOD', 0.09], ["ROCKIN'!", 0.2], ['INSANE!!', 0.32]];
   // the riff: an eighth-note chug with kick and snare, at 150 bpm
   static RIFF = ['E2', 'E2', 'G2', 'E2', 'A2', 'E2', 'G2', 'D2'];
   playStep(loud) {
@@ -4089,6 +4093,12 @@ class HeadBang extends Microgame {
     if (this.paused) { this.wait += dt; if (!Input.camPending || this.wait > 1.5) this.paused = false; return; }
     const m = input.motion;
     this.rock = Math.max(0, this.rock + dt * (Math.max(0, m - this.thr) * this.gain - 0.04));
+    // a steadier reading of the same motion, for the rating and the VU meters
+    this.pow += (m - this.pow) * Math.min(1, dt * 6);
+    let lvl = 0; HeadBang.LEVELS.forEach(([, at], i) => { if (this.pow >= at) lvl = i; });
+    if (lvl > this.lvl) { this.lvlPop = 0.25; if (lvl === 3) Sfx.hiss({ dur: 0.5, vol: 0.05, bp: 1200, q: 0.4 }); }   // the crowd roars
+    this.lvl = lvl; if (this.lvlPop > 0) this.lvlPop -= dt;
+    if (lvl >= 2 && (this.sparkT -= dt) <= 0) { this.sparkT = lvl === 3 ? 0.08 : 0.2; FX.burst(CX + (Math.random() - 0.5) * 50, CY - 30, lvl === 3 ? PAL.accent : PAL.ink, 3, 70); }
     this.ph += dt * (5 + 18 * Math.min(1, m * 2.5));
     if (this.flash > 0) this.flash -= dt;
     this.stepT -= dt;
@@ -4104,10 +4114,15 @@ class HeadBang extends Microgame {
     // stage lights sweeping down on the snare
     if (lit) { ctx.globalAlpha = 0.18; for (const lx of [30, 150]) { ctx.fillStyle = PAL.accent; ctx.beginPath(); ctx.moveTo(lx - 4, TOP); ctx.lineTo(lx + 4, TOP); ctx.lineTo(CX + (lx - CX) * 0.2 + 26, BOT - 40); ctx.lineTo(CX + (lx - CX) * 0.2 - 26, BOT - 40); ctx.fill(); } ctx.globalAlpha = 1; }
     // speaker stacks either side, the cones pumping with the music
-    for (const sx of [6, W - 34]) for (let k = 0; k < 2; k++) {
-      const sy = BOT - 92 + k * 34;
-      g.rect(sx, sy, 28, 32, PAL.ink); g.rect(sx + 1, sy + 1, 26, 30, PAL.bg);
-      g.circle(sx + 14, sy + 16, 10 + (lit ? 1 : 0), PAL.mid); g.circle(sx + 14, sy + 16, 4, PAL.bg);
+    for (const sx of [6, W - 34]) {
+      for (let k = 0; k < 2; k++) {
+        const sy = BOT - 92 + k * 34;
+        g.rect(sx, sy, 28, 32, PAL.ink); g.rect(sx + 1, sy + 1, 26, 30, PAL.bg);
+        g.circle(sx + 14, sy + 16, 10 + (lit ? 1 : 0), PAL.mid); g.circle(sx + 14, sy + 16, 4, PAL.bg);
+      }
+      // a VU meter on top of each stack: how hard you're rocking, live
+      const on = Math.round(Math.min(1, this.pow / 0.4) * 8);
+      for (let v = 0; v < 8; v++) g.rect(sx + 2 + v * 3, BOT - 100, 2, 6, v < on ? (v >= 6 ? PAL.bad : PAL.accent) : PAL.mid);
     }
     // the rocker: the shiba headbanging as hard as you are
     const nod = Math.abs(Math.sin(this.ph)), hy = CY - 18 + nod * 12 * m, rot = Math.sin(this.ph) * 0.25 * m;
@@ -4123,8 +4138,13 @@ class HeadBang extends Microgame {
     }
     // the ROCK meter
     g.text('ROCK', 24, TOP + 26, 8, PAL.accent, 'left');
-    g.bar(54, TOP + 19, W - 78, 9, this.rock, PAL.accent);
-    g.text(Input.camReady ? 'BANG YOUR HEAD!' : 'TAP FAST TO ROCK!', CX, TOP + 44, 9, PAL.ink);
+    g.bar(54, TOP + 19, W - 78, 9, this.rock, this.lvl === 0 && this.t >= 0.6 ? PAL.bad : PAL.accent);
+    // the rating, big: drains in red when you're not rocking hard enough
+    if (this.t < 0.6) g.text(Input.camReady ? 'BANG YOUR HEAD!' : 'TAP FAST TO ROCK!', CX, TOP + 46, 9, PAL.ink);
+    else {
+      const [word] = HeadBang.LEVELS[this.lvl], sz = (this.lvl === 0 ? 10 : 12 + this.lvl * 2) + this.lvlPop * 16;
+      if (this.lvl > 0 || Math.floor(this.t * 4) % 2) g.outline(word, CX, TOP + 50, sz, this.lvl === 0 ? PAL.bad : this.lvl === 3 ? PAL.accent : PAL.ink);
+    }
   }
 }
 
