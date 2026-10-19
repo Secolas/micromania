@@ -16,6 +16,17 @@ popup (plus motion/tilt on iOS), up front, so no round ever stops for a
 permission prompt; TOUCH ONLY plays every game on its touch fallback. It is
 skipped when the browser says both are already granted.
 
+**First time**: the first RUN or CLASSIC starts with a short tutorial: a HOW TO
+PLAY card, then three practice games (a tap one, a drag one, and a camera one,
+or a swipe one without a camera) where nothing is lost and a miss gets one more
+go, then YOU'RE READY! and the mode you picked. SKIP is always there, and
+SETTINGS > HOW TO PLAY replays it.
+
+**Pause**: leaving the app (a call, a message, the home button) pauses any
+screen with a clock running, and so does the pause button in the middle of the
+top bar. PAUSED offers RESUME, which counts 3-2-1 back into a game with its
+clock where it was, and QUIT to the title.
+
 **SETTINGS** (on the title menu) has switches for SOUND, MUSIC (the backing
 beat) and VIBRATION, and for each sensor: CAMERA, MICROPHONE and MOTION. Turning
 a sensor on asks the browser right there; turning it off stops it now and keeps
@@ -244,6 +255,7 @@ Chromium against the real page (served over http by `tests/run.mjs`).
 | `album`, `settings` | saving, paging, opening, sharing and deleting photos; every switch, saved across a reload |
 | `camera` | live frames from a fake camera, and recovery when the feed stalls |
 | `pwa` | manifest, icons, the service worker, and starting with the network off |
+| `tutorial`, `pause` | the first-time tutorial (practice costs nothing, a miss replays, SKIP, replay from SETTINGS); pausing on leaving the app, RESUME's 3-2-1 with the clock intact, QUIT |
 | `audio` | every effect, sting and song renders audibly without clipping; the right song plays on each screen |
 
 To use a browser that's already installed instead of Playwright's own, set

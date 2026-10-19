@@ -5,7 +5,7 @@ import { eq, assert, openGame } from './lib.mjs';
 export default async function ({ url, launch }) {
   const { page, done } = await openGame(launch, url);
   const r = await page.evaluate(() => {
-    Engine.sensors = false; Input.camDenied = Input.micDenied = true;
+    Engine.sensors = false; Input.camDenied = Input.micDenied = true; Prefs.set('tutorial', true);   // seen it already
     Engine.state = 'TITLE'; Engine.timer = 0; Engine.titleT = 9;
     Engine.release({ x: CX, y: Engine.BTN_CLASSIC.y + 10 });
     const step = (n = 1) => { for (let i = 0; i < n; i++) { Input.beginStep(); Engine.update(STEP); } };

@@ -1017,6 +1017,9 @@ const Input = {
     }
   },
   travel() { return this._travel; },
+  // forget any touch made while the game wasn't running (a pause), so it can't
+  // land as a tap the moment play resumes
+  flush() { this._pendingTaps = []; this._pendingSwipe = null; this._justDownRaw = this._justUpRaw = false; this.down = false; this.taps = []; this.swipe = null; },
   resetTravel() { this._travel = 0; }
 };
 Input.attach(canvas);
@@ -5795,7 +5798,8 @@ const Engine = {
     const s = this.state;
 
     // starting a run is handled in release(), inside the tap itself
-    if (s === 'TITLE' || s === 'GAMEOVER' || s === 'ALBUM' || s === 'SETTINGS') {
+    if (s === 'TUTDONE' && this.timer <= 0) { this.finishTutorial(); return; }
+    if (s === 'TITLE' || s === 'GAMEOVER' || s === 'ALBUM' || s === 'SETTINGS' || s === 'TUTORIAL' || s === 'TUTDONE') {
       Mascot.set(s === 'GAMEOVER' ? 'sad' : 'watch');
       return;
     }
@@ -5887,13 +5891,13 @@ const Engine = {
           const touch = ['TAP', 'DRAG'].includes(Run.group(this.game.meta)) && Input.y > TOP && Input.y < BOT;
           Juice.start(true, this.mode === 'run' ? 0 : this.combo, touch ? Input.x : CX, touch ? Input.y : CY);
         } else {
-          if (!this.testClass && this.mode === 'classic') this.lives--;
+          if (!this.testClass && !this.tut && this.mode === 'classic') this.lives--;
           this.snap = null;
           this.combo = 0; this.result = 'FAIL'; Sfx.fail(); buzz(120); Mascot.set('sad');
           FX.flash(PAL.bad, 0.55); FX.shake(5);
           Juice.start(false, 0, CX, CY);
         }
-        if (this.score > this.best && !this.testClass && this.mode === 'classic') {
+        if (this.score > this.best && !this.testClass && !this.tut && this.mode === 'classic') {
           this.best = this.score;
           try { localStorage.setItem('micromania.best', String(this.best)); } catch (e) {}
         }
@@ -5988,6 +5992,7 @@ const Engine = {
   ],
   setSwitch(r) { return { x: W - 72, y: r.y - 4, w: 54, h: 20 }; },
   SET_INSTALL: { x: CX - 62, y: H - 48, w: 124, h: 22 },
+  SET_TUT: { x: CX - 50, y: H - 74, w: 100, h: 18 },
   installEvt: null,
   installed() { return matchMedia('(display-mode: standalone)').matches || navigator.standalone === true; },
   TITLE_INTRO: 1.9,          // seconds until the title has settled and its buttons work
@@ -5996,7 +6001,7 @@ const Engine = {
   ALB_NEXT:    { x: W - 46, y: BOT - 26, w: 30, h: 20 },
   // the menu-style screens: black with drifting paw prints and a pixel frame,
   // and no mascot on the shelf
-  MENU_SCREENS: ['SETTINGS', 'ALBUM', 'PERMS', 'GAMEOVER'],
+  MENU_SCREENS: ['SETTINGS', 'ALBUM', 'PERMS', 'GAMEOVER', 'TUTORIAL', 'TUTDONE'],
   menuBg() {
     g.rect(0, 0, W, H, PAL.bg);
     const t = (this.time * 6) % 24, c = '#1c1c1c';
@@ -6018,6 +6023,9 @@ const Engine = {
   hit(b, p) { return p.x >= b.x && p.x < b.x + b.w && p.y >= b.y && p.y < b.y + b.h; },
 
   press(p) {
+    if (this.paused) return true;                                              // the pause screen's own buttons
+    if (this.canPause() && this.hit(this.PAUSE_BTN, p)) { this.pause(); Sfx.tap(); return true; }
+    if (this.tut && this.state !== 'TUTDONE' && this.hit(this.tutSkip(), p)) return true;   // SKIP, never a tap in the game
     return this.state === 'PERMS';   // the sensors screen is buttons only
   },
 
@@ -6032,6 +6040,8 @@ const Engine = {
     if (s === 'ALBUM') { this.albumRelease(p); return; }
     if (s === 'TITLE' && this.timer <= 0 && this.hit(this.BTN_SET, p)) { Sfx.unlock(); Sfx.tap(); this.state = 'SETTINGS'; return; }
     if (s === 'SETTINGS') { this.settingsRelease(p); return; }
+    if (s === 'TUTORIAL' && this.timer <= 0) { Sfx.unlock(); Sfx.tap(); this.tutRound(0); return; }
+    if (s === 'TUTDONE' && this.timer <= 0.8) { Sfx.tap(); this.finishTutorial(); return; }
     if (s === 'TITLE' && this.timer <= 0) {
       const mode = this.hit(this.BTN_RUN, p) ? 'run' : this.hit(this.BTN_CLASSIC, p) ? 'classic' : null;
       if (!mode) return;
@@ -6321,6 +6331,7 @@ const Engine = {
   },
   settingsRelease(p) {
     if (this.hit(this.ALB_BACK, p)) { Sfx.tap(); this.state = 'TITLE'; this.timer = 0.2; return; }
+    if (this.hit(this.SET_TUT, p)) { Sfx.tap(); this.startTutorial(null); return; }   // replay it, then back to the title
     if (this.installEvt && this.hit(this.SET_INSTALL, p)) {   // inside the tap, so Chrome shows its install popup
       Sfx.tap(); const e = this.installEvt;
       e.prompt(); e.userChoice.then(() => { this.installEvt = null; }).catch(() => {});
@@ -6367,11 +6378,12 @@ const Engine = {
         g.box(S.x, S.y, S.w, S.h, c); g.text(st, S.x + S.w / 2, S.y + 14, st.length > 3 ? 7 : 9, st === 'BLOCKED' ? PAL.bad : PAL.ink);
       }
     }
-    g.text('OFF: THOSE GAMES ARE SKIPPED', CX, TOP + 216, 7, TEXT_MID);
     if (blocked) {
-      g.text('BLOCKED: ALLOW IT IN YOUR', CX, TOP + 232, 7, PAL.bad);
-      g.text("BROWSER'S SITE SETTINGS", CX, TOP + 242, 7, PAL.bad);
-    }
+      g.text('BLOCKED: ALLOW IT IN YOUR', CX, TOP + 214, 7, PAL.bad);
+      g.text("BROWSER'S SITE SETTINGS", CX, TOP + 224, 7, PAL.bad);
+    } else g.text('OFF: THOSE GAMES ARE SKIPPED', CX, TOP + 216, 7, TEXT_MID);
+    const T = this.SET_TUT;
+    g.box(T.x, T.y, T.w, T.h, PAL.mid); g.text('HOW TO PLAY', CX, T.y + 12, 8, PAL.ink);
     // put it on the home screen, to open like an app and play offline
     const I = this.SET_INSTALL;
     if (this.installed()) g.text('INSTALLED ON THIS PHONE', CX, I.y + 15, 8, PAL.ink);
@@ -6383,6 +6395,8 @@ const Engine = {
   // The sensors screen eats its presses (see press), so its buttons are
   // checked here on the raw release instead.
   permRelease(p) {
+    if (this.paused) { this.pauseRelease(p); return; }
+    if (this.tut && this.state !== 'TUTDONE' && this.hit(this.tutSkip(), p)) { Sfx.tap(); this.finishTutorial(); return; }
     if (this.state !== 'PERMS' || this.permWait || this.timer > 0) return;
     if (this.hit(this.PERM_ALLOW, p)) {
       Sfx.tap();
@@ -6399,6 +6413,7 @@ const Engine = {
 
   startRun() {
     if (this.sensors) { Input.enableAV(); Input.enableMotion(); Input.enableTilt(); }
+    if (!this.tut && !Prefs.get('tutorial', false)) { this.startTutorial(this.mode); return; }   // the very first time: practice first
     this.reset();
     this.album = []; this.snap = null;
     if (this.mode === 'run') Run.start();
@@ -6412,6 +6427,7 @@ const Engine = {
   // boss on a multiple of SPEEDUP_EVERY, so that used to happen every run.
   advance() { Wipe.run(() => this.advanceNow()); },
   advanceNow() {
+    if (this.tut) { this.tutAdvance(); return; }
     // test mode: replay the same game forever, never lose lives or advance
     if (this.testClass) { this.lives = 4; this.startRound(this.testClass, this.testDiff); return; }
     if (this.mode === 'run') { Run.after(); return; }
@@ -6449,6 +6465,82 @@ const Engine = {
     FX.post();
     this.drawCamView();
     Wipe.draw();
+    if (this.paused) this.drawPause();
+    else if (this.canPause() && !this.tut) this.drawPauseBtn();
+  },
+
+  // ── PAUSE ──────────────────────────────────────────────────────────────────
+  // Leaving the app pauses any screen with a clock running, and so does the
+  // pause button in the top bar. Back in a game, a 3-2-1 before it carries on.
+  PAUSABLE: ['READY', 'STAGE', 'PROMPT', 'PLAYING', 'RESULT', 'PHOTO', 'SPEEDUP', 'CLEAR'],
+  PAUSE_BTN: { x: CX - 12, y: 0, w: 24, h: TOP },
+  PAUSE_RESUME: { x: CX - 50, y: CY - 4, w: 100, h: 24 },
+  PAUSE_QUIT: { x: CX - 50, y: CY + 28, w: 100, h: 20 },
+  paused: false, resumeT: 0,
+  canPause() { return this.PAUSABLE.includes(this.state); },
+  pause() { if (this.paused || !this.canPause()) return; this.paused = true; this.resumeT = 0; },
+  pauseRelease(p) {
+    if (this.resumeT > 0) return;   // counting back in
+    if (this.hit(this.PAUSE_RESUME, p)) { Sfx.tap(); this.resumeT = ['PLAYING', 'PROMPT'].includes(this.state) ? 1.5 : 0.01; this.resumeN = 4; }
+    else if (this.hit(this.PAUSE_QUIT, p)) { Sfx.tap(); this.paused = false; this.tut = null; this.reset(); this.state = 'TITLE'; this.timer = 0.2; Input.flush(); }
+  },
+  pauseTick(dt) {
+    if (this.resumeT <= 0) return;
+    this.resumeT -= dt;
+    const n = Math.ceil(this.resumeT / 0.5);
+    if (n !== this.resumeN && n > 0) { this.resumeN = n; Sfx.tick(); }
+    if (this.resumeT <= 0) { this.paused = false; Input.flush(); }
+  },
+  drawPauseBtn() {
+    const x = CX - 4, y = 4;
+    g.rect(x, y, 3, 10, PAL.ink); g.rect(x + 5, y, 3, 10, PAL.ink);   // two bars
+  },
+  drawPause() {
+    ctx.globalAlpha = 0.78; g.rect(0, 0, W, H, PAL.bg); ctx.globalAlpha = 1;
+    if (this.resumeT > 0) { g.outline(String(Math.ceil(this.resumeT / 0.5)), CX, CY + 10, 34, PAL.accent); return; }
+    g.outline('PAUSED', CX, CY - 30, 18, PAL.ink);
+    const R = this.PAUSE_RESUME, Q = this.PAUSE_QUIT;
+    g.rect(R.x, R.y, R.w, R.h, PAL.accent); g.text('RESUME', CX, R.y + 16, 11, PAL.bg);
+    g.box(Q.x, Q.y, Q.w, Q.h, PAL.mid); g.text('QUIT', CX, Q.y + 14, 9, PAL.ink);
+  },
+
+  // ── TUTORIAL ───────────────────────────────────────────────────────────────
+  // The first time you play: a how-to card, three practice games (a tap one,
+  // a drag one, and a camera one, or a swipe one without a camera) where
+  // nothing is lost and a miss gets one more go, then YOU'RE READY! and the
+  // mode you picked. SKIP is always there; SETTINGS > HOW TO PLAY replays it.
+  TUT_SKIP: { x: W - 42, y: 1, w: 38, h: 16 },          // in the top bar during practice
+  TUT_SKIP_CARD: { x: W - 52, y: 14, w: 38, h: 16 },    // inside the frame on the how-to card
+  tutSkip() { return this.state === 'TUTORIAL' ? this.TUT_SKIP_CARD : this.TUT_SKIP; },
+  tut: null,
+  tutGames() { return [TapBug, CatchCoin, Input.camReady ? MoveCam : SwipeArrow]; },
+  startTutorial(mode) { this.reset(); this.tut = { step: -1, tries: 0, mode }; this.mode = 'classic'; this.state = 'TUTORIAL'; this.timer = 0.4; },
+  tutRound(i) { this.tut.step = i; this.speed = 1; this.startRound(this.tutGames()[i], 1); },
+  tutAdvance() {
+    const T = this.tut;
+    if (this.result !== 'WIN' && T.tries < 1) { T.tries++; this.startRound(this.tutGames()[T.step], 1); return; }   // one more go
+    T.tries = 0;
+    if (T.step < 2) { this.tutRound(T.step + 1); return; }
+    this.state = 'TUTDONE'; this.timer = 2.2; Sfx.clear();
+  },
+  finishTutorial() {
+    Prefs.set('tutorial', true);
+    const mode = this.tut ? this.tut.mode : null;
+    this.tut = null; this.reset();
+    if (mode) { this.mode = mode; this.startRun(); }
+    else { this.state = 'TITLE'; this.timer = 0.2; }
+  },
+  drawTutorialCard() {
+    if (this.state === 'TUTDONE') {
+      g.outline("YOU'RE READY!", CX, CY - 20, 16, PAL.accent);
+      g.text(this.tut && this.tut.mode ? 'NOW FOR REAL...' : 'HAVE FUN!', CX, CY + 6, 10, PAL.ink);
+      return;
+    }
+    const K = this.TUT_SKIP_CARD; g.box(K.x, K.y, K.w, K.h, PAL.mid); g.text('SKIP', K.x + K.w / 2, K.y + 11, 8, PAL.ink);
+    g.text('HOW TO PLAY', CX, TOP + 50, 14, PAL.accent);
+    const lines = ['EACH GAME LASTS', 'A FEW SECONDS.', '', 'READ THE WORD,', 'THEN DO IT FAST!', '', "LET'S PRACTISE 3.", 'NOTHING TO LOSE.'];
+    lines.forEach((l, i) => l && g.text(l, CX, TOP + 82 + i * 14, 9, PAL.ink));
+    if (Math.floor(this.time * 2) % 2) g.text('TAP TO START', CX, BOT - 16, 10, PAL.accent);
   },
 
   // In a camera game the shelf shows what the camera sees, mirrored like a
@@ -6499,6 +6591,7 @@ const Engine = {
 
     if (s === 'ALBUM') { this.drawAlbumScreen(); return; }
     if (s === 'SETTINGS') { this.drawSettings(); return; }
+    if (s === 'TUTORIAL' || s === 'TUTDONE') { this.drawTutorialCard(); return; }
 
     if (s === 'PERMS') {
       g.text('CAMERA + MIC', CX, CY - 62, 12, PAL.accent);
@@ -6592,6 +6685,7 @@ const Engine = {
       ctx.globalAlpha = win ? 0.6 : 0.7; g.rect(0, 0, W, H, win ? PAL.bg : PAL.bad); ctx.globalAlpha = 1;
       Juice.stamp(CX, CY - 12, 24);
       Juice.badge(CX, CY + 18);
+      if (this.tut) g.outline(win ? "YOU'VE GOT IT!" : this.tut.tries < 1 ? 'TRY AGAIN!' : "YOU'LL GET IT!", CX, CY + 44, 11, win ? PAL.accent : PAL.ink);
       // photo games get the big polaroid next; the rest show their candid here
       if (win && this.snap && !this.game.meta.photo) this.drawPolaroid(this.snap, CX, CY + 62, 64, -0.06);
       this.drawHud();
@@ -6652,6 +6746,12 @@ const Engine = {
   },
 
   drawHud() {
+    if (this.tut) {   // practice: no lives to lose, and a way out
+      g.text('PRACTICE ' + (this.tut.step + 1) + ' / 3', 6, 13, 8, PAL.accent, 'left');
+      const S = this.TUT_SKIP; g.box(S.x, S.y, S.w, S.h, PAL.mid); g.text('SKIP', S.x + S.w / 2, S.y + 11, 8, PAL.ink);
+      g.rect(0, TOP - 1, W, 1, PAL.mid);
+      return;
+    }
     if (this.mode === 'run') { Run.drawHud(); return; }
     // lives as little shiba faces; spent lives shown as a faded marker
     for (let i = 0; i < 4; i++) {
@@ -6670,24 +6770,27 @@ function frame(t) {
   let dt = (t - last) / 1000; last = t;
   if (dt > 0.25) dt = STEP;          // returning from background: don't fast-forward
   if (running) {
-    acc += dt;
-    let guard = 0;
-    while (acc >= STEP && guard++ < 5) {
-      Input.beginStep();
-      Engine.update(STEP);
-      FX.update(STEP);
-      acc -= STEP;
+    if (Engine.paused) { Engine.pauseTick(dt); acc = 0; }   // nothing moves while paused
+    else {
+      acc += dt;
+      let guard = 0;
+      while (acc >= STEP && guard++ < 5) {
+        Input.beginStep();
+        Engine.update(STEP);
+        FX.update(STEP);
+        acc -= STEP;
+      }
     }
-    Music.update(Engine.musicTrack());
+    Music.update(Engine.paused ? null : Engine.musicTrack());
     Engine.draw();
   }
   requestAnimationFrame(frame);
 }
 document.addEventListener('visibilitychange', () => {
+  if (document.hidden) Engine.pause();   // a call, a message, the home button: the game waits for you
   running = !document.hidden;
   last = 0; acc = 0;
   if (running) Input.wake();          // the camera and audio paused while we were away
-  if (running && Engine.state === 'PLAYING') { Engine.state = 'PROMPT'; Engine.timer = 0.6; }
 });
 
 // Already granted on an earlier visit: no need for the sensors screen, the
