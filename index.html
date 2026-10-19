@@ -5545,6 +5545,7 @@ const Run = {
     if (this.has('lung') && grp === 'BLOW')  { mult += 4; rows.push(['BIG LUNGS', '+4 MULT', PAL.accent]); }
     if (this.has('wiggle') && grp === 'SHAKE') { mult += 4; rows.push(['WIGGLE BUTT', '+4 MULT', PAL.accent]); }
     this.streak++;
+    if (Engine.surprise === 'double') { mult *= 2; rows.push(['DOUBLE!', 'x2', PAL.accent]); }
     const points = chips * mult;
     this.last = { won, rows, chips, mult, points, from: this.score };
     this.score += points;
@@ -5821,7 +5822,7 @@ const Engine = {
   lives: 4, score: 0, round: 0, combo: 0, speed: 1,
   // best survives a reload; storage can throw (private mode), so it is optional
   best: (() => { try { return +localStorage.getItem('micromania.best') || 0; } catch (e) { return 0; } })(),
-  game: null, isBoss: false, result: null, lastId: null, reverse: false, waitReady: false, forceReverse: null, promptT: 0, REVEAL_AT: 0.5,
+  game: null, isBoss: false, result: null, lastId: null, reverse: false, surprise: null, waitReady: false, forceSurprise: /[?&#]reverse\b/.test(location.search + location.hash) ? 'reverse' : /[?&#]double\b/.test(location.search + location.hash) ? 'double' : null, promptT: 0, REVEAL_AT: 0.5,
   // games met this session: the first time, the prompt card stays up long
   // enough to read how to play it
   seen: new Set(),
@@ -5876,7 +5877,9 @@ const Engine = {
     Engine.lastPhoto = null;          // a shot from a lost round must not show after a later win
     this.shot = null; this.shotBest = 0; this.shotAt = -1; this.shotFlash = 0;
     this.isBoss = !!forceBoss || (!forceClass && this.round % this.BOSS_EVERY === 0);
-    const C = forceClass || this.pick(this.isBoss ? BOSSES : POOL);
+    // ?reverse (testing): only games that can flip
+    const only = L => this.forceSurprise === 'reverse' ? L.filter(G => this.canReverse(G.meta)) : L;
+    const C = forceClass || this.pick(only(this.isBoss ? BOSSES : POOL));
     this.lastId = C.meta.id;
     const diff = forceDiff || (this.isBoss ? 3 : this.difficulty());
     this.game = new C(diff);
@@ -5893,9 +5896,13 @@ const Engine = {
     // the first time ever you meet a game, its prompt waits for you to tap READY
     const learned = Prefs.get('learned.' + C.meta.id, false);
     this.waitReady = !learned && !this.tut && !this.testClass && Prefs.get('readyGate', true);
-    this.reverse = this.forceReverse != null ? this.forceReverse && this.canReverse(C.meta) : learned && !this.tut && !this.testClass && this.rollReverse(C.meta);
+    // a surprise now and then: REVERSE controls, or DOUBLE points
+    const F = this.forceSurprise;
+    this.surprise = F ? (F === 'reverse' ? (this.canReverse(C.meta) ? 'reverse' : null) : F)
+      : learned && !this.tut && !this.testClass ? this.rollSurprise(C.meta) : null;
+    this.reverse = this.surprise === 'reverse';
     this.promptT = 0;
-    if (this.reverse) this.timer += 0.9;   // a beat longer to take in REVERSE
+    if (this.surprise) this.timer += 0.9;   // a beat longer to take it in
     if (!this.seen.has(C.meta.id)) { this.seen.add(C.meta.id); this.timer += 1.1; }
   },
 
@@ -5909,11 +5916,13 @@ const Engine = {
   },
   // Bosses after the first one flip half the time; ordinary games once the
   // game has got fast, one in five. Never a game you're meeting for the first time.
-  rollReverse(m) {
-    if (!this.canReverse(m)) return false;
+  // DOUBLE turns up on any game once it has warmed up, a little more on bosses.
+  rollSurprise(m) {
     const late = this.mode === 'run' ? Run.world >= 2 : this.round > this.BOSS_EVERY;
-    if (this.isBoss) return late && Math.random() < 0.5;
-    return this.speed >= 1.5 && Math.random() < 0.2;
+    if (this.canReverse(m) && (this.isBoss ? late && Math.random() < 0.5 : this.speed >= 1.5 && Math.random() < 0.2)) return 'reverse';
+    const warm = this.mode === 'run' ? Run.reached() >= 1 : this.speed >= 1.2;
+    if (warm && Math.random() < (this.isBoss ? 0.25 : 0.12)) return 'double';
+    return null;
   },
 
   // The how-to line for the input this player will really use: a camera game
@@ -6016,7 +6025,7 @@ const Engine = {
     if (s === 'PROMPT') {
       Mascot.set('watch');
       const pt = this.promptT; this.promptT += dt;
-      if (this.reverse && pt < this.REVEAL_AT && this.promptT >= this.REVEAL_AT) { Sfx.twang(); buzz(40); FX.shake(3); }
+      if (this.surprise && pt < this.REVEAL_AT && this.promptT >= this.REVEAL_AT) { this.surprise === 'reverse' ? Sfx.twang() : Sfx.speedup(); buzz(40); FX.shake(3); }
       if (this.waitReady) { this.timer = Math.max(this.timer, 0.5); return; }   // held until READY
       if (this.timer <= 0) { this.state = 'PLAYING'; this.timer = this.duration; Input.rev = this.reverse; }
       return;
@@ -6036,7 +6045,7 @@ const Engine = {
       }
       if (this.game.finished) {
         if (this.game.won) {
-          this.score++; this.combo++; this.result = 'WIN'; Sfx.win(); buzz(20); Mascot.set('cheer');
+          this.score += this.surprise === 'double' ? 2 : 1; this.combo++; this.result = 'WIN'; Sfx.win(); buzz(20); Mascot.set('cheer');
           // the action shot: the best moment caught while playing, stamped
           this.snap = null;
           if (this.game.meta.photo && this.shootsNow()) {
@@ -6855,20 +6864,23 @@ const Engine = {
       g.demo(this.demoKind(m), CX, CY + 41, this.time, 0.72);
       // the kind of game it is (TAP, DRAG, CAMERA, SOUND, TILT/SHAKE), the same
       // tag the tutorial teaches, plus any RUN treats it boosts
-      const b = this.mode === 'run' ? Run.boosts(m) : [], ty = this.isBoss ? (this.reverse ? CY - 80 : CY - 66) : CY - 46;
-      // REVERSE is a surprise: the prompt starts out normal, then a stamp slams
-      // down over the tag a moment later (see REVEAL_AT)
-      const rev = this.reverse && this.promptT >= this.REVEAL_AT;
-      if (rev) {
+      const b = this.mode === 'run' ? Run.boosts(m) : [], ty = this.isBoss ? CY - 66 : CY - 46;
+      g.text(this.groupLabel(Run.group(m)) + ' GAME' + (b.length ? '  ·  ' + b.map(t => t.name).join(' + ') + '!' : ''), CX, ty, 8, b.length ? PAL.accent : PAL.ink);
+      // A surprise: the prompt starts out normal, then a stamp slams down on
+      // the game's title a moment later (see REVEAL_AT)
+      const sp = this.promptT >= this.REVEAL_AT ? this.surprise : null, rev = sp === 'reverse';
+      if (sp) {
         const k = Math.min(1, (this.promptT - this.REVEAL_AT) / 0.15), sc = 1 + (1 - k) * 0.9;
-        ctx.save(); ctx.translate(CX, ty - 4); ctx.rotate(-0.1); ctx.scale(sc, sc);
-        g.rect(-58, -13, 116, 26, this.isBoss ? PAL.bg : PAL.bad); g.box(-56, -11, 112, 22, PAL.ink);
-        g.text('REVERSE!', 0, 6, 16, PAL.ink);
+        ctx.save(); ctx.translate(CX, CY - 10); ctx.rotate(-0.1); ctx.scale(sc, sc);
+        const fill = rev ? PAL.bad : PAL.bg, ink = rev ? PAL.ink : PAL.accent;
+        g.rect(-60, -15, 120, 30, fill); g.box(-58, -13, 116, 26, ink);
+        g.text(rev ? 'REVERSE!' : 'DOUBLE!', 0, 7, 18, ink);
         ctx.restore();
-      } else g.text(this.groupLabel(Run.group(m)) + ' GAME' + (b.length ? '  ·  ' + b.map(t => t.name).join(' + ') + '!' : ''), CX, ty, 8, b.length ? PAL.accent : PAL.ink);
+      }
       const how = this.howTo(m).split('\n');
-      if (rev) how.push(Run.group(m) === 'DRAG' ? 'IT ALL MOVES THE OTHER WAY!' : 'TILT THE OTHER WAY!');
-      how.forEach((line, i) => g.text(line, CX, CY + 72 + i * 13, 9, rev && i === how.length - 1 ? (this.isBoss ? PAL.bg : PAL.bad) : PAL.ink));
+      if (sp) how.push(rev ? (Run.group(m) === 'DRAG' ? 'IT ALL MOVES THE OTHER WAY!' : 'TILT THE OTHER WAY!') : 'WIN IT FOR DOUBLE POINTS!');
+      const spCol = rev ? (this.isBoss ? PAL.bg : PAL.bad) : (this.isBoss ? PAL.bg : PAL.accent);
+      how.forEach((line, i) => g.text(line, CX, CY + 72 + i * 13, 9, sp && i === how.length - 1 ? spCol : PAL.ink));
       if (this.waitReady) {   // first meeting: take your time
         g.text('NEW GAME!', CX, CY + 72 + how.length * 13 + 4, 8, PAL.accent);
         if (Math.floor(this.time * 2) % 2) g.text('TAP WHEN READY', CX, BOT - 8, 10, PAL.accent);
@@ -6882,7 +6894,7 @@ const Engine = {
       this.game.draw(g);
       g.env = null;
       this.drawHud();
-      if (this.reverse) { g.rect(CX - 30, TOP + 2, 60, 13, PAL.bad); g.text('REVERSE', CX, TOP + 12, 8, PAL.ink); }
+      if (this.surprise) { const rv = this.reverse; g.rect(CX - 30, TOP + 2, 60, 13, rv ? PAL.bad : PAL.bg); g.text(rv ? 'REVERSE' : 'DOUBLE x2', CX, TOP + 12, 8, rv ? PAL.ink : PAL.accent); }
       return;
     }
 
@@ -6902,6 +6914,7 @@ const Engine = {
       ctx.globalAlpha = win ? 0.6 : 0.7; g.rect(0, 0, W, H, win ? PAL.bg : PAL.bad); ctx.globalAlpha = 1;
       Juice.stamp(CX, CY - 12, 24);
       Juice.badge(CX, CY + 18);
+      if (win && this.surprise === 'double') g.outline('DOUBLE! +2', CX, CY + 44, 11, PAL.accent);
       if (this.tut) g.outline(win ? "YOU'VE GOT IT!" : this.tut.tries < 1 ? 'TRY AGAIN!' : "YOU'LL GET IT!", CX, CY + 44, 11, win ? PAL.accent : PAL.ink);
       // photo games get the big polaroid next; the rest show their candid here
       if (win && this.snap && !this.game.meta.photo) this.drawPolaroid(this.snap, CX, CY + 62, 64, -0.06);

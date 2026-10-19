@@ -25,7 +25,7 @@ export default async function ({ url, launch }) {
   eq(await page.evaluate(() => Engine.waitReady), false, 'next time no wait');
 
   // REVERSE: the drag goes the other way
-  await page.evaluate(() => { Engine.forceReverse = true; Prefs.set('learned.dodge', true); Engine.startRound(Dodge, 1); });
+  await page.evaluate(() => { Engine.forceSurprise = 'reverse'; Prefs.set('learned.dodge', true); Engine.startRound(Dodge, 1); });
   await step(200);
   eq(await page.evaluate(() => [Engine.state, Engine.reverse, Input.rev]), ['PLAYING', true, true], 'a reversed round plays reversed');
   await page.mouse.move(...at(90, 200)); await page.mouse.down();
@@ -36,6 +36,11 @@ export default async function ({ url, launch }) {
   await page.mouse.up();
   assert(Math.abs(x0 - 90) < 2, 'the press lands where you touch: ' + x0);
   assert(Math.abs(x1 - 50) < 2, 'moving right moves left: ' + x1);
-  eq(await page.evaluate(() => { Engine.forceReverse = null; Engine.state = 'RESULT'; Engine.update(STEP); return Input.rev; }), false, 'off again outside the round');
+  eq(await page.evaluate(() => { Engine.forceSurprise = null; Engine.state = 'RESULT'; Engine.update(STEP); return Input.rev; }), false, 'off again outside the round');
+  // DOUBLE: a win counts twice
+  await page.evaluate(() => { Engine.forceSurprise = 'double'; Engine.score = 0; Engine.startRound(CatchCoin, 1); Engine.state = 'PLAYING'; Engine.timer = Engine.duration; Engine.game.succeed(); });
+  await step(1);
+  eq(await page.evaluate(() => [Engine.surprise, Engine.result, Engine.score]), ['double', 'WIN', 2], 'a DOUBLE win scores 2');
+  await page.evaluate(() => { Engine.forceSurprise = null; });
   await done();
 }

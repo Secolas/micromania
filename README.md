@@ -20,13 +20,18 @@ skipped when the browser says both are already granted.
 says NEW GAME! and waits for TAP WHEN READY instead of counting down. After
 that it's remembered.
 
-**REVERSE**: once things get going, drag and tilt games can come reversed:
-it's a surprise: the prompt starts out normal, then a red REVERSE! stamp
-slams down with a twang and "IT ALL MOVES THE OTHER WAY!" appears, and a REVERSE tag stays on screen while you play. Your touch still lands
-where you press, but everything after moves the opposite way (swipes flip,
-tilt flips). Bosses after the first one (the DODGE and SQUEEZE drag bosses)
-flip half the time; ordinary drag/tilt games flip one time in five once the
-speed is up. A game you're meeting for the first time never comes reversed.
+**Surprises**: once things get going, a prompt can start out normal and then
+have a stamp slam down on the game's title:
+- **REVERSE!** (drag and tilt games only): your touch lands where you press, but
+  everything after moves the opposite way (swipes flip, tilt flips). Bosses
+  after the first one (the DODGE and SQUEEZE drag bosses) flip half the time;
+  ordinary drag/tilt games one time in five once the speed is up.
+- **DOUBLE!** (any game): a win counts twice in CLASSIC and doubles the mult in
+  RUN. One game in eight once it's warmed up, one in four on bosses.
+
+A tag stays on screen while you play. A game you're meeting for the first time
+never gets a surprise. For testing, `?reverse` makes every round a reversed
+drag/tilt game and `?double` makes every round DOUBLE.
 
 **First time**: the first RUN or CLASSIC starts with a short tutorial that
 explains the five kinds of game, one card each: TAP, DRAG, CAMERA, SOUND and
