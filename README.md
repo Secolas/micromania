@@ -16,6 +16,18 @@ popup (plus motion/tilt on iOS), up front, so no round ever stops for a
 permission prompt; TOUCH ONLY plays every game on its touch fallback. It is
 skipped when the browser says both are already granted.
 
+**New games wait for you**: the first time you ever meet a game, its prompt
+says NEW GAME! and waits for TAP WHEN READY instead of counting down. After
+that it's remembered.
+
+**REVERSE**: once things get going, drag and tilt games can come reversed:
+the prompt shows a flashing red REVERSE band and "IT ALL MOVES THE OTHER
+WAY!", and a REVERSE tag stays on screen while you play. Your touch still lands
+where you press, but everything after moves the opposite way (swipes flip,
+tilt flips). Bosses after the first one (the DODGE and SQUEEZE drag bosses)
+flip half the time; ordinary drag/tilt games flip one time in five once the
+speed is up. A game you're meeting for the first time never comes reversed.
+
 **First time**: the first RUN or CLASSIC starts with a short tutorial that
 explains the five kinds of game, one card each: TAP, DRAG, CAMERA, SOUND and
 TILT/SHAKE. Each card plays a short animation of the move (a finger tapping or dragging,
@@ -261,6 +273,7 @@ Chromium against the real page (served over http by `tests/run.mjs`).
 | `album`, `settings` | saving, paging, opening, sharing and deleting photos; every switch, saved across a reload |
 | `camera` | live frames from a fake camera, and recovery when the feed stalls |
 | `pwa` | manifest, icons, the service worker, and starting with the network off |
+| `reverse` | REVERSE mirrors a drag about where it went down and only applies to drag/tilt games; a new game's prompt waits for READY, then remembers |
 | `tutorial`, `pause` | the first-time tutorial (practice costs nothing, a miss replays, SKIP, replay from SETTINGS); pausing on leaving the app, RESUME's 3-2-1 with the clock intact, QUIT |
 | `audio` | every effect, sting and song renders audibly without clipping; the right song plays on each screen |
 

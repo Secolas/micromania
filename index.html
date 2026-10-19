@@ -568,15 +568,21 @@ const Input = {
   // phone was being held when the game started (see zeroTilt)
   tiltX: 0, tiltY: 0, tiltReady: false,
   _tiltOn: false, _tiltG: 0, _tiltB: 0, _tiltZero: null, _wantZero: false,
+  // REVERSE rounds: the finger's path is mirrored about where it went down, so
+  // a press lands where you touch but everything after moves the other way
+  // (swipes flip too), and tilt flips. The engine's own buttons see the real spot.
+  rev: false, _ax: 0, _ay: 0,
 
   attach(el) {
     const toVirtual = e => {
       const r = el.getBoundingClientRect();
       return { x: (e.clientX - r.left) * (W / r.width), y: (e.clientY - r.top) * (H / r.height) };
     };
+    const rv = p => this.rev ? { x: Math.max(0, Math.min(W, 2 * this._ax - p.x)), y: Math.max(0, Math.min(H, 2 * this._ay - p.y)) } : p;
     el.addEventListener('pointerdown', e => {
       el.setPointerCapture?.(e.pointerId);
       const p = toVirtual(e);
+      this._ax = p.x; this._ay = p.y;
       this.x = p.x; this.y = p.y;
       this.down = true;
       // A press that starts on the mascot shelf raises no tap/justDown, so the
@@ -592,7 +598,7 @@ const Input = {
       e.preventDefault();
     }, { passive: false });
     el.addEventListener('pointermove', e => {
-      const p = toVirtual(e);
+      const p = rv(toVirtual(e));
       this._rawDx += p.x - this.x; this._rawDy += p.y - this.y;
       this._travel += Math.hypot(p.x - this.x, p.y - this.y);
       this.x = p.x; this.y = p.y;
@@ -600,7 +606,7 @@ const Input = {
     }, { passive: false });
     const end = e => {
       if (!this.down) return;
-      const p = toVirtual(e);
+      const raw = toVirtual(e), p = rv(raw);
       this.x = p.x; this.y = p.y;
       this.down = false; this._justUpRaw = true;
       const dt = performance.now() - this._st;
@@ -617,8 +623,8 @@ const Input = {
       // the release counts as a user gesture, and iOS refuses the motion and
       // tilt permission prompts outside one.
       if (e.type === 'pointerup') {
-        if (this._uiPress) Engine.permRelease(p);
-        else if (!this._shelfPress) Engine.release(p);
+        if (this._uiPress) Engine.permRelease(raw);
+        else if (!this._shelfPress) Engine.release(raw);
       }
       e.preventDefault();
     };
@@ -631,7 +637,8 @@ const Input = {
       if (e.repeat) return;
       if (e.code === 'Space') this._pendingTaps.push({ x: this.x, y: this.y });
       const map = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' };
-      if (map[e.code]) this._pendingSwipe = { dir: map[e.code], dist: 40, vx: 0, vy: 0 };
+      const flip = { up: 'down', down: 'up', left: 'right', right: 'left' };
+      if (map[e.code]) this._pendingSwipe = { dir: this.rev ? flip[map[e.code]] : map[e.code], dist: 40, vx: 0, vy: 0 };
     });
   },
 
@@ -999,8 +1006,9 @@ const Input = {
     // lean covers the whole play field
     if (this.tiltReady && this._wantZero) { this._tiltZero = { g: this._tiltG, b: this._tiltB }; this._wantZero = false; }
     if (this.tiltReady && this._tiltZero) {
-      this.tiltX = Math.max(-1, Math.min(1, (this._tiltG - this._tiltZero.g) / 20));
-      this.tiltY = Math.max(-1, Math.min(1, (this._tiltB - this._tiltZero.b) / 20));
+      const sg = this.rev ? -1 : 1;
+      this.tiltX = sg * Math.max(-1, Math.min(1, (this._tiltG - this._tiltZero.g) / 20));
+      this.tiltY = sg * Math.max(-1, Math.min(1, (this._tiltB - this._tiltZero.b) / 20));
     }
     // camera motion: sampled from the webcam, or fast tapping as a fallback
     this._sampleMotion();
@@ -5813,7 +5821,7 @@ const Engine = {
   lives: 4, score: 0, round: 0, combo: 0, speed: 1,
   // best survives a reload; storage can throw (private mode), so it is optional
   best: (() => { try { return +localStorage.getItem('micromania.best') || 0; } catch (e) { return 0; } })(),
-  game: null, isBoss: false, result: null, lastId: null,
+  game: null, isBoss: false, result: null, lastId: null, reverse: false, waitReady: false, forceReverse: null,
   // games met this session: the first time, the prompt card stays up long
   // enough to read how to play it
   seen: new Set(),
@@ -5882,7 +5890,29 @@ const Engine = {
     this.state = 'PROMPT';
     this.timer = this.isBoss ? 1.0 : 0.7;
     Sfx.prompt(this.isBoss);
+    // the first time ever you meet a game, its prompt waits for you to tap READY
+    const learned = Prefs.get('learned.' + C.meta.id, false);
+    this.waitReady = !learned && !this.tut && !this.testClass && Prefs.get('readyGate', true);
+    this.reverse = this.forceReverse != null ? this.forceReverse && this.canReverse(C.meta) : learned && !this.tut && !this.testClass && this.rollReverse(C.meta);
+    if (this.reverse) this.timer += 0.6;   // a beat longer to take in REVERSE
     if (!this.seen.has(C.meta.id)) { this.seen.add(C.meta.id); this.timer += 1.1; }
+  },
+
+  // REVERSE only means something where direction does: drag games (not rubbing)
+  // and tilt games on a phone that tilts. Taps, the camera and the mic stay as is.
+  canReverse(m) {
+    if (m.reverse === false) return false;
+    const gr = Run.group(m);
+    if (gr === 'DRAG') return m.hint !== 'rub';
+    return gr === 'SHAKE' && !!(m.how && m.how.tilt) && Input.tiltReady;
+  },
+  // Bosses after the first one flip half the time; ordinary games once the
+  // game has got fast, one in five. Never a game you're meeting for the first time.
+  rollReverse(m) {
+    if (!this.canReverse(m)) return false;
+    const late = this.mode === 'run' ? Run.world >= 2 : this.round > this.BOSS_EVERY;
+    if (this.isBoss) return late && Math.random() < 0.5;
+    return this.speed >= 1.5 && Math.random() < 0.2;
   },
 
   // The how-to line for the input this player will really use: a camera game
@@ -5909,6 +5939,7 @@ const Engine = {
 
   update(dt) {
     this.time += dt;
+    Input.rev = this.reverse && this.state === 'PLAYING';
     // a PLAYING game may request a pause (e.g. blow waiting on mic permission);
     // freeze the round clock so it can't be lost while blocked
     Wipe.update(dt); Juice.update(dt);
@@ -5983,7 +6014,8 @@ const Engine = {
 
     if (s === 'PROMPT') {
       Mascot.set('watch');
-      if (this.timer <= 0) { this.state = 'PLAYING'; this.timer = this.duration; }
+      if (this.waitReady) { this.timer = Math.max(this.timer, 0.5); return; }   // held until READY
+      if (this.timer <= 0) { this.state = 'PLAYING'; this.timer = this.duration; Input.rev = this.reverse; }
       return;
     }
 
@@ -6160,6 +6192,10 @@ const Engine = {
 
   release(p) {
     const s = this.state;
+    if (s === 'PROMPT' && this.waitReady) {   // READY: a short beat, then GO
+      this.waitReady = false; Prefs.set('learned.' + this.game.meta.id, true);
+      this.timer = 0.6; Sfx.tap(); Input.flush(); return;
+    }
     if (s === 'TITLE' && (this.titleT || 0) < this.TITLE_INTRO) { this.titleT = 9; this.titleSfx = 99; return; }
     if (s === 'TITLE' && this.timer <= 0 && this.hit(this.BTN_ALBUM, p)) {
       Sfx.unlock(); Sfx.tap();
@@ -6658,7 +6694,7 @@ const Engine = {
   startTutorial(mode) { this.reset(); this.tut = { step: -1, tries: 0, mode }; this.mode = 'classic'; this.state = 'TUTORIAL'; this.timer = 0.4; },
   // the card for kind i, then (if this phone can play it) its practice game
   tutCard(i) { this.tut.step = i; this.tut.tries = 0; this.tut.cat = this.tutCats()[i]; this.state = 'TUTCAT'; this.timer = this.tut.cat.ok ? 2.4 : 3.2; },
-  tutPlay() { this.speed = 1; this.startRound(this.tut.cat.game, 1); },
+  tutPlay() { this.speed = 1; Prefs.set('learned.' + this.tut.cat.game.meta.id, true); this.startRound(this.tut.cat.game, 1); },
   tutNext() { if (this.tut.step < 4) this.tutCard(this.tut.step + 1); else { this.state = 'TUTDONE'; this.timer = 2.2; Sfx.clear(); } },
   tutRound(i) { this.tutCard(i); },
   tutAdvance() {
@@ -6816,9 +6852,20 @@ const Engine = {
       g.demo(this.demoKind(m), CX, CY + 41, this.time, 0.72);
       // the kind of game it is (TAP, DRAG, CAMERA, SOUND, TILT/SHAKE), the same
       // tag the tutorial teaches, plus any RUN treats it boosts
-      const b = this.mode === 'run' ? Run.boosts(m) : [], ty = this.isBoss ? CY - 66 : CY - 46;
-      g.text(this.groupLabel(Run.group(m)) + ' GAME' + (b.length ? '  ·  ' + b.map(t => t.name).join(' + ') + '!' : ''), CX, ty, 8, b.length ? PAL.accent : PAL.ink);
-      this.howTo(m).split('\n').forEach((line, i) => g.text(line, CX, CY + 72 + i * 13, 9, PAL.ink));
+      const b = this.mode === 'run' ? Run.boosts(m) : [], ty = this.isBoss ? (this.reverse ? CY - 76 : CY - 66) : CY - 46;
+      const tag = (this.reverse ? 'REVERSE ' : '') + this.groupLabel(Run.group(m)) + ' GAME';
+      if (this.reverse) {   // a red band that flips back and forth, so it can't be missed
+        const fl = Math.floor(this.time * 4) % 2;
+        g.rect(0, ty - 11, W, 15, this.isBoss ? PAL.bg : PAL.bad);
+        g.text((fl ? '< ' : '> ') + tag + (fl ? ' >' : ' <'), CX, ty, 8, PAL.ink);
+      } else g.text(tag + (b.length ? '  ·  ' + b.map(t => t.name).join(' + ') + '!' : ''), CX, ty, 8, b.length ? PAL.accent : PAL.ink);
+      const how = this.howTo(m).split('\n');
+      if (this.reverse) how.push(Run.group(m) === 'DRAG' ? 'IT ALL MOVES THE OTHER WAY!' : 'TILT THE OTHER WAY!');
+      how.forEach((line, i) => g.text(line, CX, CY + 72 + i * 13, 9, this.reverse && i === how.length - 1 ? (this.isBoss ? PAL.bg : PAL.bad) : PAL.ink));
+      if (this.waitReady) {   // first meeting: take your time
+        g.text('NEW GAME!', CX, CY + 72 + how.length * 13 + 4, 8, PAL.accent);
+        if (Math.floor(this.time * 2) % 2) g.text('TAP WHEN READY', CX, BOT - 8, 10, PAL.accent);
+      }
       this.drawHud();
       return;
     }
@@ -6828,6 +6875,7 @@ const Engine = {
       this.game.draw(g);
       g.env = null;
       this.drawHud();
+      if (this.reverse) { g.rect(CX - 30, TOP + 2, 60, 13, PAL.bad); g.text('REVERSE', CX, TOP + 12, 8, PAL.ink); }
       return;
     }
 
