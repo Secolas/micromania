@@ -21,8 +21,8 @@ says NEW GAME! and waits for TAP WHEN READY instead of counting down. After
 that it's remembered.
 
 **REVERSE**: once things get going, drag and tilt games can come reversed:
-the prompt shows a flashing red REVERSE band and "IT ALL MOVES THE OTHER
-WAY!", and a REVERSE tag stays on screen while you play. Your touch still lands
+it's a surprise: the prompt starts out normal, then a red REVERSE! stamp
+slams down with a twang and "IT ALL MOVES THE OTHER WAY!" appears, and a REVERSE tag stays on screen while you play. Your touch still lands
 where you press, but everything after moves the opposite way (swipes flip,
 tilt flips). Bosses after the first one (the DODGE and SQUEEZE drag bosses)
 flip half the time; ordinary drag/tilt games flip one time in five once the

@@ -5821,7 +5821,7 @@ const Engine = {
   lives: 4, score: 0, round: 0, combo: 0, speed: 1,
   // best survives a reload; storage can throw (private mode), so it is optional
   best: (() => { try { return +localStorage.getItem('micromania.best') || 0; } catch (e) { return 0; } })(),
-  game: null, isBoss: false, result: null, lastId: null, reverse: false, waitReady: false, forceReverse: null,
+  game: null, isBoss: false, result: null, lastId: null, reverse: false, waitReady: false, forceReverse: null, promptT: 0, REVEAL_AT: 0.5,
   // games met this session: the first time, the prompt card stays up long
   // enough to read how to play it
   seen: new Set(),
@@ -5894,7 +5894,8 @@ const Engine = {
     const learned = Prefs.get('learned.' + C.meta.id, false);
     this.waitReady = !learned && !this.tut && !this.testClass && Prefs.get('readyGate', true);
     this.reverse = this.forceReverse != null ? this.forceReverse && this.canReverse(C.meta) : learned && !this.tut && !this.testClass && this.rollReverse(C.meta);
-    if (this.reverse) this.timer += 0.6;   // a beat longer to take in REVERSE
+    this.promptT = 0;
+    if (this.reverse) this.timer += 0.9;   // a beat longer to take in REVERSE
     if (!this.seen.has(C.meta.id)) { this.seen.add(C.meta.id); this.timer += 1.1; }
   },
 
@@ -6014,6 +6015,8 @@ const Engine = {
 
     if (s === 'PROMPT') {
       Mascot.set('watch');
+      const pt = this.promptT; this.promptT += dt;
+      if (this.reverse && pt < this.REVEAL_AT && this.promptT >= this.REVEAL_AT) { Sfx.twang(); buzz(40); FX.shake(3); }
       if (this.waitReady) { this.timer = Math.max(this.timer, 0.5); return; }   // held until READY
       if (this.timer <= 0) { this.state = 'PLAYING'; this.timer = this.duration; Input.rev = this.reverse; }
       return;
@@ -6852,16 +6855,20 @@ const Engine = {
       g.demo(this.demoKind(m), CX, CY + 41, this.time, 0.72);
       // the kind of game it is (TAP, DRAG, CAMERA, SOUND, TILT/SHAKE), the same
       // tag the tutorial teaches, plus any RUN treats it boosts
-      const b = this.mode === 'run' ? Run.boosts(m) : [], ty = this.isBoss ? (this.reverse ? CY - 76 : CY - 66) : CY - 46;
-      const tag = (this.reverse ? 'REVERSE ' : '') + this.groupLabel(Run.group(m)) + ' GAME';
-      if (this.reverse) {   // a red band that flips back and forth, so it can't be missed
-        const fl = Math.floor(this.time * 4) % 2;
-        g.rect(0, ty - 11, W, 15, this.isBoss ? PAL.bg : PAL.bad);
-        g.text((fl ? '< ' : '> ') + tag + (fl ? ' >' : ' <'), CX, ty, 8, PAL.ink);
-      } else g.text(tag + (b.length ? '  ·  ' + b.map(t => t.name).join(' + ') + '!' : ''), CX, ty, 8, b.length ? PAL.accent : PAL.ink);
+      const b = this.mode === 'run' ? Run.boosts(m) : [], ty = this.isBoss ? (this.reverse ? CY - 80 : CY - 66) : CY - 46;
+      // REVERSE is a surprise: the prompt starts out normal, then a stamp slams
+      // down over the tag a moment later (see REVEAL_AT)
+      const rev = this.reverse && this.promptT >= this.REVEAL_AT;
+      if (rev) {
+        const k = Math.min(1, (this.promptT - this.REVEAL_AT) / 0.15), sc = 1 + (1 - k) * 0.9;
+        ctx.save(); ctx.translate(CX, ty - 4); ctx.rotate(-0.1); ctx.scale(sc, sc);
+        g.rect(-58, -13, 116, 26, this.isBoss ? PAL.bg : PAL.bad); g.box(-56, -11, 112, 22, PAL.ink);
+        g.text('REVERSE!', 0, 6, 16, PAL.ink);
+        ctx.restore();
+      } else g.text(this.groupLabel(Run.group(m)) + ' GAME' + (b.length ? '  ·  ' + b.map(t => t.name).join(' + ') + '!' : ''), CX, ty, 8, b.length ? PAL.accent : PAL.ink);
       const how = this.howTo(m).split('\n');
-      if (this.reverse) how.push(Run.group(m) === 'DRAG' ? 'IT ALL MOVES THE OTHER WAY!' : 'TILT THE OTHER WAY!');
-      how.forEach((line, i) => g.text(line, CX, CY + 72 + i * 13, 9, this.reverse && i === how.length - 1 ? (this.isBoss ? PAL.bg : PAL.bad) : PAL.ink));
+      if (rev) how.push(Run.group(m) === 'DRAG' ? 'IT ALL MOVES THE OTHER WAY!' : 'TILT THE OTHER WAY!');
+      how.forEach((line, i) => g.text(line, CX, CY + 72 + i * 13, 9, rev && i === how.length - 1 ? (this.isBoss ? PAL.bg : PAL.bad) : PAL.ink));
       if (this.waitReady) {   // first meeting: take your time
         g.text('NEW GAME!', CX, CY + 72 + how.length * 13 + 4, 8, PAL.accent);
         if (Math.floor(this.time * 2) % 2) g.text('TAP WHEN READY', CX, BOT - 8, 10, PAL.accent);
