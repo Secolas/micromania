@@ -23,7 +23,8 @@ that it's remembered.
 **Replay**: camera games quietly record a short clip of you (about three
 seconds, plus half a second of your reaction to the result). At GAME OVER,
 WATCH REPLAY plays the last five back on a little TV, with numbered dots to
-pick one and back / pause / forward buttons. The clips stay in memory on the
+pick one and back / pause / forward buttons. The clips are cropped to fill the
+TV (never stretched) and drawn smooth like a photo. They stay in memory on the
 phone only, and the next run starts with none.
 
 **Surprises**: once things get going, a prompt can start out normal and then
@@ -79,7 +80,7 @@ with notched corners, and no mascot in the corner.
 | FREEZE | the *absence* of movement — don't wake the sleeping shiba | don't tap |
 | SWAT | where the movement is | move your finger, tap |
 | HIDE | frame brightness — a hand over the lens | hold the screen |
-| DANCE | movement in time with a beat | tap on the beat |
+| HEADBANG | bang your head hard to fill the ROCK meter, to a hard-rock riff | tap fast |
 | SQUID | move on green, freeze on red (red-light/green-light) | hold on green, release on red |
 
 While a camera game is on, the shelf at the bottom-left shows the **live
@@ -97,10 +98,10 @@ more precisely than the camera's centre-of-motion can. Hold the swatter on the
 fly to squash it (or tap). Whatever the phone was doing when the round starts
 becomes centre, so any comfortable hold works.
 
-The action games — MOVE, DRY OFF, LEAN, FREEZE, DANCE, SWAT, SQUID and the blow
+The action games — MOVE, DRY OFF, LEAN, FREEZE, HEADBANG, SWAT, SQUID and the blow
 games BLOW, CANDLES and PLUCK — take an **action shot**, WarioWare *Snapped!*
 style: no posing. While you play, the camera keeps the frame with the most
-action in it (the biggest wave, shake, lean or dance move, the hardest blow, or
+action in it (the biggest wave, shake, lean or headbang, the hardest blow, or
 for FREEZE the stillest moment), and a win shows it as a polaroid. Stills are
 the camera's whole frame, never cropped, and the lens is set to its widest zoom
 where the browser allows. Touch games don't take photos. The last four action
@@ -187,8 +188,8 @@ Games play in a place, not on black: a game names a backdrop with `env` in its
 meta — `lawn`, `sky`, `bath`, `snow`, `field@Y` (horizon/ground at Y), `room@Y`
 or `wall@Y` (floor at Y), and four bright ones: `sunny@Y` (PLUCK), `beach@Y`
 (FETCH), `park@Y` (LEAP) and `nature@Y` (SWAT — the sunny day with far mountains
-and a pine forest, so the winged shiba buzzes around open sky). DANCE has a
-`disco@Y` club with a mirror ball and floor tiles that flash on the beat, and
+and a pine forest, so the winged shiba buzzes around open sky). HEADBANG has a
+`disco@Y` stage with a mirror ball and floor tiles that flash on the beat, and
 HIDE plays `night@Y` — moon, stars, a fence and a house with one lit window. FREEZE's shiba sleeps
 in a dog bed in `bedroom@Y`, the room after dark with the moon in the window. They use a small set of dark, muted scenery colours
 (`SCENE`) so the sprites and play colours stay on top; each is painted once and
@@ -336,7 +337,7 @@ lives run). RUN is Balatro-style scoring over the same microgames:
   |---|---|---|
   | TAP (17) | TAP, PAT, CHARGE, SHH, LEAP, IN ORDER, ODD ONE, BOOP, PUMP, GRAB 3, FLAP, CROSS, PAWS, JUMP, STACK, RED LIGHT, JUGGLE | QUICK PAWS +15 chips |
   | DRAG (18) | CATCH, RUB, PULL DOWN, SWIPE, LASER, FEED, CUT, WALK, FETCH, HOP, KNOCK IT, SORT, DIG, WALKIES, SLICE, PLUCK, DODGE, SQUEEZE | ZOOMIES +20 chips |
-  | CAMERA (8) | MOVE, DRY OFF, LEAN, FREEZE, HIDE, DANCE, YES OR NO, RUN & FREEZE | CAMERA STAR x2 chips |
+  | CAMERA (8) | MOVE, DRY OFF, LEAN, FREEZE, HIDE, HEADBANG, YES OR NO, RUN & FREEZE | CAMERA STAR x2 chips |
   | BLOW (4) | BLOW (bubble), CANDLES, BARK TO JUMP, WAKE UP | BIG LUNGS +4 mult |
   | SHAKE (6) | SHAKE, SWAT, BALANCE, POUR, SLED, BATH TIME | WIGGLE BUTT +4 mult |
 

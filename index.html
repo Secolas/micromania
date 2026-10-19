@@ -848,6 +848,17 @@ const Input = {
     const src = this._camSrc(), [sw, sh] = src ? this._camSize(src) : [0, 0];
     return sw && sh ? sw / sh : 4 / 3;
   },
+  // a w x h picture of the camera, mirrored, cropped to fill (a little above
+  // centre, where faces are) rather than squashed — for the REPLAY clips
+  snapCover(w, h) {
+    const src = this._camSrc(); if (!src) return null;
+    const [sw, sh] = this._camSize(src); if (!sw || !sh) return null;
+    const c = document.createElement('canvas'); c.width = w; c.height = h;
+    const x = c.getContext('2d'), k = Math.max(w / sw, h / sh), dw = sw * k, dh = sh * k;
+    x.translate(w, 0); x.scale(-1, 1);
+    x.drawImage(src, (w - dw) / 2, (h - dh) * 0.35, dw, dh);
+    return c;
+  },
   // the live camera, mirrored like a mirror, into a rect of its own aspect
   drawLive(c, x, y, w, h) {
     const src = this._camSrc(); if (!src) return false;
@@ -4050,64 +4061,70 @@ class HideLens extends Microgame {
   }
 }
 
-// 36. DANCE — move on the beat: hit the ring each time it lands
-class DanceBeat extends Microgame {
-  static meta = { id: 'dance', env: 'disco@232', cam: true, ownBeat: true, prompt: 'DANCE!', hint: 'move', duration: 5.0, minDuration: 4.4, photo: true, photoCap: 'DANCE MACHINE!',
-    how: { cam: 'MOVE WHEN THE RING\nLANDS ON THE BEAT', touch: 'TAP ON THE BEAT' } };
+// 36. HEADBANG — a hard-rock stage: bang your head to fill the ROCK meter.
+// Continuous movement rather than hitting beats, so camera lag can't make you
+// miss; the band plays its own riff, louder the more you rock.
+class HeadBang extends Microgame {
+  static meta = { id: 'rock', env: 'disco@232', cam: true, ownBeat: true, prompt: 'HEADBANG!', hint: 'move', duration: 5.0, minDuration: 4.4, photo: true, photoCap: 'ROCK STAR!',
+    how: { cam: 'BANG YOUR HEAD\nTO FILL THE ROCK METER', touch: 'TAP FAST\nTO ROCK OUT' } };
   init() {
     Input.enableCam();
     this.paused = Input.camPending; this.wait = 0;
-    this.need = this.byD(2, 3, 3);
-    // beats spread over whatever the round length ended up being, so engine
-    // speed changes the tempo instead of cutting the last beat off
-    const first = 1.0, last = Math.max(first + 0.7, this.timeLimit - 0.7);
-    this.beats = [];
-    for (let i = 0; i < this.need; i++) {
-      this.beats.push({ t: this.need > 1 ? first + (last - first) * i / (this.need - 1) : first, hit: false, miss: false });
-    }
-    this.win = 0.32;                           // ± window around a beat
-    this.thr = this.byD(0.14, 0.17, 0.20);     // how big a move counts
-    this.hits = 0; this.pop = 0;
+    this.rock = 0;                                  // 0..1, full = win
+    this.thr = 0.07;                                // below this is just standing there
+    this.gain = this.byD(1.9, 1.6, 1.35);           // real headbanging (motion ~0.3) fills it in 2.5-3.7s
+    this.ph = 0; this.step = 0; this.stepT = 0; this.flash = 0;
+  }
+  // the riff: an eighth-note chug with kick and snare, at 150 bpm
+  static RIFF = ['E2', 'E2', 'G2', 'E2', 'A2', 'E2', 'G2', 'D2'];
+  playStep(loud) {
+    const k = this.step % 8, vol = 0.03 + loud * 0.05, f = Sfx.hz(HeadBang.RIFF[k]);
+    Sfx.tone({ f, dur: 0.16, type: 'sawtooth', vol, lp: 1400 + loud * 1600 });
+    Sfx.tone({ f: f * 1.5, dur: 0.16, type: 'sawtooth', vol: vol * 0.7, lp: 1400 + loud * 1600, detune: 8 });
+    if (k % 4 === 0) Sfx.tone({ f: 120, f1: 45, dur: 0.14, type: 'sine', vol: 0.12 });   // kick
+    if (k % 4 === 2) Sfx.hiss({ dur: 0.12, vol: 0.06 + loud * 0.04, bp: 1800, q: 0.7 });  // snare
+    if (k % 4 === 2) this.flash = 0.12;
   }
   update(dt, input) {
     if (this.paused) { this.wait += dt; if (!Input.camPending || this.wait > 1.5) this.paused = false; return; }
-    if (this.pop > 0) this.pop -= dt;
-    for (const b of this.beats) {
-      if (b.hit || b.miss) continue;
-      const off = this.t - b.t;                // this.t doesn't tick while paused
-      if (Math.abs(off) <= this.win && input.motion > this.thr) {
-        b.hit = true; this.hits++; this.pop = 0.22;
-        Sfx.tick(); buzz(15); FX.hit(CX, CY - 6, PAL.accent);
-        if (this.hits >= this.need) { this.succeed(); return; }
-      } else if (off > this.win) { b.miss = true; Sfx.blip(180, 0.06); }
+    const m = input.motion;
+    this.rock = Math.max(0, this.rock + dt * (Math.max(0, m - this.thr) * this.gain - 0.04));
+    this.ph += dt * (5 + 18 * Math.min(1, m * 2.5));
+    if (this.flash > 0) this.flash -= dt;
+    this.stepT -= dt;
+    if (this.stepT <= 0) { this.stepT += 0.2; this.playStep(this.rock); this.step++; }
+    if (this.rock >= 1) {
+      this.rock = 1; Sfx.hiss({ dur: 0.6, vol: 0.1, hp: 3000 }); FX.burst(CX, CY - 10, PAL.accent, 24, 120); this.succeed();
     }
-    // every beat resolved and one was dropped — no point running out the clock
-    if (!this.finished && this.beats.every(b => b.hit || b.miss)) this.lose();
   }
   draw(g) {
     g.clear();
-    if (this.paused) { g.text('ALLOW CAMERA…', CX, CY - 6, 11, PAL.ink); g.text('(then move on the beat)', CX, CY + 12, 7, PAL.mid); return; }
-    // the incoming beat, as a ring closing in on the shiba
-    const nxt = this.beats.find(b => !b.hit && !b.miss);
-    if (nxt) {
-      const away = Math.abs(nxt.t - this.t);
-      const r = 24 + Math.min(64, away * 78);
-      const c = away <= this.win ? PAL.accent : PAL.mid;
-      ctx.strokeStyle = c; ctx.lineWidth = 3;
-      ctx.beginPath(); ctx.arc(CX, CY - 6, r + 0.5, 0, 6.2832); ctx.stroke();
+    if (this.paused) { g.text('ALLOW CAMERA…', CX, CY - 6, 11, PAL.ink); g.text('(then bang your head)', CX, CY + 12, 8, PAL.ink); return; }
+    const m = Math.min(1, Input.motion * 2.5), lit = this.flash > 0;
+    // stage lights sweeping down on the snare
+    if (lit) { ctx.globalAlpha = 0.18; for (const lx of [30, 150]) { ctx.fillStyle = PAL.accent; ctx.beginPath(); ctx.moveTo(lx - 4, TOP); ctx.lineTo(lx + 4, TOP); ctx.lineTo(CX + (lx - CX) * 0.2 + 26, BOT - 40); ctx.lineTo(CX + (lx - CX) * 0.2 - 26, BOT - 40); ctx.fill(); } ctx.globalAlpha = 1; }
+    // speaker stacks either side, the cones pumping with the music
+    for (const sx of [6, W - 34]) for (let k = 0; k < 2; k++) {
+      const sy = BOT - 92 + k * 34;
+      g.rect(sx, sy, 28, 32, PAL.ink); g.rect(sx + 1, sy + 1, 26, 30, PAL.bg);
+      g.circle(sx + 14, sy + 16, 10 + (lit ? 1 : 0), PAL.mid); g.circle(sx + 14, sy + 16, 4, PAL.bg);
     }
-    // shiba bobbing along with however hard you're moving
-    const bob = Math.sin(this.t * 9) * 4 * Math.min(1, Input.motion * 2.5);
-    const pop = this.pop > 0 ? this.pop * 24 : 0;
-    g.sprite('face', CX, CY - 6 + bob, { w: 44 + pop, h: 44 + pop, frame: Math.floor(this.t * 8) % 3 });
-    // the bar line: every beat as a pip, filled once you land it
-    for (const b of this.beats) {
-      const bx = 24 + (b.t / Math.max(0.01, this.timeLimit)) * (W - 48);
-      g.rect(bx - 2, BOT - 20, 5, 5, b.hit ? PAL.accent : b.miss ? PAL.bad : PAL.mid);
+    // the rocker: the shiba headbanging as hard as you are
+    const nod = Math.abs(Math.sin(this.ph)), hy = CY - 18 + nod * 12 * m, rot = Math.sin(this.ph) * 0.25 * m;
+    g.line(CX, CY + 18, CX, BOT - 40, PAL.mid, 2); g.rect(CX - 10, BOT - 41, 20, 2, PAL.mid);   // mic stand
+    g.cRect(CX, CY + 12, 8, 10, PAL.mid);                                                          // the mic, just under the chin
+    ctx.save(); ctx.translate(CX, hy); ctx.rotate(rot);
+    g.sprite('face', 0, 0, { w: 48, h: 48, frame: m > 0.4 ? 1 : 0 });
+    ctx.restore();
+    // the crowd's paws going up when you rock
+    for (let k = 0; k < 7; k++) {
+      const px = 18 + k * 24, up = Math.max(0, Math.sin(this.ph + k * 1.3)) * 10 * m;
+      g.rect(px - 3, BOT - 26 - up, 6, 26 + up, PAL.mid); g.circle(px, BOT - 27 - up, 5, PAL.ink);
     }
-    g.rect(24, BOT - 13, W - 48, 1, PAL.mid);
-    g.rect(24 + (Math.min(this.t, this.timeLimit) / Math.max(0.01, this.timeLimit)) * (W - 48) - 1, BOT - 16, 2, 7, PAL.ink);
-    g.text(Input.camReady ? 'MOVE ON THE BEAT!' : 'TAP ON THE BEAT!', CX, TOP + 26, 9, PAL.mid);
+    // the ROCK meter
+    g.text('ROCK', 24, TOP + 26, 8, PAL.accent, 'left');
+    g.bar(54, TOP + 19, W - 78, 9, this.rock, PAL.accent);
+    g.text(Input.camReady ? 'BANG YOUR HEAD!' : 'TAP FAST TO ROCK!', CX, TOP + 44, 9, PAL.ink);
   }
 }
 
@@ -4699,7 +4716,7 @@ class SquidDoll extends Microgame {
     Input.enableCam();
     this.paused = Input.camPending; this.wait = 0;
     this.prog = 0;                                   // 0..1 toward the goal
-    this.base = this.byD(0.11, 0.085, 0.06);         // move threshold for "caught"
+    this.base = this.byD(0.13, 0.11, 0.09);          // move threshold for "caught" (a hand-held phone sways)
     this.thr = this.base; this.noise = 1; this.settle = 0.6;
     this.speed = this.byD(0.46, 0.39, 0.33);         // how fast movement advances you
     this.gT = this.byD(1.8, 1.5, 1.2);               // green (safe) window
@@ -4731,8 +4748,8 @@ class SquidDoll extends Microgame {
         this.face = 0;                                // facing you
         if (moving > this.thr) {
           this.caught += dt;
-          if (this.caught > 0.12) this.flash = 0.15;  // only react to sustained movement, not camera noise
-          if (this.caught > 0.35) { buzz(90); FX.shake(4); this.lose(); return; }
+          if (this.caught > 0.15) this.flash = 0.15;  // only react to sustained movement, not camera noise
+          if (this.caught > 0.5) { buzz(90); FX.shake(4); this.lose(); return; }
         } else this.caught = Math.max(0, this.caught - dt * 0.8);
         if (this.pt <= 0) { this.phase = 'toGreen'; this.pt = this.turn; }
         break;
@@ -5287,7 +5304,7 @@ const POOL = [
   StopBar, FollowDot, TapOrder, OddOneOut, FeedDog, WhackMole, PumpBalloon, CutRope,
   BlowSail, TracePath, GrabCount, FlickShot,
   Flappy, Crossy, Doodle, PianoTiles, DinoRun, KnockStack, MoveCam, DryShiba, LeanDodge,
-  FreezeStatue, SwatFly, HideLens, DanceBeat,
+  FreezeStatue, SwatFly, HideLens, HeadBang,
   BalanceBall, PourCup, SteerRun, BlowCandles, Dandelion, StackBlocks, SortTreats,
   BeachDig, Walkies, BarkJump, SliceTreats, YesNo
 ];
@@ -5835,7 +5852,7 @@ const Engine = {
   snap: null, album: [],
   // REPLAY: a short clip of the player from each camera game this run (the
   // last 5), kept in memory only and dropped when the next run starts
-  replay: [], rec: null, recAt: 0, rp: null, REC_FPS: 10, REC_MAX: 30,
+  replay: [], rec: null, recAt: 0, rp: null, REC_FPS: 8, REC_MAX: 24,
   BOSS_EVERY: 8, SPEEDUP_EVERY: 4,
 
   reset() {
@@ -6151,12 +6168,12 @@ const Engine = {
   },
   // a frame for the REPLAY clip, at REC_FPS, the last REC_MAX of the round,
   // and on into the result for REC_TAIL frames to catch your reaction
-  REC_TAIL: 6, recTail: 0,
+  REC_TAIL: 4, recTail: 0, REC_W: 192, REC_H: 144,
   recTick() {
     if (!this.rec || this.tut || !this.shootsNow() || this.time - this.recAt < 1 / this.REC_FPS) return;
     if (this.state === 'RESULT' && this.recTail-- <= 0) { this.rec = null; return; }
     this.recAt = this.time;
-    const f = Input.snapPhoto(96);
+    const f = Input.snapCover(this.REC_W, this.REC_H);
     if (f) { this.rec.push(f); if (this.rec.length > this.REC_MAX) this.rec.shift(); }
   },
   keepClip() {
@@ -6468,7 +6485,7 @@ const Engine = {
     const sx = T.x + 6, sy = T.y + 6, sw = T.w - 12, sh = Math.round(sw * 3 / 4);
     g.rect(sx, sy, sw, sh, PAL.bg);
     const f = clip.frames[Math.min(clip.frames.length - 1, Math.floor(R.t * this.REC_FPS))];
-    if (f) { ctx.imageSmoothingEnabled = false; ctx.drawImage(f, sx, sy, sw, sh); }
+    if (f) { ctx.imageSmoothingEnabled = true; ctx.drawImage(f, sx, sy, sw, sh); ctx.imageSmoothingEnabled = false; }   // a photo, not pixel art
     g.rect(sx + 4, sy + 4, 30, 11, clip.won ? PAL.accent : PAL.bad);
     g.text(clip.won ? 'WIN' : 'MISS', sx + 19, sy + 13, 8, clip.won ? PAL.bg : PAL.ink);
     if (R.paused) { g.rect(sx + sw - 14, sy + 4, 3, 10, PAL.ink); g.rect(sx + sw - 9, sy + 4, 3, 10, PAL.ink); }

@@ -7,7 +7,7 @@ export default async function ({ url, launch }) {
   // a stand-in camera: every snap is a small canvas
   await page.evaluate(() => {
     Prefs.set('tutorial', true); Input.camReady = true;
-    Input.snapPhoto = () => { const c = document.createElement('canvas'); c.width = 96; c.height = 72; return c; };
+    Input.snapCover = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
     Engine.mode = 'classic'; Engine.sensors = true; Engine.startRun();
   });
   const play = (C, win) => page.evaluate(([name, win]) => {
