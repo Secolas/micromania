@@ -6855,31 +6855,36 @@ const Engine = {
       const m = this.game.meta;
       // a dimmed look at where the next game happens, behind its instructions
       if (m.env) { Env.paint(m.env); ctx.globalAlpha = 0.62; g.rect(0, 0, W, H, PAL.bg); ctx.globalAlpha = 1; }
+      // a boss looks like any other prompt, plus its crest: a crown over BOSS
       if (this.isBoss) {
-        g.rect(0, 0, W, H, PAL.bad);
-        g.text('BOSS', CX, CY - 46, 20, PAL.ink);
+        const by = CY - 92, bob = Math.round(Math.sin(this.time * 6) * 1.5);
+        g.rect(CX - 12, by + 8 + bob, 24, 5, PAL.accent);
+        [-12, -3, 7].forEach(dx => g.rect(CX + dx, by + bob, 5, 8, PAL.accent));
+        [-10, 0, 10].forEach(dx => g.circle(CX + dx, by + 10 + bob, 1.3, PAL.bad));
+        g.outline('BOSS', CX, CY - 58, 20, PAL.bad);
       }
-      g.rect(0, CY - 34, W, 44, this.isBoss ? PAL.ink : PAL.accent);
+      g.rect(0, CY - 34, W, 44, PAL.accent);
       g.text(m.prompt, CX, CY - 4, m.prompt.length > 9 ? 13 : m.prompt.length > 6 ? 18 : 22, PAL.bg);
       g.demo(this.demoKind(m), CX, CY + 41, this.time, 0.72);
       // the kind of game it is (TAP, DRAG, CAMERA, SOUND, TILT/SHAKE), the same
       // tag the tutorial teaches, plus any RUN treats it boosts
-      const b = this.mode === 'run' ? Run.boosts(m) : [], ty = this.isBoss ? CY - 66 : CY - 46;
+      const b = this.mode === 'run' ? Run.boosts(m) : [], ty = this.isBoss ? CY - 42 : CY - 46;
       g.text(this.groupLabel(Run.group(m)) + ' GAME' + (b.length ? '  ·  ' + b.map(t => t.name).join(' + ') + '!' : ''), CX, ty, 8, b.length ? PAL.accent : PAL.ink);
       // A surprise: the prompt starts out normal, then a stamp slams down on
       // the game's title a moment later (see REVEAL_AT)
       const sp = this.promptT >= this.REVEAL_AT ? this.surprise : null, rev = sp === 'reverse';
       if (sp) {
+        // a sticker slapped on the banner's bottom-right corner, clear of the name
         const k = Math.min(1, (this.promptT - this.REVEAL_AT) / 0.15), sc = 1 + (1 - k) * 0.9;
-        ctx.save(); ctx.translate(CX, CY - 10); ctx.rotate(-0.1); ctx.scale(sc, sc);
+        ctx.save(); ctx.translate(CX + 48, CY + 10); ctx.rotate(-0.14); ctx.scale(sc, sc);
         const fill = rev ? PAL.bad : PAL.bg, ink = rev ? PAL.ink : PAL.accent;
-        g.rect(-60, -15, 120, 30, fill); g.box(-58, -13, 116, 26, ink);
-        g.text(rev ? 'REVERSE!' : 'DOUBLE!', 0, 7, 18, ink);
+        g.rect(-36, -10, 72, 20, fill); g.box(-34, -8, 68, 16, ink);
+        g.text(rev ? 'REVERSE!' : 'DOUBLE!', 0, 4, 10, ink);
         ctx.restore();
       }
       const how = this.howTo(m).split('\n');
       if (sp) how.push(rev ? (Run.group(m) === 'DRAG' ? 'IT ALL MOVES THE OTHER WAY!' : 'TILT THE OTHER WAY!') : 'WIN IT FOR DOUBLE POINTS!');
-      const spCol = rev ? (this.isBoss ? PAL.bg : PAL.bad) : (this.isBoss ? PAL.bg : PAL.accent);
+      const spCol = rev ? PAL.bad : PAL.accent;
       how.forEach((line, i) => g.text(line, CX, CY + 72 + i * 13, 9, sp && i === how.length - 1 ? spCol : PAL.ink));
       if (this.waitReady) {   // first meeting: take your time
         g.text('NEW GAME!', CX, CY + 72 + how.length * 13 + 4, 8, PAL.accent);
