@@ -1215,6 +1215,126 @@ const g = {
     ctx.drawImage(a.img, frame * a.fw, 0, a.fw, a.fh, -w / 2, -h / 2, w, h);
     ctx.restore();
   },
+  // Animated how-to: a phone, and the hand or face doing the move — a finger
+  // tapping or dragging, a palm waving at the camera, a face blowing into the
+  // mic, a hand tilting and shaking the phone. Drawn around (x, y), scaled by
+  // s, looping on t (seconds). Kinds it doesn't know fall back to hint().
+  DEMOS: ['tap', 'mash', 'hold', 'count', 'wait', 'drag', 'swipe', 'rub', 'trace', 'flick', 'move', 'cover', 'still', 'blow', 'shout', 'shake'],
+  demo(kind, x, y, t, s = 1) {
+    if (!this.DEMOS.includes(kind)) { this.hint(kind, x, y); return; }
+    const ink = PAL.ink, mid = PAL.mid, bg = PAL.bg, acc = PAL.accent;
+    const ring = (cx, cy, r, c) => { ctx.strokeStyle = c; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(cx, cy, r, 0, 6.2832); ctx.stroke(); };
+    const ease = k => k < 0.5 ? 2 * k * k : 1 - 2 * (1 - k) * (1 - k);
+    // the phone, upright, screen towards us: lens at the top, mic at the bottom
+    const phone = () => {
+      this.rect(-15, -23, 30, 46, ink); this.rect(-13, -19, 26, 37, bg);
+      this.circle(0, -21, 1.2, bg); this.rect(-3, 20, 6, 1, bg);
+    };
+    // a pointing hand coming up from below, fingertip at (fx, fy)
+    const finger = (fx, fy) => {
+      this.rect(fx - 5, fy - 2, 10, 18, bg); this.rect(fx - 5, fy + 11, 21, 17, bg);
+      this.circle(fx, fy + 2, 3.5, ink); this.rect(fx - 3.5, fy + 2, 7, 14, ink);
+      this.rect(fx - 3.5, fy + 13, 17, 13, ink);
+      this.rect(fx - 1.5, fy, 3, 3, mid);                                         // nail
+      this.line(fx + 4, fy + 14, fx + 4, fy + 19, mid); this.line(fx + 9, fy + 14, fx + 9, fy + 19, mid);
+    };
+    // an open palm, facing the camera
+    const palm = (px, py) => {
+      this.rect(px - 9, py - 15, 18, 25, bg);
+      for (let i = 0; i < 4; i++) this.rect(px - 7 + i * 4, py - 13 + (i === 0 || i === 3 ? 2 : 0), 3, 10, ink);
+      this.rect(px - 7, py - 4, 15, 11, ink); this.rect(px + 7, py - 3, 4, 3, ink);   // thumb
+      this.rect(px - 4, py + 7, 9, 4, ink);                                           // wrist
+    };
+    // a face in profile looking right, mouth open by o (0..1)
+    const face = (fx, fy, o) => {
+      this.circle(fx, fy, 10, ink); this.rect(fx + 7, fy - 2, 5, 4, ink);           // head, nose
+      this.rect(fx + 2, fy - 5, 2, 2, bg);                                         // eye
+      this.cRect(fx + 9, fy + 5, 3, 1 + o * 3, bg);                                // mouth
+    };
+    ctx.save(); ctx.translate(Math.round(x), Math.round(y)); ctx.scale(s, s);
+    switch (kind) {
+      case 'tap': case 'mash': case 'count': case 'wait': case 'hold': {
+        const per = { tap: 1, mash: 0.32, count: 0.5, wait: 2, hold: 2 }[kind];
+        const k = (t % per) / per, down = kind === 'wait' ? k > 0.8 : kind === 'hold' ? k > 0.15 && k < 0.85 : k > 0.5 && k < 0.75;
+        phone();
+        if (kind === 'wait' && !down) for (let i = 0; i < 3; i++) if (k * 4 > i) this.rect(-6 + i * 5, -12, 2, 2, mid);   // wait...
+        if (down) {
+          const r = kind === 'hold' ? 3 + (k - 0.15) * 14 : 4 + (k - (kind === 'wait' ? 0.8 : 0.5)) * 24;
+          ring(0, 0, r, acc); if (kind === 'hold') ring(0, 0, 10, mid);
+        }
+        finger(0, down ? 0 : 7);
+        break;
+      }
+      case 'drag': case 'swipe': case 'rub': case 'trace': case 'flick': {
+        phone();
+        const per = { drag: 1.8, swipe: 1, rub: 0.5, trace: 1.6, flick: 1.2 }[kind], k = (t % per) / per;
+        let fx = 0, fy = 0, pts = [];
+        if (kind === 'drag') { const e = ease(k < 0.5 ? k * 2 : 2 - k * 2); fx = -8 + e * 16; fy = 4 - e * 10; pts = [[-8, 4], [fx, fy]]; }
+        if (kind === 'swipe') { const e = ease(Math.min(1, k * 1.6)); fx = 0; fy = 12 - e * 26; pts = [[0, 12], [0, fy]]; }
+        if (kind === 'rub') { fx = Math.sin(k * 6.2832) * 8; fy = 2; pts = [[-8, 2], [8, 2]]; }
+        if (kind === 'trace') {
+          const P = [[-9, 8], [-4, -8], [1, 8], [6, -8]], u = Math.min(0.999, k * 1.25) * 3, i = Math.floor(u), f = u - i;
+          fx = P[i][0] + (P[i + 1][0] - P[i][0]) * f; fy = P[i][1] + (P[i + 1][1] - P[i][1]) * f; pts = P.slice(0, i + 1).concat([[fx, fy]]);
+        }
+        if (kind === 'flick') {
+          const e = Math.min(1, k * 3); fx = -6 + e * 6; fy = 8 - e * 6; pts = [[-6, 8], [fx, fy]];
+          const b = Math.max(0, k * 3 - 1);    // the thing flies on after the finger stops
+          this.circle(fx + b * 14, fy - b * 16, 3, acc);
+        } else this.circle(fx, fy, 3, acc);
+        for (let i = 1; i < pts.length; i++) this.line(pts[i - 1][0], pts[i - 1][1], pts[i][0], pts[i][1], mid, 2);
+        finger(fx, fy + 3);
+        break;
+      }
+      case 'move': case 'cover': case 'still': {
+        ctx.translate(0, 8); phone();
+        this.circle(0, -21, 2.4, acc); this.circle(0, -21, 1, bg);                 // the lens, lit
+        if (kind === 'move') {
+          const sw = Math.sin(t * 6);
+          palm(sw * 15, -24);
+          for (let i = 0; i < 2; i++) this.line(sw > 0 ? -14 - i * 4 : 14 + i * 4, -30 + i * 3, sw > 0 ? -14 - i * 4 : 14 + i * 4, -22 + i * 3, mid, 2);
+        } else if (kind === 'cover') {
+          const k = (t % 2) / 2, d = k < 0.35 ? ease(k / 0.35) : k < 0.75 ? 1 : 1 - ease((k - 0.75) / 0.25);
+          palm(0, -44 + d * 22);
+        } else {
+          this.circle(0, -31, 7, ink); this.rect(-3, -33, 2, 2, bg); this.rect(2, -33, 2, 2, bg);   // a face, holding still
+          if (Math.floor(t * 2) % 2) ring(0, -21, 5, acc);
+        }
+        // the camera's view on the screen: a small copy of what it sees
+        this.rect(-10, -14, 20, 14, PAL.mid); if (kind !== 'cover' || Math.floor(t * 3) % 2) this.rect(-2 + (kind === 'move' ? Math.sin(t * 6) * -6 : 0), -11, 4, 7, bg);
+        break;
+      }
+      case 'blow': case 'shout': {
+        this.rect(-2, -23, 30, 46, ink); this.rect(0, -19, 26, 37, bg); this.rect(10, 20, 6, 1, bg);   // phone, set right
+        this.circle(13, 21, 2.2, acc);                                             // the mic, lit
+        const o = kind === 'shout' ? (Math.sin(t * 9) + 1) / 2 : 0.4;
+        face(-22, 10, o);
+        if (kind === 'blow') for (let i = 0; i < 3; i++) {                           // puffs of air flowing to the mic
+          const k = (t * 1.6 + i / 3) % 1, ax = -10 + k * 20, ay = 15 + (i - 1) * 3 + k * 3;
+          this.line(ax, ay, ax + 5, ay + 1, k > 0.8 ? mid : ink, 2);
+        } else for (let i = 1; i <= 3; i++) {                                        // sound waves
+          const r = ((t * 2 + i / 3) % 1) * 14 + 3;
+          ctx.strokeStyle = i % 2 ? ink : mid; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(-13, 15, r, -0.6, 0.6); ctx.stroke();
+        }
+        break;
+      }
+      case 'shake': {
+        // half the loop a slow tilt, half a fast shake
+        const k = t % 3, tilt = k < 1.5, a = tilt ? Math.sin(k / 1.5 * 6.2832) * 0.45 : Math.sin(k * 45) * 0.12, dx = tilt ? 0 : Math.sin(k * 45) * 3;
+        ctx.save(); ctx.translate(dx, 8); ctx.rotate(a); ctx.translate(0, -8);
+        phone();
+        // a ball rolling to the low side, so the tilt reads as tilt
+        this.circle(tilt ? Math.max(-9, Math.min(9, a * 22)) : Math.sin(k * 45) * 4, 6, 3, acc);
+        // the hand holding it at the bottom
+        this.rect(-12, 12, 24, 16, bg); this.rect(-11, 13, 22, 14, ink);
+        for (let i = 0; i < 3; i++) this.line(-6 + i * 6, 13, -6 + i * 6, 18, mid);
+        ctx.restore();
+        if (!tilt) for (let i = 0; i < 2; i++) { this.line(-22 - i * 4, -6, -22 - i * 4, 6, mid, 2); this.line(22 + i * 4, -6, 22 + i * 4, 6, mid, 2); }
+        else this.text(a > 0 ? '>' : '<', a > 0 ? 24 : -24, 4, 10, mid);
+        break;
+      }
+    }
+    ctx.restore();
+  },
   // control pictograms shown on the prompt card
   hint(kind, x, y) {
     const c = PAL.ink;
@@ -5767,6 +5887,13 @@ const Engine = {
 
   // The how-to line for the input this player will really use: a camera game
   // played on touch says "TAP FAST", not "MOVE YOUR BODY".
+  // which how-to animation the prompt plays: the game's own hint, unless a
+  // camera/mic/motion game fell back to touch, then the touch it asks for
+  demoKind(m) {
+    const h = m.how, how = this.howTo(m);
+    if (!h || typeof h === 'string' || how !== h.touch || !['move', 'cover', 'still', 'blow', 'shout', 'shake'].includes(m.hint)) return m.hint;
+    return /WIGGLE/.test(how) ? 'rub' : /^HOLD/.test(how) ? 'hold' : /FAST|TAP, TAP/.test(how) ? 'mash' : 'tap';
+  },
   howTo(m) {
     const h = m.how;
     if (!h || typeof h === 'string') return h || '';
@@ -6556,19 +6683,19 @@ const Engine = {
     if (this.state === 'TUTCAT') {   // one kind of game: its tag, its icon, what to do
       const c = this.tut.cat, n = this.tut.step + 1;
       g.text(n + ' / 5', 22, K.y + 11, 8, PAL.ink, 'left');
-      g.outline(c.label, CX, TOP + 70, 20, PAL.accent);
-      ctx.save(); ctx.translate(CX, CY - 22); ctx.scale(2.5, 2.5); g.hint(c.hint, 0, 0); ctx.restore();
-      c.lines.forEach((l, i) => g.text(l, CX, CY + 22 + i * 13, 10, PAL.ink));
+      g.outline(c.label, CX, TOP + 58, 20, PAL.accent);
+      g.demo(c.hint, CX, CY - 18, this.time, 1.15);
+      c.lines.forEach((l, i) => g.text(l, CX, CY + 32 + i * 13, 10, PAL.ink));
       if (c.ok) {
         // the tag they'll meet before these games, just as the prompt shows it
-        g.text('BEFORE THESE GAMES YOU SEE', CX, CY + 66, 8, PAL.ink);
-        g.rect(CX - 50, CY + 72, 100, 16, PAL.bg); g.box(CX - 50, CY + 72, 100, 16, PAL.accent);
-        g.text(c.label + ' GAME', CX, CY + 84, 8, PAL.accent);
+        g.text('BEFORE THESE GAMES YOU SEE', CX, CY + 72, 8, PAL.ink);
+        g.rect(CX - 50, CY + 78, 100, 16, PAL.bg); g.box(CX - 50, CY + 78, 100, 16, PAL.accent);
+        g.text(c.label + ' GAME', CX, CY + 90, 8, PAL.accent);
         if (this.timer < 1.6 && Math.floor(this.time * 2) % 2) g.text("TAP TO TRY ONE", CX, BOT - 6, 10, PAL.accent);
       } else {
-        g.text('YOUR ' + c.off + ' IS OFF,', CX, CY + 66, 8, PAL.bad);
-        g.text('SO THESE GAMES ARE SKIPPED.', CX, CY + 77, 8, PAL.bad);
-        g.text('TURN IT ON IN SETTINGS.', CX, CY + 88, 8, PAL.ink);
+        g.text('YOUR ' + c.off + ' IS OFF,', CX, CY + 72, 8, PAL.bad);
+        g.text('SO THESE GAMES ARE SKIPPED.', CX, CY + 83, 8, PAL.bad);
+        g.text('TURN IT ON IN SETTINGS.', CX, CY + 94, 8, PAL.ink);
       }
       return;
     }
@@ -6686,7 +6813,7 @@ const Engine = {
       }
       g.rect(0, CY - 34, W, 44, this.isBoss ? PAL.ink : PAL.accent);
       g.text(m.prompt, CX, CY - 4, m.prompt.length > 9 ? 13 : m.prompt.length > 6 ? 18 : 22, PAL.bg);
-      g.hint(m.hint, CX, CY + 40);
+      g.demo(this.demoKind(m), CX, CY + 41, this.time, 0.72);
       // the kind of game it is (TAP, DRAG, CAMERA, SOUND, TILT/SHAKE), the same
       // tag the tutorial teaches, plus any RUN treats it boosts
       const b = this.mode === 'run' ? Run.boosts(m) : [], ty = this.isBoss ? CY - 66 : CY - 46;
