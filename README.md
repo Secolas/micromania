@@ -20,6 +20,12 @@ skipped when the browser says both are already granted.
 says NEW GAME! and waits for TAP WHEN READY instead of counting down. After
 that it's remembered.
 
+**Replay**: camera games quietly record a short clip of you (about three
+seconds, plus half a second of your reaction to the result). At GAME OVER,
+WATCH REPLAY plays the last five back on a little TV, with numbered dots to
+pick one and back / pause / forward buttons. The clips stay in memory on the
+phone only, and the next run starts with none.
+
 **Surprises**: once things get going, a prompt can start out normal and then
 have a stamp slam down on the game's title:
 - **REVERSE!** (drag and tilt games only): your touch lands where you press, but
@@ -281,6 +287,7 @@ Chromium against the real page (served over http by `tests/run.mjs`).
 | `album`, `settings` | saving, paging, opening, sharing and deleting photos; every switch, saved across a reload |
 | `camera` | live frames from a fake camera, and recovery when the feed stalls |
 | `pwa` | manifest, icons, the service worker, and starting with the network off |
+| `replay` | camera games keep a clip, WATCH REPLAY plays them back, forward / pause / DONE work, a new run starts with no clips |
 | `reverse` | REVERSE mirrors a drag about where it went down and only applies to drag/tilt games; a new game's prompt waits for READY, then remembers |
 | `tutorial`, `pause` | the first-time tutorial (practice costs nothing, a miss replays, SKIP, replay from SETTINGS); pausing on leaving the app, RESUME's 3-2-1 with the clock intact, QUIT |
 | `audio` | every effect, sting and song renders audibly without clipping; the right song plays on each screen |

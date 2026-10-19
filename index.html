@@ -5833,6 +5833,9 @@ const Engine = {
   // a still of the player taken the moment they win any game, shown on the
   // result screen; the last few of a run make the game-over strip
   snap: null, album: [],
+  // REPLAY: a short clip of the player from each camera game this run (the
+  // last 5), kept in memory only and dropped when the next run starts
+  replay: [], rec: null, recAt: 0, rp: null, REC_FPS: 10, REC_MAX: 30,
   BOSS_EVERY: 8, SPEEDUP_EVERY: 4,
 
   reset() {
@@ -5889,6 +5892,7 @@ const Engine = {
     // speed can't shrink the round below what's physically completable
     if (C.meta.minDuration) this.duration = Math.max(this.duration, C.meta.minDuration);
     this.game.timeLimit = this.duration;
+    this.rec = [];   // this round's REPLAY clip
     this.game.init();
     this.state = 'PROMPT';
     this.timer = this.isBoss ? 1.0 : 0.7;
@@ -6031,6 +6035,7 @@ const Engine = {
       return;
     }
 
+    if (s === 'REPLAY') { this.replayUpdate(dt); return; }
     if (s === 'PROMPT') {
       Mascot.set('watch');
       const pt = this.promptT; this.promptT += dt;
@@ -6046,6 +6051,7 @@ const Engine = {
       this.game.t += dt;
       this.game.update(dt, Input);
       this.trackShot();
+      this.recTick();
       const out = this.timer <= 0;
       this.timer_ = this.timer;   // round clock left, for RUN's speed bonus
       if (out && !this.game.finished && !this.game.playingOut) {   // a jump in the air gets to land
@@ -6053,6 +6059,7 @@ const Engine = {
         else { this.game.lose(); FX.burst(12, H - 9, PAL.bad, 18, 90); Sfx.noise(0.3, 0.09, 120); }   // the bomb goes off
       }
       if (this.game.finished) {
+        this.keepClip();
         if (this.game.won) {
           if (this.surprise === 'life' && this.mode === 'classic' && this.lives < 4) { this.lives++; this.gotLife = true; } else this.gotLife = false;
           this.score++; this.combo++; this.result = 'WIN'; Sfx.win(); buzz(20); Mascot.set('cheer');
@@ -6090,6 +6097,7 @@ const Engine = {
     }
 
     if (s === 'RESULT') {
+      this.recTick();
       if (this.mode === 'run' && Input.justDown && this.timer < 1.4) this.timer = 0;   // skip the tally
       if (this.timer > 0) return;
       // if the just-won game caught an action shot, show it before moving on
@@ -6123,7 +6131,7 @@ const Engine = {
   // The countdown, SPEED UP, STAGE CLEAR and GAME OVER have their own stings.
   musicTrack() {
     const s = this.state;
-    if (['TITLE', 'SETTINGS', 'ALBUM', 'PERMS'].includes(s)) return 'menu';
+    if (['TITLE', 'SETTINGS', 'ALBUM', 'PERMS', 'REPLAY'].includes(s)) return 'menu';
     if (s === 'SHOP') return 'shop';
     if (!['STAGE', 'PROMPT', 'PLAYING', 'RESULT', 'PHOTO'].includes(s)) return null;
     const how = this.game && this.game.meta.how;
@@ -6140,6 +6148,23 @@ const Engine = {
   shootsNow() {
     const gm = this.game;
     return Input.camReady && !('usesCam' in gm && !gm.usesCam);
+  },
+  // a frame for the REPLAY clip, at REC_FPS, the last REC_MAX of the round,
+  // and on into the result for REC_TAIL frames to catch your reaction
+  REC_TAIL: 6, recTail: 0,
+  recTick() {
+    if (!this.rec || this.tut || !this.shootsNow() || this.time - this.recAt < 1 / this.REC_FPS) return;
+    if (this.state === 'RESULT' && this.recTail-- <= 0) { this.rec = null; return; }
+    this.recAt = this.time;
+    const f = Input.snapPhoto(96);
+    if (f) { this.rec.push(f); if (this.rec.length > this.REC_MAX) this.rec.shift(); }
+  },
+  keepClip() {
+    if (this.rec && this.rec.length >= 3 && !this.tut) {
+      this.replay.push({ prompt: this.game.meta.prompt, won: this.game.won, frames: this.rec });
+      if (this.replay.length > 5) this.replay.shift();
+      this.recTail = this.REC_TAIL;   // the clip keeps filling through the result
+    } else this.rec = null;
   },
   trackShot() {
     const gm = this.game, m = gm.meta;
@@ -6183,7 +6208,7 @@ const Engine = {
   ALB_NEXT:    { x: W - 46, y: BOT - 26, w: 30, h: 20 },
   // the menu-style screens: black with drifting paw prints and a pixel frame,
   // and no mascot on the shelf
-  MENU_SCREENS: ['SETTINGS', 'ALBUM', 'PERMS', 'GAMEOVER', 'TUTORIAL', 'TUTCAT', 'TUTDONE'],
+  MENU_SCREENS: ['SETTINGS', 'ALBUM', 'PERMS', 'GAMEOVER', 'TUTORIAL', 'TUTCAT', 'TUTDONE', 'REPLAY'],
   groupLabel(gr) { return { TAP: 'TAP', DRAG: 'DRAG', CAMERA: 'CAMERA', BLOW: 'SOUND', SHAKE: 'TILT/SHAKE' }[gr] || gr; },
   menuBg() {
     g.rect(0, 0, W, H, PAL.bg);
@@ -6203,6 +6228,7 @@ const Engine = {
   ALB_SHARE:   { x: CX - 50, y: BOT - 46, w: 100, h: 20 },
   ALB_DEL:     { x: CX - 30, y: BOT - 21, w: 60, h: 16 },
   BTN_SHARE:   { x: CX - 50, y: CY + 66, w: 100, h: 22 },
+  BTN_REPLAY:  { x: CX - 50, y: CY + 92, w: 100, h: 22 },
   hit(b, p) { return p.x >= b.x && p.x < b.x + b.w && p.y >= b.y && p.y < b.y + b.h; },
 
   press(p) {
@@ -6240,8 +6266,9 @@ const Engine = {
     } else if (s === 'GAMEOVER' && this.timer <= 0) {
       // share runs inside this tap: the share sheet only opens from a gesture
       if (this.hit(this.BTN_SHARE, p)) { Sfx.tap(); this.share(); return; }
+      if (this.replay.length && this.hit(this.BTN_REPLAY, p)) { Sfx.tap(); this.state = 'REPLAY'; this.rp = { i: 0, t: 0, paused: false }; return; }
       this.state = 'TITLE'; this.timer = 0.2;   // back to pick a mode
-    }
+    } else if (s === 'REPLAY') this.replayRelease(p);
   },
 
   // ── TITLE ──
@@ -6400,7 +6427,70 @@ const Engine = {
   drawShareButton() {
     const B = this.BTN_SHARE;
     g.rect(B.x, B.y, B.w, B.h, PAL.accent); g.text('SHARE', CX, B.y + 15, 10, PAL.bg);
-    if (Math.floor(this.time * 2) % 2) g.text('TAP ELSEWHERE TO CONTINUE', CX, CY + 104, 7, PAL.mid);
+    const R = this.BTN_REPLAY, has = this.replay.length > 0;
+    if (has) { g.box(R.x, R.y, R.w, R.h, PAL.accent); g.text('WATCH REPLAY', CX, R.y + 15, 10, PAL.accent); }
+    if (Math.floor(this.time * 2) % 2) g.text('TAP ELSEWHERE TO CONTINUE', CX, has ? CY + 128 : CY + 104, 7, PAL.mid);
+  },
+
+  // ── REPLAY ─────────────────────────────────────────────────────────────────
+  // Your camera games from the run, played back on a little TV: the numbered
+  // dots pick a clip, the buttons go back, pause and go forward. Each clip
+  // plays through and the next one follows, round and round.
+  RP_TV: { x: 14, y: 38, w: 152, h: 117 },
+  RP_DOT_Y: 202,
+  RP_BTNS: [{ id: 'back', x: CX - 74, y: 214, w: 44, h: 24 }, { id: 'pause', x: CX - 22, y: 214, w: 44, h: 24 }, { id: 'fwd', x: CX + 30, y: 214, w: 44, h: 24 }],
+  RP_DONE: { x: CX - 50, y: 248, w: 100, h: 22 },
+  rpDot(k) { const n = this.replay.length; return CX + (k - (n - 1) / 2) * 26; },
+  replayUpdate(dt) {
+    const R = this.rp, n = this.replay.length;
+    if (!R || !n) { this.state = 'GAMEOVER'; return; }
+    if (R.paused) return;
+    R.t += dt;
+    if (R.t * this.REC_FPS >= this.replay[R.i].frames.length + 4) { R.i = (R.i + 1) % n; R.t = 0; }   // a short hold on the last frame
+  },
+  replayGo(i) { const n = this.replay.length; this.rp.i = (i + n) % n; this.rp.t = 0; },
+  replayRelease(p) {
+    const R = this.rp, n = this.replay.length;
+    if (this.hit(this.RP_DONE, p)) { Sfx.tap(); this.state = 'GAMEOVER'; this.timer = 0; return; }
+    for (const b of this.RP_BTNS) if (this.hit(b, p)) {
+      Sfx.tap();
+      if (b.id === 'pause') R.paused = !R.paused;
+      else this.replayGo(R.i + (b.id === 'fwd' ? 1 : -1));
+      return;
+    }
+    for (let k = 0; k < n; k++) if (Math.hypot(p.x - this.rpDot(k), p.y - this.RP_DOT_Y) < 12) { Sfx.tap(); this.replayGo(k); return; }
+  },
+  drawReplay() {
+    const R = this.rp, clip = this.replay[R.i], T = this.RP_TV;
+    g.text('REPLAY', CX, 30, 12, PAL.accent);
+    // the TV: a grey set with a dark screen, the clip in it
+    g.rect(T.x, T.y, T.w, T.h, PAL.mid); g.rect(T.x + 1, T.y + T.h, T.w - 2, 1, PAL.mid);
+    const sx = T.x + 6, sy = T.y + 6, sw = T.w - 12, sh = Math.round(sw * 3 / 4);
+    g.rect(sx, sy, sw, sh, PAL.bg);
+    const f = clip.frames[Math.min(clip.frames.length - 1, Math.floor(R.t * this.REC_FPS))];
+    if (f) { ctx.imageSmoothingEnabled = false; ctx.drawImage(f, sx, sy, sw, sh); }
+    g.rect(sx + 4, sy + 4, 30, 11, clip.won ? PAL.accent : PAL.bad);
+    g.text(clip.won ? 'WIN' : 'MISS', sx + 19, sy + 13, 8, clip.won ? PAL.bg : PAL.ink);
+    if (R.paused) { g.rect(sx + sw - 14, sy + 4, 3, 10, PAL.ink); g.rect(sx + sw - 9, sy + 4, 3, 10, PAL.ink); }
+    g.text(clip.prompt, CX, 176, 12, PAL.ink);
+    // the clip dots, joined like a timeline
+    const n = this.replay.length;
+    if (n > 1) g.rect(this.rpDot(0), this.RP_DOT_Y - 1, this.rpDot(n - 1) - this.rpDot(0), 2, PAL.mid);
+    for (let k = 0; k < n; k++) {
+      const on = k === R.i;
+      g.circle(this.rpDot(k), this.RP_DOT_Y, on ? 9 : 8, on ? PAL.accent : PAL.mid);
+      g.text(String(k + 1), this.rpDot(k), this.RP_DOT_Y + 4, 9, on ? PAL.bg : PAL.ink);
+    }
+    // back, pause / play, forward
+    const tri = (x, y, dir) => { ctx.fillStyle = PAL.ink; ctx.beginPath(); ctx.moveTo(x, y - 6); ctx.lineTo(x, y + 6); ctx.lineTo(x + dir * 8, y); ctx.closePath(); ctx.fill(); };
+    for (const b of this.RP_BTNS) {
+      g.box(b.x, b.y, b.w, b.h, PAL.mid);
+      const cx = b.x + b.w / 2, cy = b.y + b.h / 2;
+      if (b.id === 'back') { tri(cx, cy, -1); tri(cx + 8, cy, -1); }
+      if (b.id === 'fwd') { tri(cx - 8, cy, 1); tri(cx, cy, 1); }
+      if (b.id === 'pause') { if (R.paused) tri(cx - 4, cy, 1); else { g.rect(cx - 5, cy - 6, 3, 12, PAL.ink); g.rect(cx + 2, cy - 6, 3, 12, PAL.ink); } }
+    }
+    const D = this.RP_DONE; g.rect(D.x, D.y, D.w, D.h, PAL.accent); g.text('DONE', CX, D.y + 15, 10, PAL.bg);
   },
 
   // ── ALBUM SCREEN ───────────────────────────────────────────────────────────
@@ -6603,7 +6693,7 @@ const Engine = {
     if (this.sensors) { Input.enableAV(); Input.enableMotion(); Input.enableTilt(); }
     if (!this.tut && !Prefs.get('tutorial', false)) { this.startTutorial(this.mode); return; }   // the very first time: practice first
     this.reset();
-    this.album = []; this.snap = null;
+    this.album = []; this.snap = null; this.replay = []; this.rec = null;
     if (this.mode === 'run') Run.start();
     this.state = 'READY';
     this.timer = 3.2;          // 3 · 2 · 1 · GO, then the first prompt
@@ -6832,6 +6922,7 @@ const Engine = {
     if (s === 'CLEAR') { this.drawHud(); Run.drawClear(); return; }
     if (s === 'SHOP')  { this.drawHud(); Run.drawShop(); return; }
 
+    if (s === 'REPLAY') { this.drawReplay(); return; }
     if (s === 'GAMEOVER') {
       this.drawAlbum(TOP + 44);
       g.text('GAME', CX, CY - 24, 24, PAL.bad);
