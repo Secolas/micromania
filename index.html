@@ -246,6 +246,9 @@ const Assets = {
     hidedog:{ src: ART.hidedog,         fw: 64, fh: 64, frames: 9,  fps: 8  },
     facedir:  { src: ART.facedir,        fw: 120, fh: 120, frames: 7,  fps: 1  },
     couch:    { src: 'art/couch.png',    fw: 74,  fh: 55,  frames: 1,  fps: 1  },
+    crate:    { src: 'art/crate.png',    fw: 14,  fh: 12,  frames: 1,  fps: 1  },
+    slingshot:{ src: 'art/slingshot.png', fw: 24, fh: 36,  frames: 2,  fps: 1  },
+    bone16:   { src: 'art/bone16.png',   fw: 16,  fh: 8,   frames: 1,  fps: 1  },
   },
   cache: {},
   load() {
@@ -3363,39 +3366,42 @@ class DinoRun extends Microgame {
 // 29. KNOCK — Angry-Birds style: sling the shiba to topple the block stack
 class KnockStack extends Microgame {
   static meta = { id: 'knock', env: 'sunny@262', prompt: 'KNOCK IT!', hint: 'flick', duration: 5.0, minDuration: 3.2,
-    how: 'PULL BACK, LET GO\nTO KNOCK IT DOWN' };
+    how: 'PULL BACK, LET GO\nKNOCK THE BONE DOWN' };
   init() {
-    this.K = 6;                               // pull -> velocity (same as flick)
-    this.ox = 34; this.oy = BOT - 52;         // the pouch, up between the slingshot's arms, lower-left
-    this.ball = { x: this.ox, y: this.oy, r: 9, vx: 0, vy: 0, flying: false };
+    this.K = 8.5;                             // pull -> velocity: the pull is shorter in the smaller scene, the shot as strong
+    this.maxPull = 50;
+    this.ox = 34; this.oy = BOT - 37;         // the pouch, up between the slingshot's arms, lower-left
+    this.ball = { x: this.ox, y: this.oy, r: 6, vx: 0, vy: 0, flying: false };
     this.aim = false; this.launched = false;
     this.settle = 0;
 
-    // a tower of crates on a stone slab to the right; knock enough of them
-    // out of place to win. The crates are little rigid bodies: they fall, bounce,
-    // slide, tip over and land on each other. A crate rests ("sleeps") until
-    // it's hit or what it stands on goes, so the tower doesn't jitter.
+    // a tower of crates on a stone slab to the right, a bone on top; knock the
+    // bone down to the floor to win. The crates and the bone are little rigid
+    // bodies: they fall, bounce, slide, tip over and land on each other. A body
+    // rests ("sleeps") until it's hit or what it stands on goes, so the tower
+    // doesn't jitter.
     this.baseX = this.byD(120, 132, 144);
     this.groundY = BOT - 6;
-    this.slabY = this.groundY - 4;           // the top of the slab
-    this.need = this.byD(1, 2, 2);            // crates that must be knocked out of place
+    this.slabY = this.groundY - 3;           // the top of the slab
     this.count = this.byD(3, 3, 4);
     this.blocks = [];
-    const bw = 20, bh = 16;
-    for (let i = 0; i < this.count; i++) {
-      const y = this.slabY - bh / 2 - i * bh;
-      this.blocks.push({ x: this.baseX, y, hx: this.baseX, hy: y, w: bw, h: bh, vx: 0, vy: 0, rot: 0, av: 0, sleep: true, still: 0, gone: false });
-    }
-    this.knocked = 0; this.winAt = 0;
+    const body = (y, w, h, o) => Object.assign({ x: this.baseX, y, hx: this.baseX, hy: y, w, h, vx: 0, vy: 0, rot: 0, av: 0, sleep: true, still: 0, gone: false }, o);
+    const bw = 14, bh = 12;
+    for (let i = 0; i < this.count; i++) this.blocks.push(body(this.slabY - bh / 2 - i * bh, bw, bh));
+    this.bone = body(this.slabY - this.count * bh - 4, 16, 8, { bone: true });
+    this.blocks.push(this.bone);
+    this.winAt = 0;
   }
-  floorAt(x) { return Math.abs(x - this.baseX) < 18 ? this.slabY : this.groundY; }
+  // tumbling bodies settle flat: crates on any side, the bone only lying down
+  flat(b, rot) { const q = b.bone ? Math.PI : Math.PI / 2; return Math.round(rot / q) * q; }
+  floorAt(x) { return Math.abs(x - this.baseX) < 13 ? this.slabY : this.groundY; }
   wake(b) { b.sleep = false; b.still = 0; }
   update(dt, input) {
     if (!this.launched) {
       if (input.down) {
         this.aim = true;
         let px = input.x - this.ox, py = input.y - this.oy;
-        const maxPull = 70, d = Math.hypot(px, py);
+        const maxPull = this.maxPull, d = Math.hypot(px, py);
         if (d > maxPull) { px = px / d * maxPull; py = py / d * maxPull; }
         this.ball.x = Math.max(6, Math.min(W - 6, this.ox + px));
         this.ball.y = Math.min(this.groundY - this.ball.r, this.oy + py);   // not into the ground
@@ -3407,7 +3413,7 @@ class KnockStack extends Microgame {
       }
       // the bands creak as they stretch, a note higher the further you pull
       if (this.aim && input.down) {
-        const k = Math.floor(Math.hypot(this.ball.x - this.ox, this.ball.y - this.oy) / 14);
+        const k = Math.floor(Math.hypot(this.ball.x - this.ox, this.ball.y - this.oy) / 10);
         if (k > (this.creak || 0)) { this.creak = k; Sfx.blip(300 + k * 90, 0.03, 'triangle', 0.05); }
       }
       return;
@@ -3425,7 +3431,7 @@ class KnockStack extends Microgame {
         if (ball.vy > 40) Sfx.thud();
         ball.vy = -ball.vy * 0.35; ball.vx *= 0.75;
       }
-      // into a crate: shove it, and spin it by where it was struck (high tips it over)
+      // into a crate or the bone: shove it, and spin it by where it was struck (high tips it over)
       for (const b of this.blocks) {
         const ox = (b.w / 2 + ball.r) - Math.abs(ball.x - b.x), oy = (b.h / 2 + ball.r) - Math.abs(ball.y - b.y);
         if (ox <= 0 || oy <= 0) continue;
@@ -3451,11 +3457,10 @@ class KnockStack extends Microgame {
           b.y = fy - b.h / 2;
           if (b.vy > 90) { Sfx.thud(); FX.burst(b.x, fy, SCENE.dirt, 5, 40); }
           b.vy = -b.vy * 0.25; b.vx *= 0.82; b.av *= 0.6;
-          const flat = Math.round(b.rot / (Math.PI / 2)) * (Math.PI / 2);   // rolls over to land flat
-          b.rot += (flat - b.rot) * 0.25;
+          b.rot += (this.flat(b, b.rot) - b.rot) * 0.25;   // rolls over to land flat
         }
       }
-      // crate on crate: push them apart along the shallower overlap
+      // body on body: push them apart along the shallower overlap
       for (let i = 0; i < this.blocks.length; i++) for (let k = i + 1; k < this.blocks.length; k++) {
         const a = this.blocks[i], c = this.blocks[k];
         if (a.gone || c.gone || (a.sleep && c.sleep)) continue;
@@ -3479,77 +3484,71 @@ class KnockStack extends Microgame {
       if (b.gone) continue;
       if (!b.sleep) {
         b.still = Math.hypot(b.vx, b.vy) < 6 && Math.abs(b.av) < 0.4 ? b.still + dt : 0;
-        if (b.still > 0.25) { b.sleep = true; b.vx = b.vy = b.av = 0; b.rot = Math.round(b.rot / (Math.PI / 2)) * (Math.PI / 2); }
+        if (b.still > 0.25) { b.sleep = true; b.vx = b.vy = b.av = 0; b.rot = this.flat(b, b.rot); }
       } else {
         const onFloor = b.y + b.h / 2 >= this.floorAt(b.x) - 1;
         const onCrate = this.blocks.some(c => c !== b && !c.gone && Math.abs(c.x - b.x) < (b.w + c.w) / 2 - 3 && Math.abs((c.y - c.h / 2) - (b.y + b.h / 2)) < 2);
         if (!onFloor && !onCrate) this.wake(b);
       }
     }
-    this.knocked = this.blocks.filter(b => b.gone || Math.hypot(b.x - b.hx, b.y - b.hy) > 8 || Math.abs(b.rot) > 0.4).length;
-    // enough knocked: let the tower finish coming down, then win
-    if (this.knocked >= this.need) {
+    // the bone is down (on the slab or the grass, or flown off): let the tower
+    // finish coming down, then win
+    const bone = this.bone;
+    if (bone.gone || bone.y + bone.h / 2 >= this.slabY - 1) {
       this.playingOut = true;
       if (!this.winAt) this.winAt = this.t + 0.8;
       if (this.t >= this.winAt && !this.finished) { this.playingOut = false; this.succeed(); }
       return;
     }
-    // the shot is spent (out of the field, or it's stopped rolling) and the tower stands: a miss
+    // the shot is spent (out of the field, or it's stopped rolling) and the bone is still up: a miss
     const spent = ball.y > BOT + 20 || ball.x > W + 20 || ball.x < -20 || (this.landed && Math.hypot(ball.vx, ball.vy) < 25);
     const moving = this.blocks.some(b => !b.sleep && !b.gone);
     this.settle = spent && !moving ? this.settle + dt : 0;
     if (this.settle > 0.3) { this.playingOut = false; this.lose(); }
   }
-  // a wooden crate: planks with a lit top edge, a cross brace, nail heads
-  crate(w, h) {
-    g.rect(-w / 2, -h / 2, w, h, SCENE.woodLo);
-    g.rect(-w / 2 + 1, -h / 2 + 1, w - 2, h - 2, SCENE.wood);
-    g.rect(-w / 2 + 1, -h / 2 + 1, w - 2, 2, SCENE.woodHi);
-    g.rect(-w / 2 + 1, -1, w - 2, 1, SCENE.woodLo);                          // the plank seam
-    g.line(-w / 2 + 3, -h / 2 + 3, w / 2 - 3, h / 2 - 3, SCENE.woodLo, 2);    // the brace
-    for (const [nx, ny] of [[-w / 2 + 2, -h / 2 + 2], [w / 2 - 3, -h / 2 + 2], [-w / 2 + 2, h / 2 - 3], [w / 2 - 3, h / 2 - 3]]) g.rect(nx, ny, 1, 1, PAL.bg);
-  }
+  // a wooden crate (art/crate.png) and the bone (art/bone16.png), drawn 1:1 at their physics boxes
+  crate(w, h) { g.sprite('crate', 0, 0, { w, h }); }
   draw(g) {
     g.clear();
     const ox = this.ox, oy = this.oy, gy = this.groundY;
     // the stone slab the tower stands on
-    g.rect(this.baseX - 18, gy - 4, 36, 6, SCENE.stoneLo); g.rect(this.baseX - 18, gy - 4, 36, 2, SCENE.stone);
-    // crates, tumbling as they go
+    g.rect(this.baseX - 13, gy - 3, 26, 5, SCENE.stoneLo); g.rect(this.baseX - 13, gy - 3, 26, 1, SCENE.stone);
+    // crates and the bone, tumbling as they go
     for (const b of this.blocks) {
       if (b.gone) continue;
-      ctx.save(); ctx.translate(b.x, b.y); ctx.rotate(b.rot || 0); this.crate(b.w, b.h); ctx.restore();
+      ctx.save(); ctx.translate(b.x, b.y); ctx.rotate(b.rot || 0);
+      if (b.bone) g.sprite('bone16', 0, 0); else this.crate(b.w, b.h);
+      ctx.restore();
     }
     // the shot's dotted trail, Angry Birds style
     if (this.trail) this.trail.forEach((d, i) => g.rect(d.x - (i % 2 ? 1 : 1.5), d.y - 1, i % 2 ? 2 : 3, i % 2 ? 2 : 3, PAL.ink));
-    // the slingshot: a wooden Y on a mound, two rubber bands and a pouch. The
-    // back arm and band go behind the shiba, the front ones in front of it.
-    const base = BOT - 4, fork = oy + 28, L = { x: ox - 12, y: oy + 7 }, R = { x: ox + 12, y: oy + 5 };
-    ctx.fillStyle = SCENE.dirt; ctx.beginPath(); ctx.ellipse(ox, base + 2, 16, 5, 0, Math.PI, 0); ctx.fill();
+    // the slingshot (art/slingshot.png): a wooden Y on a mound, two rubber bands
+    // and a pouch. Frame 0 (trunk, back arm) and the back band go behind the
+    // shiba; frame 1 (the front arm) and the front band in front of it. L and R
+    // are the knots on the arm tips, where the bands tie on.
+    const L = { x: ox - 8, y: oy + 6 }, R = { x: ox + 8, y: oy + 6 };
+    g.sprite('slingshot', ox, oy + 18, { frame: 0 });
     const held = !this.launched, bx = held ? this.ball.x : ox, by = held ? this.ball.y : oy;
     // the pouch cups the shiba from behind: below it at rest, on the far side
     // from the fork while it's pulled back, and both bands hook into it
     const pd = Math.hypot(bx - ox, by - oy), ux = pd > 2 ? (bx - ox) / pd : 0, uy = pd > 2 ? (by - oy) / pd : 1;
-    const P = { x: bx + ux * 9, y: by + uy * 9 }, nx = -uy * 4, ny = ux * 4;
-    g.line(ox + 1, fork, R.x, R.y, SCENE.woodLo, 5);                           // back arm
-    g.line(R.x, R.y + 1, held ? P.x + nx : ox + 4, held ? P.y + ny : oy + 9, SCENE.band, 3);   // back band
+    const P = { x: bx + ux * 6, y: by + uy * 6 }, nx = -uy * 3, ny = ux * 3;
+    g.line(R.x, R.y + 1, held ? P.x + nx : ox + 3, held ? P.y + ny : oy + 6, SCENE.band, 2);   // back band
     if (held) {
       ctx.save(); ctx.translate(P.x, P.y); ctx.rotate(Math.atan2(uy, ux));
-      g.rect(-2, -7, 4, 14, SCENE.band); ctx.restore();                         // the leather pouch, behind the shiba
+      g.rect(-1, -5, 3, 10, SCENE.band); ctx.restore();                         // the leather pouch, behind the shiba
     }
-    g.line(ox, base, ox, fork, SCENE.wood, 7); g.line(ox - 2, base, ox - 2, fork, SCENE.woodHi, 1);   // the trunk
     if (this.aim && held) {   // where it'll go
       let px = bx, py = by, vx = (ox - bx) * this.K, vy = (oy - by) * this.K;
       for (let i = 0; i < 12; i++) { px += vx * 0.05; py += vy * 0.05; vy += 240 * 0.05; if (py > BOT) break; ctx.globalAlpha = 1 - i / 13; g.rect(px - 1, py - 1, 2, 2, PAL.ink); ctx.globalAlpha = 1; }
     }
     // the shiba, curled up in the pouch and then spinning through the air
     ctx.save(); ctx.translate(this.ball.x, this.ball.y); ctx.rotate(this.ball.rot || 0);
-    g.sprite('face', 0, 0, { w: 22, h: 22, frame: this.launched ? 4 : this.aim ? 1 : 0 });
+    g.sprite('face', 0, 0, { w: 16, h: 16, frame: this.launched ? 4 : this.aim ? 1 : 0 });
     ctx.restore();
-    g.line(L.x, L.y + 1, held ? P.x - nx : ox - 4, held ? P.y - ny : oy + 9, SCENE.band, 3);   // front band
-    g.line(ox - 1, fork, L.x, L.y, SCENE.wood, 5); g.line(ox - 2, fork - 2, L.x - 1, L.y + 1, SCENE.woodHi, 1);   // front arm
-    g.rect(L.x - 3, L.y - 3, 5, 4, SCENE.woodLo); g.rect(R.x - 2, R.y - 3, 5, 4, SCENE.woodLo);   // the band knots on the tips
+    g.line(L.x, L.y + 1, held ? P.x - nx : ox - 3, held ? P.y - ny : oy + 6, SCENE.band, 2);   // front band
+    g.sprite('slingshot', ox, oy + 18, { frame: 1 });                         // front arm
     if (!this.launched && !this.aim) g.text('DRAG BACK', CX, TOP + 20, 8, PAL.mid);
-    for (let i = 0; i < this.need; i++) g.rect(W - 8 - i * 8, TOP + 4, 5, 5, i < this.knocked ? PAL.accent : PAL.mid);
   }
 }
 
