@@ -254,6 +254,11 @@ const Assets = {
     pot:      { src: 'art/pot.png',      fw: 18,  fh: 22,  frames: 2,  fps: 1  },
     tub:      { src: 'art/tub.png',      fw: 132, fh: 64,  frames: 1,  fps: 1  },
     lawn:     { src: 'art/lawn.png',     fw: 16,  fh: 16,  frames: 14, fps: 1  },
+    choc:     { src: 'art/choc.png',     fw: 23,  fh: 13,  frames: 1,  fps: 1  },
+    ball:     { src: 'art/ball.png',     fw: 14,  fh: 14,  frames: 2,  fps: 1  },
+    doghouse: { src: 'art/doghouse.png', fw: 24,  fh: 23,  frames: 1,  fps: 1  },
+    car:      { src: 'art/car.png',      fw: 24,  fh: 12,  frames: 1,  fps: 1  },
+    paw:      { src: 'art/paw.png',      fw: 24,  fh: 19,  frames: 2,  fps: 1  },
   },
   cache: {},
   load() {
@@ -1156,38 +1161,29 @@ const g = {
     const a = Assets.get('bone');
     this.sprite('bone', x, y, { frame: i + (c === PAL.mid ? B.length : 0), w: (a ? a.fw : top) * k, h: (a ? a.fh : top / 2) * k });
   },
-  // A chocolate bar, w wide: red wrapper torn back from a few squares. Bad for
-  // dogs, which is the joke wherever it turns up.
+  // A chocolate bar about w wide (art/choc.png): red wrapper torn back from a
+  // few squares. Bad for dogs, which is the joke wherever it turns up. Drawn
+  // 1:1; much bigger (SORT's pop), at a whole multiple.
   choc(x, y, w) {
-    const h = w * 0.55, x0 = x - w / 2, y0 = y - h / 2;
-    this.rect(x0, y0, w, h, PAL.bad);
-    const cw = w * 0.42, sq = cw / 2;
-    this.rect(x0, y0, cw, h, PAL.mid);
-    for (let i = 0; i < 2; i++) for (let j = 0; j < 2; j++) this.rect(x0 + 1 + i * sq, y0 + 1 + j * h / 2, sq - 2, h / 2 - 2, PAL.bg);
-    for (let i = 0; i < 2; i++) for (let j = 0; j < 2; j++) this.rect(x0 + 2 + i * sq, y0 + 2 + j * h / 2, sq - 4, h / 2 - 4, PAL.mid);
-    this.rect(x0 + cw, y0, Math.max(1, w * 0.06), h, PAL.ink);   // wrapper edge
+    const a = Assets.get('choc'), fw = a ? a.fw : 23, k = w > fw * 1.5 ? Math.round(w / fw) : 1;
+    this.sprite('choc', x, y, { w: fw * k, h: (a ? a.fh : 13) * k });
   },
-  // a paw print, s across
+  // a paw print about s across (art/paw.png: white, then red); a tiny one
+  // (a trail's footstep) stays a few dots in colour c
   paw(x, y, s, c = PAL.ink) {
+    if (s >= 10) { this.sprite('paw', x, y, { frame: c === PAL.bad ? 1 : 0 }); return; }
     this.circle(x, y + s * 0.16, s * 0.3, c);
     this.circle(x - s * 0.34, y - s * 0.06, s * 0.12, c); this.circle(x + s * 0.34, y - s * 0.06, s * 0.12, c);
     this.circle(x - s * 0.13, y - s * 0.3, s * 0.12, c);  this.circle(x + s * 0.13, y - s * 0.3, s * 0.12, c);
   },
-  // a doghouse centred on x, its floor at y, s wide
+  // a doghouse centred on x, its floor at y (art/doghouse.png)
   doghouse(x, y, s) {
-    this.rect(x - s / 2, y - s * 0.55, s, s * 0.55, PAL.bad);
-    ctx.fillStyle = PAL.mid; ctx.beginPath();
-    ctx.moveTo(x - s * 0.62, y - s * 0.5); ctx.lineTo(x, y - s * 0.98); ctx.lineTo(x + s * 0.62, y - s * 0.5); ctx.closePath(); ctx.fill();
-    this.rect(x - s * 0.17, y - s * 0.34, s * 0.34, s * 0.34, PAL.bg);
-    this.circle(x, y - s * 0.34, s * 0.17, PAL.bg);
+    const a = Assets.get('doghouse');
+    this.sprite('doghouse', x, y - (a ? a.fh : s) / 2);
   },
-  // a tennis ball: yellow felt with the white seam curving round it
-  tennis(x, y, r, c = PAL.accent) {
-    this.circle(x, y, r, c);
-    ctx.strokeStyle = PAL.ink; ctx.lineWidth = Math.max(1, r / 5);
-    ctx.beginPath(); ctx.arc(x - r * 1.15, y, r * 0.95, -0.85, 0.85); ctx.stroke();
-    ctx.beginPath(); ctx.arc(x + r * 1.15, y, r * 0.95, Math.PI - 0.85, Math.PI + 0.85); ctx.stroke();
-  },
+  // a tennis ball centred on x, y (art/ball.png, 14 across): yellow felt with
+  // its white seams, or red (c = PAL.bad) when it's in danger
+  tennis(x, y, r, c = PAL.accent) { this.sprite('ball', x, y, { frame: c === PAL.bad ? 1 : 0 }); },
   // a flower pot (art/pot.png) centred across x, its base 4 px below y.
   // POTS are its sizes, one per frame: the rim width, for hitboxes.
   POTS: [14, 18],
@@ -1195,18 +1191,8 @@ const g = {
     const a = Assets.get('pot');
     this.sprite('pot', x, y + 5 - (a ? a.fh : 22) / 2, { frame: size });
   },
-  // a car seen from above, w long, nose pointing the way it drives (dir ±1)
-  car(x, y, w, dir) {
-    const h = 12, x0 = x - w / 2, y0 = y - h / 2;
-    this.rect(x0 + 2, y0 - 1, 4, 2, PAL.bg); this.rect(x0 + w - 6, y0 - 1, 4, 2, PAL.bg);   // wheels
-    this.rect(x0 + 2, y0 + h - 1, 4, 2, PAL.bg); this.rect(x0 + w - 6, y0 + h - 1, 4, 2, PAL.bg);
-    this.rect(x0 + 1, y0, w - 2, h, PAL.bad); this.rect(x0, y0 + 1, w, h - 2, PAL.bad);     // body
-    const f = dir > 0 ? x0 + w * 0.58 : x0 + w * 0.2;                                        // windscreen
-    this.rect(f, y0 + 2, w * 0.2, h - 4, PAL.ink);
-    this.rect(dir > 0 ? x0 + w * 0.12 : x0 + w * 0.7, y0 + 3, w * 0.14, h - 6, PAL.mid);     // rear window
-    const nose = dir > 0 ? x0 + w - 2 : x0;
-    this.rect(nose, y0 + 1, 2, 2, PAL.accent); this.rect(nose, y0 + h - 3, 2, 2, PAL.accent); // headlights
-  },
+  // a car seen from above (art/car.png, 24x12), nose pointing the way it drives (dir ±1)
+  car(x, y, w, dir) { this.sprite('car', x, y, { flip: dir < 0 }); },
   // a stretch of picket fence from x0 to x1, centred on y: art/fence.png (a
   // seamless run of pickets) tiled 1:1 along it, the last tile cut to fit
   fence(x0, x1, y) {
@@ -2269,7 +2255,7 @@ class HoldRelease extends Microgame {
     ctx.drawImage(a.img, 0, 0, a.fw, F + 1, x0, y0, a.fw, F + 1);                           // back, arm, cushion
     for (let y = y0 + F + 1; y < floor - foot; y++) ctx.drawImage(a.img, 0, F, a.fw, 1, x0, y, a.fw, 1);
     ctx.drawImage(a.img, 0, F + 1, a.fw, foot, x0, floor - foot, a.fw, foot);               // the legs, on the floor
-    g.circle(bx - 6, top - 5, 6, PAL.bg); g.tennis(bx - 6, top - 5, 5);   // its ball, waiting on the seat
+    g.tennis(bx - 6, top - 5, 5);   // its ball, waiting on the seat
   }
 
   // the meter and couch layout, shared by update and draw
@@ -3102,12 +3088,11 @@ class FlickShot extends Microgame {
     // the line in the sand you throw from
     for (let x = 24; x < W - 24; x += 6) g.rect(x, this.oy + 12, 3, 1, PAL.bg);
     g.sprite(this.dvx > 0 ? 'swiperight' : 'swipeleft', this.dx, this.dy, { w: 58, h: 58, frame: Math.floor(this.t * 16) % 9 });
-    // its shadow stays on the sand; the ball rides above it by its height, and
-    // looks a touch bigger the higher it is
-    const b = this.ball, r = 5 + Math.min(3, b.z / 14);
+    // its shadow stays on the sand; the ball rides above it by its height (the
+    // art has its own dark rim, so it reads on sand)
+    const b = this.ball;
     if (b.flying) { ctx.globalAlpha = 0.3; g.rect(b.x - 4, b.y + 2, 8, 2, PAL.bg); ctx.globalAlpha = 1; }
-    g.circle(b.x, b.y - b.z, r + 1, PAL.bg);    // dark rim so it reads on sand
-    g.tennis(b.x, b.y - b.z, r);
+    g.tennis(b.x, b.y - b.z);
     if (!this.ball.flying) {
       const a = Math.sin(this.t * 6) * 3;
       g.line(this.ox, this.oy - 12 - a, this.ox, this.oy - 22 - a, PAL.bg, 2);
