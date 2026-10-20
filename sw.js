@@ -3,7 +3,7 @@
 // version shows up straight away) and refreshes the cache; offline, the cached
 // copy is served.
 const CACHE = 'shibamania-v1';
-const CORE = ['./', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png', 'icons/apple-touch-icon.png', 'art/couch.png', 'art/crate.png', 'art/slingshot.png', 'art/bone.png', 'art/fence.png', 'art/gatepost.png', 'art/pot.png'];
+const CORE = ['./', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png', 'icons/apple-touch-icon.png', 'art/couch.png', 'art/crate.png', 'art/slingshot.png', 'art/bone.png', 'art/fence.png', 'art/gatepost.png', 'art/pot.png', 'art/tub.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(CORE)).then(() => self.skipWaiting()));
