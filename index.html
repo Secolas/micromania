@@ -261,6 +261,8 @@ const Assets = {
     cactus:   { src: 'art/cactus.png',   fw: 22,  fh: 31,  frames: 1,  fps: 1  },
     bomb:     { src: 'art/bomb.png',     fw: 22,  fh: 26,  frames: 2,  fps: 1  },
     frisbee:  { src: 'art/frisbee.png',  fw: 28,  fh: 10,  frames: 1,  fps: 1  },
+    fullshiba:{ src: 'art/fullshiba.png', fw: 48, fh: 64,  frames: 11, fps: 1  },
+    sleepdog: { src: 'art/sleepdog.png', fw: 64,  fh: 48,  frames: 5, fps: 1  },
     rubdog:   { src: 'art/rubdog.png',   fw: 48,  fh: 44,  frames: 13, fps: 1  },
     crowdarm: { src: 'art/crowdarm.png', fw: 14,  fh: 46,  frames: 1,  fps: 1  },
     hole:     { src: 'art/hole.png',     fw: 54,  fh: 36,  frames: 4,  fps: 1  },
@@ -1246,6 +1248,14 @@ const g = {
     ctx.drawImage(s.img, b, 0, right, s.fh, x + w - right, y, right, s.fh);
     return true;
   },
+  // The whole shiba, drawn 2x with its feet (the frame's bottom row) on y.
+  // art/fullshiba.png, 48x64: the mascot's moods with a body (FULL below),
+  // then a pat on the head. art/sleepdog.png, 64x48: curled up asleep,
+  // breathing (SLEEP_BREATHE frames), then one eye open, stirring.
+  FULL: { happy: 0, cheer: 1, cheer2: 2, shut: 3, sad: 4, sad2: 5, grumpy: 6, teary: 7, pat: 8 },
+  SLEEP_BREATHE: 4, SLEEP_STIR: 4,
+  fullShiba(x, y, frame) { this.sprite('fullshiba', x, y - 64, { w: 96, h: 128, frame }); },
+  sleepDog(x, y, frame) { this.sprite('sleepdog', x, y - 48, { w: 128, h: 96, frame }); },
   // a tennis ball centred on x, y (art/ball.png, 14 across): yellow felt with
   // its white seams, or red (c = PAL.bad) when it's in danger
   tennis(x, y, r, c = PAL.accent) { this.sprite('ball', x, y, { frame: c === PAL.bad ? 1 : 0 }); },
@@ -2243,6 +2253,16 @@ class PatShiba extends Microgame {
     const p = this.count / this.need;
     return p < 0.2 ? 14 : p < 0.4 ? 12 : p < 0.6 ? 10 : p < 0.85 ? 0 : 1 + Math.floor(this.t * 14) % 7;
   }
+  // the same moods on the full-body shiba (art/fullshiba.png); a pat plays its
+  // head-pat frames over the squish
+  fullFrame() {
+    const F = g.FULL, cheer = Math.floor(this.t * 8) % 2 ? F.cheer : F.cheer2;
+    if (this.fake) return F.grumpy;
+    if (this.won) return cheer;
+    if (this.squish > 0) return F.pat + Math.min(3 - 1, Math.floor((0.15 - this.squish) / 0.15 * 3));
+    const p = this.count / this.need;
+    return p < 0.2 ? F.teary : p < 0.4 ? F.sad2 : p < 0.6 ? F.sad : p < 0.85 ? F.happy : cheer;
+  }
   heart(x, y, c) {
     g.rect(x - 4, y - 3, 3, 2, c); g.rect(x + 1, y - 3, 3, 2, c);
     g.rect(x - 5, y - 1, 10, 2, c); g.rect(x - 4, y + 1, 8, 2, c); g.rect(x - 2, y + 3, 4, 2, c);
@@ -2250,7 +2270,8 @@ class PatShiba extends Microgame {
   draw(g) {
     g.clear();
     const sq = this.squish > 0 ? 1 : 0;
-    g.sprite('shiba', CX, CY + 4 + sq * 5, { w: 105 + sq * 8, h: 111 - sq * 10, frame: this.frame() });
+    if (Assets.get('fullshiba')) g.fullShiba(CX, 212, this.fullFrame());   // feet on the floor (room at 206)
+    else g.sprite('shiba', CX, CY + 4 + sq * 5, { w: 105 + sq * 8, h: 111 - sq * 10, frame: this.frame() });
     for (const p of this.pops) {
       ctx.globalAlpha = 1 - p.t / 0.7;
       this.heart(p.x, p.y, PAL.bad);
@@ -2480,10 +2501,15 @@ class DontTap extends Microgame {
     // a cushion, a sleeping shiba, and the Zzz drifting up off it
     g.sprite('cushion', CX, CY + 49);   // art/cushion.png
     // the calm eyes-shut face, head tipped onto the cushion, breathing slowly
-    const breath = Math.sin(this.t * 3) * 2;
-    ctx.save(); ctx.translate(CX - 4, CY + 10 - breath * 0.5); ctx.rotate(this.woke ? 0 : -0.35);
-    g.sprite(this.woke ? 'face' : 'sleepface', 0, 0, { w: 78, h: 80 + breath, frame: 0 });   // both eyes shut
-    ctx.restore();
+    if (Assets.get('sleepdog')) {
+      if (this.woke) g.fullShiba(CX, CY + 46, g.FULL.grumpy);
+      else g.sleepDog(CX, CY + 46, Math.floor(this.t * 4) % g.SLEEP_BREATHE);
+    } else {
+      const breath = Math.sin(this.t * 3) * 2;
+      ctx.save(); ctx.translate(CX - 4, CY + 10 - breath * 0.5); ctx.rotate(this.woke ? 0 : -0.35);
+      g.sprite(this.woke ? 'face' : 'sleepface', 0, 0, { w: 78, h: 80 + breath, frame: 0 });   // both eyes shut
+      ctx.restore();
+    }
     for (let i = 0; i < 3; i++) {
       const k = (this.t * 0.6 + i / 3) % 1;
       ctx.globalAlpha = 1 - k;
@@ -3936,11 +3962,17 @@ class FreezeStatue extends Microgame {
     const j = (Math.random() - 0.5) * this.wob * 6;
     const breath = Math.sin(this.t * 2.6) * 2;
     const stirring = this.wob > 0.15 || this.hp < 0.35;
-    ctx.save();
-    ctx.translate(CX - 4 + this.ox * 0.25 + j, 192 - breath * 0.5 + this.oy * 0.15);
-    ctx.rotate(this.woke ? 0 : -0.35 + Math.max(-0.15, Math.min(0.15, this.ox * 0.004)));
-    g.sprite(this.woke ? 'face' : stirring ? 'face' : 'sleepface', 0, 0, { w: 70, h: 72 + breath, frame: this.woke ? 0 : stirring ? 5 : 0 });
-    ctx.restore();
+    if (Assets.get('sleepdog')) {
+      const sx = Math.round(CX + this.ox * 0.25 + j), sy = Math.round(224 + this.oy * 0.15);
+      if (this.woke) g.fullShiba(sx, sy, g.FULL.grumpy);
+      else g.sleepDog(sx, sy, stirring ? g.SLEEP_STIR : Math.floor(this.t * 4) % g.SLEEP_BREATHE);
+    } else {
+      ctx.save();
+      ctx.translate(CX - 4 + this.ox * 0.25 + j, 192 - breath * 0.5 + this.oy * 0.15);
+      ctx.rotate(this.woke ? 0 : -0.35 + Math.max(-0.15, Math.min(0.15, this.ox * 0.004)));
+      g.sprite(this.woke ? 'face' : stirring ? 'face' : 'sleepface', 0, 0, { w: 70, h: 72 + breath, frame: this.woke ? 0 : stirring ? 5 : 0 });
+      ctx.restore();
+    }
     if (this.woke) g.text('!', CX + 30, 150, 18, PAL.bad);
     else if (stirring) { g.text('?', CX + 28, 156 + Math.sin(this.t * 12) * 2, 14, PAL.bad); }
     else for (let i = 0; i < 3; i++) {            // Zzz drifting up while it sleeps
@@ -4962,11 +4994,17 @@ class WakeUp extends Microgame {
     }
     const breath = Math.sin(this.t * 2.2) * 3, j = (Math.random() - 0.5) * k * 8;
     const jump = awake ? -Math.sin(Math.min(1, this.woke / 0.3) * Math.PI) * 26 : 0;
-    ctx.save();
-    ctx.translate(CX + j, 186 - breath * 0.5 + jump);
-    ctx.rotate(awake ? 0 : -0.3 + k * 0.2);
-    g.sprite(awake || stir ? 'face' : 'sleepface', 0, 0, { w: 128 + (awake ? 10 : 0), h: 132 + breath, frame: awake ? 0 : stir ? 5 : 0 });
-    ctx.restore();
+    if (Assets.get('sleepdog')) {
+      const sx = Math.round(CX + j), sy = Math.round(242 + jump);
+      if (awake) g.fullShiba(sx, sy, Math.floor(this.t * 8) % 2 ? g.FULL.cheer : g.FULL.cheer2);
+      else g.sleepDog(sx, sy, stir ? g.SLEEP_STIR : Math.floor(this.t * 4) % g.SLEEP_BREATHE);
+    } else {
+      ctx.save();
+      ctx.translate(CX + j, 186 - breath * 0.5 + jump);
+      ctx.rotate(awake ? 0 : -0.3 + k * 0.2);
+      g.sprite(awake || stir ? 'face' : 'sleepface', 0, 0, { w: 128 + (awake ? 10 : 0), h: 132 + breath, frame: awake ? 0 : stir ? 5 : 0 });
+      ctx.restore();
+    }
     if (awake) g.text('!!', CX + 58, 110, 22, PAL.bad);
     else if (k > 0.66) g.text('!?', CX + 56, 118 + Math.sin(this.t * 14) * 2, 16, PAL.bad);
     else if (stir) g.text('?', CX + 54, 122, 14, PAL.bad);
