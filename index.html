@@ -261,6 +261,15 @@ const Assets = {
     cactus:   { src: 'art/cactus.png',   fw: 22,  fh: 31,  frames: 1,  fps: 1  },
     bomb:     { src: 'art/bomb.png',     fw: 22,  fh: 26,  frames: 2,  fps: 1  },
     frisbee:  { src: 'art/frisbee.png',  fw: 28,  fh: 10,  frames: 1,  fps: 1  },
+    scenetiles:{ src: 'art/scenetiles.png', fw: 32, fh: 32, frames: 14, fps: 1  },
+    bathtiles:{ src: 'art/bathtiles.png', fw: 16, fh: 16,  frames: 3,  fps: 1  },
+    parktree: { src: 'art/parktree.png', fw: 28,  fh: 38,  frames: 1,  fps: 1  },
+    bench:    { src: 'art/bench.png',    fw: 24,  fh: 16,  frames: 1,  fps: 1  },
+    nighthouse:{ src: 'art/nighthouse.png', fw: 64, fh: 59, frames: 1,  fps: 1  },
+    mountains:{ src: 'art/mountains.png', fw: 192, fh: 26, frames: 1,  fps: 1  },
+    pine:     { src: 'art/pine.png',     fw: 17,  fh: 27,  frames: 2,  fps: 1  },
+    umbrella: { src: 'art/umbrella.png', fw: 36,  fh: 36,  frames: 1,  fps: 1  },
+    towel:    { src: 'art/towel.png',    fw: 19,  fh: 34,  frames: 1,  fps: 1  },
     sun:      { src: 'art/sun.png',      fw: 48, fh: 48, frames: 4, fps: 4 },
     moon:     { src: 'art/moon.png',     fw: 19,  fh: 20,  frames: 1,  fps: 1  },
     clouds:   { src: 'art/clouds.png',   fw: 43,  fh: 22,  frames: 4,  fps: 1  },
@@ -1722,6 +1731,20 @@ const Env = {
     const x = c.getContext('2d');
     let seed = 1234;                                   // same scene every time
     const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    // PixelLab scenery: fill x0..x1, y0..y1 with tiles of 'name' (pick() gives the
+    // frame), clipped to the rectangle; and draw a prop 1:1 with its feet at bx, by
+    const tiles = (name, x0, y0, x1, y1, pick) => {
+      const a = Assets.get(name); if (!a) return false;
+      x.save(); x.beginPath(); x.rect(x0, y0, x1 - x0, y1 - y0); x.clip();
+      for (let ty = y0; ty < y1; ty += a.fh) for (let tx = x0; tx < x1; tx += a.fw) x.drawImage(a.img, pick() * a.fw, 0, a.fw, a.fh, tx, ty, a.fw, a.fh);
+      x.restore(); return true;
+    };
+    const prop = (name, bx, by, frame = 0) => {
+      const a = Assets.get(name); if (!a) return false;
+      x.drawImage(a.img, frame * a.fw, 0, a.fw, a.fh, Math.round(bx - a.fw / 2), Math.round(by - a.fh), a.fw, a.fh); return true;
+    };
+    // art/scenetiles.png: 0 dry sand, 1-4 night snow, 5-7 night grass, 8-9 meadow, 11-13 meadow with flowers
+    const meadowTile = () => rnd() < 0.18 ? 11 + Math.floor(rnd() * 3) : 8 + Math.floor(rnd() * 2);
     const R = (a, b, w, h, col) => { x.fillStyle = col; x.fillRect(Math.round(a), Math.round(b), Math.round(w), Math.round(h)); };
     const mix = (a, b, k) => {                         // blend two #rrggbb colours
       const p = s => [1, 3, 5].map(i => parseInt(s.slice(i, i + 2), 16));
@@ -1817,31 +1840,41 @@ const Env = {
       }
       if (kind === 'nature') {
         // far mountains with snowy tips, then a pine forest along the horizon
-        for (const [mx, mh, mw] of [[22, 58, 46], [78, 80, 58], [140, 64, 50], [190, 50, 40]]) {
-          for (let k = 0; k < mh; k++) {
-            const half = mw * k / mh;
-            R(mx - half, y - mh + k, half * 2 + 1, 1, k < mh * 0.22 ? SCENE.mountHi : SCENE.mount);
+        if (Assets.get('mountains') && Assets.get('pine')) {
+          prop('mountains', W / 2, y - 8);
+          for (let tx = -4; tx < W + 8; tx += 9 + rnd() * 5) prop('pine', tx, y + 1 - Math.floor(rnd() * 4), 1);
+        } else {
+          for (const [mx, mh, mw] of [[22, 58, 46], [78, 80, 58], [140, 64, 50], [190, 50, 40]]) {
+            for (let k = 0; k < mh; k++) {
+              const half = mw * k / mh;
+              R(mx - half, y - mh + k, half * 2 + 1, 1, k < mh * 0.22 ? SCENE.mountHi : SCENE.mount);
+            }
           }
-        }
-        for (let tx = -4; tx < W + 8; tx += 9 + rnd() * 5) {
-          const th = 14 + rnd() * 12;
-          for (let k = 0; k < th; k++) R(tx - k * 0.32, y - th + k, k * 0.64 + 1, 1, SCENE.forest);
-          R(tx - 1, y - 3, 2, 3, SCENE.trunk);
+          for (let tx = -4; tx < W + 8; tx += 9 + rnd() * 5) {
+            const th = 14 + rnd() * 12;
+            for (let k = 0; k < th; k++) R(tx - k * 0.32, y - th + k, k * 0.64 + 1, 1, SCENE.forest);
+            R(tx - 1, y - 3, 2, 3, SCENE.trunk);
+          }
         }
       }
       for (let i = 0; i < W; i++) { const hh = 7 + Math.sin(i / 19) * 4 + Math.sin(i / 6) * 1.5; R(i, y - hh, 1, hh, SCENE.dayHill); }
       if (kind === 'park') {
         // a row of round park trees along the far side, and a bench
-        for (const [tx, s] of [[14, 15], [44, 11], [96, 13], [128, 10], [166, 14]]) {
-          R(tx - 2, y - s - 6, 4, s + 6, SCENE.trunk);
-          x.fillStyle = SCENE.leaf; x.beginPath(); x.arc(tx, y - s - 10, s, 0, 6.2832); x.fill();
-          x.fillStyle = SCENE.leafHi; x.beginPath(); x.arc(tx - s * 0.3, y - s - 13, s * 0.5, 0, 6.2832); x.fill();
+        if (Assets.get('parktree') && Assets.get('bench')) {
+          for (const [tx, dy] of [[14, 0], [44, 4], [96, 1], [128, 5], [166, 0]]) prop('parktree', tx, y + 2 - dy);
+          prop('bench', 75, y + 1);
+        } else {
+          for (const [tx, s] of [[14, 15], [44, 11], [96, 13], [128, 10], [166, 14]]) {
+            R(tx - 2, y - s - 6, 4, s + 6, SCENE.trunk);
+            x.fillStyle = SCENE.leaf; x.beginPath(); x.arc(tx, y - s - 10, s, 0, 6.2832); x.fill();
+            x.fillStyle = SCENE.leafHi; x.beginPath(); x.arc(tx - s * 0.3, y - s - 13, s * 0.5, 0, 6.2832); x.fill();
+          }
+          R(64, y - 9, 22, 2, SCENE.trunk); R(64, y - 5, 22, 2, SCENE.trunk);      // bench slats
+          R(66, y - 9, 2, 9, PAL.bg); R(82, y - 9, 2, 9, PAL.bg);                  // its legs
         }
-        R(64, y - 9, 22, 2, SCENE.trunk); R(64, y - 5, 22, 2, SCENE.trunk);      // bench slats
-        R(66, y - 9, 2, 9, PAL.bg); R(82, y - 9, 2, 9, PAL.bg);                  // its legs
       }
       R(0, y, W, BOT - y, SCENE.meadow);
-      R(0, y, W, 2, SCENE.meadowHi);
+      if (tiles('scenetiles', 0, y, W, BOT, meadowTile)) { R(0, y, W, 1, SCENE.meadowHi); } else
       for (let i = 0; i < 18; i++) {                  // tufts and little flowers
         const tx = rnd() * W, ty = y + 3 + rnd() * (BOT - y - 5);
         R(tx, ty, 1, 2, SCENE.meadowHi); R(tx + 2, ty - 1, 1, 3, SCENE.meadowHi);
@@ -1882,42 +1915,51 @@ const Env = {
       }
       // a house over the fence, one window still lit
       const hx = W - 62, hy = y - 46;
+      if (!prop('nighthouse', W - 38, y + 6)) {
       R(hx, hy, 44, 46, SCENE.house);
       x.fillStyle = SCENE.house; x.beginPath(); x.moveTo(hx - 5, hy); x.lineTo(hx + 22, hy - 20); x.lineTo(hx + 49, hy); x.closePath(); x.fill();
       R(hx + 8, hy + 10, 9, 9, PAL.accent); R(hx + 12, hy + 10, 1, 9, SCENE.house); R(hx + 8, hy + 14, 9, 1, SCENE.house);
       R(hx + 27, hy + 10, 9, 9, SCENE.night1);
+      }
       // a picket fence across the garden
       for (let fx = 0; fx < W; fx += 8) { R(fx + 1, y - 18, 5, 18, SCENE.night1); R(fx + 2, y - 20, 3, 2, SCENE.night1); }
       R(0, y - 14, W, 2, SCENE.night1); R(0, y - 6, W, 2, SCENE.night1);
       R(0, y, W, BOT - y, SCENE.nightGrass);
       R(0, y, W, 2, SCENE.nightGrassHi);
+      if (tiles('scenetiles', 0, y + 2, W, BOT, () => 5 + Math.floor(rnd() * 3))) {} else
       for (let i = 0; i < 12; i++) { const tx = rnd() * W, ty = y + 4 + rnd() * (BOT - y - 6); R(tx, ty, 1, 2, SCENE.nightGrassHi); R(tx + 2, ty - 1, 1, 3, SCENE.nightGrassHi); }
     } else if (kind === 'beach') {
       R(0, TOP, W, y - TOP, SCENE.sea0);
       for (let i = 0; i < 22; i++) R(rnd() * W, TOP + rnd() * (y - TOP - 3), 6 + rnd() * 10, 1, SCENE.sea1);   // swell
       R(0, y, W, 46, SCENE.wetSand);
       R(0, y + 46, W, BOT - y - 46, SCENE.sand);
+      if (tiles('scenetiles', 0, y + 46, W, BOT, () => 0)) {} else
       for (let i = 0; i < 60; i++) R(rnd() * W, y + 48 + rnd() * (BOT - y - 50), 1, 1, SCENE.sandLo);     // grain
       for (let i = 0; i < 5; i++) { const sx = 50 + rnd() * 80, sy = y + 60 + rnd() * 90; R(sx, sy, 3, 2, PAL.ink); R(sx + 1, sy - 1, 1, 1, PAL.bad); }   // shells
       // a striped towel, and a beach umbrella seen from above
-      for (let i = 0; i < 8; i++) R(10, BOT - 72 + i * 6, 28, 6, i % 2 ? PAL.ink : PAL.bad);
       const ux = W - 30, uy = BOT - 62;
+      if (prop('towel', 24, BOT - 28) && prop('umbrella', ux, uy + 18)) {} else {
+      for (let i = 0; i < 8; i++) R(10, BOT - 72 + i * 6, 28, 6, i % 2 ? PAL.ink : PAL.bad);
       for (let k = 0; k < 8; k++) {
         x.fillStyle = k % 2 ? PAL.ink : PAL.bad;
         x.beginPath(); x.moveTo(ux, uy); x.arc(ux, uy, 20, k * Math.PI / 4, (k + 1) * Math.PI / 4); x.closePath(); x.fill();
       }
       R(ux - 2, uy - 2, 4, 4, PAL.accent);
+      }
     } else if (kind === 'bath') {
+      if (!tiles('bathtiles', 0, TOP, W, BOT, () => rnd() < 0.7 ? 0 : 1 + Math.floor(rnd() * 2)))
       for (let ty = TOP; ty < BOT; ty += 16) for (let tx = 0; tx < W; tx += 16) {
         const th = Math.min(16, BOT - ty);   // the last row is cut at the field's edge, not left hanging into the shelf
         R(tx, ty, 16, th, SCENE.grout); R(tx + 1, ty + 1, 14, Math.max(0, th - 2), ((tx + ty) / 16) % 2 ? SCENE.tile : SCENE.tileHi);
       }
     } else if (kind === 'snow') {
       R(0, TOP, W, BOT - TOP, SCENE.snow);
+      if (tiles('scenetiles', 0, TOP, W, BOT, () => 1 + Math.floor(rnd() * 4))) {} else
       for (let i = 0; i < 26; i++) { const sx = rnd() * W, sy = TOP + rnd() * (BOT - TOP); R(sx, sy, 10 + rnd() * 16, 1, SCENE.snowHi); }
       // pines down both edges of the run
       for (let ty = TOP + 10; ty < BOT; ty += 34) for (const tx of [6, W - 6]) {
         const ox = tx + (rnd() - 0.5) * 6;
+        if (prop('pine', ox, ty + 20, 0)) continue;
         for (let k = 0; k < 4; k++) R(ox - 1 - k * 1.5, ty + k * 3, 3 + k * 3, 3, SCENE.pine);
       }
     }
