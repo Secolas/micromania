@@ -4034,64 +4034,90 @@ class HideLens extends Microgame {
   }
 }
 
-// 36. DANCE — move on the beat: hit the ring each time it lands
-class DanceBeat extends Microgame {
-  static meta = { id: 'dance', env: 'disco@232', cam: true, ownBeat: true, prompt: 'DANCE!', hint: 'move', duration: 5.0, minDuration: 4.4, photo: true, photoCap: 'DANCE MACHINE!',
-    how: { cam: 'MOVE WHEN THE RING\nLANDS ON THE BEAT', touch: 'TAP ON THE BEAT' } };
+// 36. HEADBANG — a hard-rock stage: bang your head to fill the ROCK meter.
+// Continuous movement rather than hitting beats, so camera lag can't make you
+// miss; the band plays its own riff, louder the more you rock.
+class HeadBang extends Microgame {
+  static meta = { id: 'rock', env: 'disco@232', cam: true, ownBeat: true, prompt: 'HEADBANG!', hint: 'move', duration: 5.0, minDuration: 4.4, photo: true, photoCap: 'ROCK STAR!',
+    how: { cam: 'BANG YOUR HEAD\nTO FILL THE ROCK METER', touch: 'TAP FAST\nTO ROCK OUT' } };
   init() {
     Input.enableCam();
     this.paused = Input.camPending; this.wait = 0;
-    this.need = this.byD(2, 3, 3);
-    // beats spread over whatever the round length ended up being, so engine
-    // speed changes the tempo instead of cutting the last beat off
-    const first = 1.0, last = Math.max(first + 0.7, this.timeLimit - 0.7);
-    this.beats = [];
-    for (let i = 0; i < this.need; i++) {
-      this.beats.push({ t: this.need > 1 ? first + (last - first) * i / (this.need - 1) : first, hit: false, miss: false });
-    }
-    this.win = 0.32;                           // ± window around a beat
-    this.thr = this.byD(0.14, 0.17, 0.20);     // how big a move counts
-    this.hits = 0; this.pop = 0;
+    this.rock = 0;                                  // 0..1, full = win
+    this.thr = 0.07;                                // below this is just standing there
+    this.gain = this.byD(1.9, 1.6, 1.35);           // real headbanging (motion ~0.3) fills it in 2.5-3.7s
+    this.ph = 0; this.step = 0; this.stepT = 0; this.flash = 0;
+    this.pow = 0; this.lvl = 0; this.lvlPop = 0; this.sparkT = 0;
+  }
+  // how hard you're rocking right now, said out loud: 0 = not enough (the
+  // meter drains), then GOOD, ROCKIN', INSANE
+  static LEVELS = [['BANG HARDER!', 0], ['GOOD', 0.09], ["ROCKIN'!", 0.2], ['INSANE!!', 0.32]];
+  // the riff: an eighth-note chug with kick and snare, at 150 bpm
+  static RIFF = ['E2', 'E2', 'G2', 'E2', 'A2', 'E2', 'G2', 'D2'];
+  playStep(loud) {
+    const k = this.step % 8, vol = 0.03 + loud * 0.05, f = Sfx.hz(HeadBang.RIFF[k]);
+    Sfx.tone({ f, dur: 0.16, type: 'sawtooth', vol, lp: 1400 + loud * 1600 });
+    Sfx.tone({ f: f * 1.5, dur: 0.16, type: 'sawtooth', vol: vol * 0.7, lp: 1400 + loud * 1600, detune: 8 });
+    if (k % 4 === 0) Sfx.tone({ f: 120, f1: 45, dur: 0.14, type: 'sine', vol: 0.12 });   // kick
+    if (k % 4 === 2) Sfx.hiss({ dur: 0.12, vol: 0.06 + loud * 0.04, bp: 1800, q: 0.7 });  // snare
+    if (k % 4 === 2) this.flash = 0.12;
   }
   update(dt, input) {
     if (this.paused) { this.wait += dt; if (!Input.camPending || this.wait > 1.5) this.paused = false; return; }
-    if (this.pop > 0) this.pop -= dt;
-    for (const b of this.beats) {
-      if (b.hit || b.miss) continue;
-      const off = this.t - b.t;                // this.t doesn't tick while paused
-      if (Math.abs(off) <= this.win && input.motion > this.thr) {
-        b.hit = true; this.hits++; this.pop = 0.22;
-        Sfx.tick(); buzz(15); FX.hit(CX, CY - 6, PAL.accent);
-        if (this.hits >= this.need) { this.succeed(); return; }
-      } else if (off > this.win) { b.miss = true; Sfx.blip(180, 0.06); }
+    const m = input.motion;
+    this.rock = Math.max(0, this.rock + dt * (Math.max(0, m - this.thr) * this.gain - 0.04));
+    // a steadier reading of the same motion, for the rating and the VU meters
+    this.pow += (m - this.pow) * Math.min(1, dt * 6);
+    let lvl = 0; HeadBang.LEVELS.forEach(([, at], i) => { if (this.pow >= at) lvl = i; });
+    if (lvl > this.lvl) { this.lvlPop = 0.25; if (lvl === 3) Sfx.hiss({ dur: 0.5, vol: 0.05, bp: 1200, q: 0.4 }); }   // the crowd roars
+    this.lvl = lvl; if (this.lvlPop > 0) this.lvlPop -= dt;
+    if (lvl >= 2 && (this.sparkT -= dt) <= 0) { this.sparkT = lvl === 3 ? 0.08 : 0.2; FX.burst(CX + (Math.random() - 0.5) * 50, CY - 30, lvl === 3 ? PAL.accent : PAL.ink, 3, 70); }
+    this.ph += dt * (5 + 18 * Math.min(1, m * 2.5));
+    if (this.flash > 0) this.flash -= dt;
+    this.stepT -= dt;
+    if (this.stepT <= 0) { this.stepT += 0.2; this.playStep(this.rock); this.step++; }
+    if (this.rock >= 1) {
+      this.rock = 1; Sfx.hiss({ dur: 0.6, vol: 0.1, hp: 3000 }); FX.burst(CX, CY - 10, PAL.accent, 24, 120); this.succeed();
     }
-    // every beat resolved and one was dropped — no point running out the clock
-    if (!this.finished && this.beats.every(b => b.hit || b.miss)) this.lose();
   }
   draw(g) {
     g.clear();
-    if (this.paused) { g.text('ALLOW CAMERA…', CX, CY - 6, 11, PAL.ink); g.text('(then move on the beat)', CX, CY + 12, 7, PAL.mid); return; }
-    // the incoming beat, as a ring closing in on the shiba
-    const nxt = this.beats.find(b => !b.hit && !b.miss);
-    if (nxt) {
-      const away = Math.abs(nxt.t - this.t);
-      const r = 24 + Math.min(64, away * 78);
-      const c = away <= this.win ? PAL.accent : PAL.mid;
-      ctx.strokeStyle = c; ctx.lineWidth = 3;
-      ctx.beginPath(); ctx.arc(CX, CY - 6, r + 0.5, 0, 6.2832); ctx.stroke();
+    if (this.paused) { g.text('ALLOW CAMERA…', CX, CY - 6, 11, PAL.ink); g.text('(then bang your head)', CX, CY + 12, 8, PAL.ink); return; }
+    const m = Math.min(1, Input.motion * 2.5), lit = this.flash > 0;
+    // stage lights sweeping down on the snare
+    if (lit) { ctx.globalAlpha = 0.18; for (const lx of [30, 150]) { ctx.fillStyle = PAL.accent; ctx.beginPath(); ctx.moveTo(lx - 4, TOP); ctx.lineTo(lx + 4, TOP); ctx.lineTo(CX + (lx - CX) * 0.2 + 26, BOT - 40); ctx.lineTo(CX + (lx - CX) * 0.2 - 26, BOT - 40); ctx.fill(); } ctx.globalAlpha = 1; }
+    // speaker stacks either side, the cones pumping with the music
+    for (const sx of [6, W - 34]) {
+      for (let k = 0; k < 2; k++) {
+        const sy = BOT - 92 + k * 34;
+        g.rect(sx, sy, 28, 32, PAL.ink); g.rect(sx + 1, sy + 1, 26, 30, PAL.bg);
+        g.circle(sx + 14, sy + 16, 10 + (lit ? 1 : 0), PAL.mid); g.circle(sx + 14, sy + 16, 4, PAL.bg);
+      }
+      // a VU meter on top of each stack: how hard you're rocking, live
+      const on = Math.round(Math.min(1, this.pow / 0.4) * 8);
+      for (let v = 0; v < 8; v++) g.rect(sx + 2 + v * 3, BOT - 100, 2, 6, v < on ? (v >= 6 ? PAL.bad : PAL.accent) : PAL.mid);
     }
-    // shiba bobbing along with however hard you're moving
-    const bob = Math.sin(this.t * 9) * 4 * Math.min(1, Input.motion * 2.5);
-    const pop = this.pop > 0 ? this.pop * 24 : 0;
-    g.sprite('face', CX, CY - 6 + bob, { w: 44 + pop, h: 44 + pop, frame: Math.floor(this.t * 8) % 3 });
-    // the bar line: every beat as a pip, filled once you land it
-    for (const b of this.beats) {
-      const bx = 24 + (b.t / Math.max(0.01, this.timeLimit)) * (W - 48);
-      g.rect(bx - 2, BOT - 20, 5, 5, b.hit ? PAL.accent : b.miss ? PAL.bad : PAL.mid);
+    // the rocker: the shiba headbanging as hard as you are
+    const nod = Math.abs(Math.sin(this.ph)), hy = CY - 18 + nod * 12 * m, rot = Math.sin(this.ph) * 0.25 * m;
+    g.line(CX, CY + 18, CX, BOT - 40, PAL.mid, 2); g.rect(CX - 10, BOT - 41, 20, 2, PAL.mid);   // mic stand
+    g.cRect(CX, CY + 12, 8, 10, PAL.mid);                                                          // the mic, just under the chin
+    ctx.save(); ctx.translate(CX, hy); ctx.rotate(rot);
+    g.sprite('face', 0, 0, { w: 48, h: 48, frame: m > 0.4 ? 1 : 0 });
+    ctx.restore();
+    // the crowd's paws going up when you rock
+    for (let k = 0; k < 7; k++) {
+      const px = 18 + k * 24, up = Math.max(0, Math.sin(this.ph + k * 1.3)) * 10 * m;
+      g.rect(px - 3, BOT - 26 - up, 6, 26 + up, PAL.mid); g.circle(px, BOT - 27 - up, 5, PAL.ink);
     }
-    g.rect(24, BOT - 13, W - 48, 1, PAL.mid);
-    g.rect(24 + (Math.min(this.t, this.timeLimit) / Math.max(0.01, this.timeLimit)) * (W - 48) - 1, BOT - 16, 2, 7, PAL.ink);
-    g.text(Input.camReady ? 'MOVE ON THE BEAT!' : 'TAP ON THE BEAT!', CX, TOP + 26, 9, PAL.mid);
+    // the ROCK meter
+    g.text('ROCK', 24, TOP + 26, 8, PAL.accent, 'left');
+    g.bar(54, TOP + 19, W - 78, 9, this.rock, this.lvl === 0 && this.t >= 0.6 ? PAL.bad : PAL.accent);
+    // the rating, big: drains in red when you're not rocking hard enough
+    if (this.t < 0.6) g.text(Input.camReady ? 'BANG YOUR HEAD!' : 'TAP FAST TO ROCK!', CX, TOP + 46, 9, PAL.ink);
+    else {
+      const [word] = HeadBang.LEVELS[this.lvl], sz = (this.lvl === 0 ? 10 : 12 + this.lvl * 2) + this.lvlPop * 16;
+      if (this.lvl > 0 || Math.floor(this.t * 4) % 2) g.outline(word, CX, TOP + 50, sz, this.lvl === 0 ? PAL.bad : this.lvl === 3 ? PAL.accent : PAL.ink);
+    }
   }
 }
 
@@ -4683,7 +4709,7 @@ class SquidDoll extends Microgame {
     Input.enableCam();
     this.paused = Input.camPending; this.wait = 0;
     this.prog = 0;                                   // 0..1 toward the goal
-    this.base = this.byD(0.11, 0.085, 0.06);         // move threshold for "caught"
+    this.base = this.byD(0.13, 0.11, 0.09);          // move threshold for "caught" (a hand-held phone sways)
     this.thr = this.base; this.noise = 1; this.settle = 0.6;
     this.speed = this.byD(0.46, 0.39, 0.33);         // how fast movement advances you
     this.gT = this.byD(1.8, 1.5, 1.2);               // green (safe) window
@@ -4715,8 +4741,8 @@ class SquidDoll extends Microgame {
         this.face = 0;                                // facing you
         if (moving > this.thr) {
           this.caught += dt;
-          if (this.caught > 0.12) this.flash = 0.15;  // only react to sustained movement, not camera noise
-          if (this.caught > 0.35) { buzz(90); FX.shake(4); this.lose(); return; }
+          if (this.caught > 0.15) this.flash = 0.15;  // only react to sustained movement, not camera noise
+          if (this.caught > 0.5) { buzz(90); FX.shake(4); this.lose(); return; }
         } else this.caught = Math.max(0, this.caught - dt * 0.8);
         if (this.pt <= 0) { this.phase = 'toGreen'; this.pt = this.turn; }
         break;
@@ -5271,7 +5297,7 @@ const POOL = [
   StopBar, FollowDot, TapOrder, OddOneOut, FeedDog, WhackMole, PumpBalloon, CutRope,
   BlowSail, TracePath, GrabCount, FlickShot,
   Flappy, Crossy, Doodle, PianoTiles, DinoRun, KnockStack, MoveCam, DryShiba, LeanDodge,
-  FreezeStatue, SwatFly, HideLens, DanceBeat,
+  FreezeStatue, SwatFly, HideLens, HeadBang,
   BalanceBall, PourCup, SteerRun, BlowCandles, Dandelion, StackBlocks, SortTreats,
   BeachDig, Walkies, BarkJump, SliceTreats, YesNo
 ];
@@ -5817,6 +5843,9 @@ const Engine = {
   // a still of the player taken the moment they win any game, shown on the
   // result screen; the last few of a run make the game-over strip
   snap: null, album: [],
+  // REPLAY: a short clip of the player from each camera game this run (the
+  // last 5), kept in memory only and dropped when the next run starts
+  replay: [], rec: null, recAt: 0, rp: null, REC_FPS: 8, REC_MAX: 24,
   BOSS_EVERY: 8, SPEEDUP_EVERY: 4,
 
   reset() {
@@ -5873,6 +5902,7 @@ const Engine = {
     // speed can't shrink the round below what's physically completable
     if (C.meta.minDuration) this.duration = Math.max(this.duration, C.meta.minDuration);
     this.game.timeLimit = this.duration;
+    this.rec = [];   // this round's REPLAY clip
     this.game.init();
     this.state = 'PROMPT';
     this.timer = this.isBoss ? 1.0 : 0.7;
@@ -6015,6 +6045,7 @@ const Engine = {
       return;
     }
 
+    if (s === 'REPLAY') { this.replayUpdate(dt); return; }
     if (s === 'PROMPT') {
       Mascot.set('watch');
       const pt = this.promptT; this.promptT += dt;
@@ -6030,6 +6061,7 @@ const Engine = {
       this.game.t += dt;
       this.game.update(dt, Input);
       this.trackShot();
+      this.recTick();
       const out = this.timer <= 0;
       this.timer_ = this.timer;   // round clock left, for RUN's speed bonus
       if (out && !this.game.finished && !this.game.playingOut) {   // a jump in the air gets to land
@@ -6037,6 +6069,7 @@ const Engine = {
         else { this.game.lose(); FX.burst(12, H - 9, PAL.bad, 18, 90); Sfx.noise(0.3, 0.09, 120); }   // the bomb goes off
       }
       if (this.game.finished) {
+        this.keepClip();
         if (this.game.won) {
           if (this.surprise === 'life' && this.mode === 'classic' && this.lives < 4) { this.lives++; this.gotLife = true; } else this.gotLife = false;
           this.score++; this.combo++; this.result = 'WIN'; Sfx.win(); buzz(20); Mascot.set('cheer');
@@ -6074,6 +6107,7 @@ const Engine = {
     }
 
     if (s === 'RESULT') {
+      this.recTick();
       if (this.mode === 'run' && Input.justDown && this.timer < 1.4) this.timer = 0;   // skip the tally
       if (this.timer > 0) return;
       // if the just-won game caught an action shot, show it before moving on
@@ -6107,7 +6141,7 @@ const Engine = {
   // The countdown, SPEED UP, STAGE CLEAR and GAME OVER have their own stings.
   musicTrack() {
     const s = this.state;
-    if (['TITLE', 'SETTINGS', 'ALBUM', 'PERMS'].includes(s)) return 'menu';
+    if (['TITLE', 'SETTINGS', 'ALBUM', 'PERMS', 'REPLAY'].includes(s)) return 'menu';
     if (s === 'SHOP') return 'shop';
     if (!['STAGE', 'PROMPT', 'PLAYING', 'RESULT', 'PHOTO'].includes(s)) return null;
     const how = this.game && this.game.meta.how;
@@ -6124,6 +6158,25 @@ const Engine = {
   shootsNow() {
     const gm = this.game;
     return Input.camReady && !('usesCam' in gm && !gm.usesCam);
+  },
+  // a frame for the REPLAY clip, at REC_FPS, the last REC_MAX of the round,
+  // and on into the result for REC_TAIL frames to catch your reaction
+  // Only camera games: the camera is on through the touch games too, but a
+  // clip of you tapping is just you staring at your phone.
+  REC_TAIL: 4, recTail: 0, REC_LONG: 192,
+  recTick() {
+    if (!this.rec || this.tut || !this.shootsNow() || Run.group(this.game.meta) !== 'CAMERA' || this.time - this.recAt < 1 / this.REC_FPS) return;
+    if (this.state === 'RESULT' && this.recTail-- <= 0) { this.rec = null; return; }
+    this.recAt = this.time;
+    const f = Input.snapPhoto(this.REC_LONG);   // the whole picture, its own shape: never cropped or stretched
+    if (f) { this.rec.push(f); if (this.rec.length > this.REC_MAX) this.rec.shift(); }
+  },
+  keepClip() {
+    if (this.rec && this.rec.length >= 3 && !this.tut) {
+      this.replay.push({ prompt: this.game.meta.prompt, won: this.game.won, frames: this.rec });
+      if (this.replay.length > 5) this.replay.shift();
+      this.recTail = this.REC_TAIL;   // the clip keeps filling through the result
+    } else this.rec = null;
   },
   trackShot() {
     const gm = this.game, m = gm.meta;
@@ -6167,7 +6220,7 @@ const Engine = {
   ALB_NEXT:    { x: W - 46, y: BOT - 26, w: 30, h: 20 },
   // the menu-style screens: black with drifting paw prints and a pixel frame,
   // and no mascot on the shelf
-  MENU_SCREENS: ['SETTINGS', 'ALBUM', 'PERMS', 'GAMEOVER', 'TUTORIAL', 'TUTCAT', 'TUTDONE'],
+  MENU_SCREENS: ['SETTINGS', 'ALBUM', 'PERMS', 'GAMEOVER', 'TUTORIAL', 'TUTCAT', 'TUTDONE', 'REPLAY'],
   groupLabel(gr) { return { TAP: 'TAP', DRAG: 'DRAG', CAMERA: 'CAMERA', BLOW: 'SOUND', SHAKE: 'TILT/SHAKE' }[gr] || gr; },
   menuBg() {
     g.rect(0, 0, W, H, PAL.bg);
@@ -6187,6 +6240,7 @@ const Engine = {
   ALB_SHARE:   { x: CX - 50, y: BOT - 46, w: 100, h: 20 },
   ALB_DEL:     { x: CX - 30, y: BOT - 21, w: 60, h: 16 },
   BTN_SHARE:   { x: CX - 50, y: CY + 66, w: 100, h: 22 },
+  BTN_REPLAY:  { x: CX - 50, y: CY + 92, w: 100, h: 22 },
   hit(b, p) { return p.x >= b.x && p.x < b.x + b.w && p.y >= b.y && p.y < b.y + b.h; },
 
   press(p) {
@@ -6224,8 +6278,9 @@ const Engine = {
     } else if (s === 'GAMEOVER' && this.timer <= 0) {
       // share runs inside this tap: the share sheet only opens from a gesture
       if (this.hit(this.BTN_SHARE, p)) { Sfx.tap(); this.share(); return; }
+      if (this.replay.length && this.hit(this.BTN_REPLAY, p)) { Sfx.tap(); this.state = 'REPLAY'; this.rp = { i: 0, t: 0, paused: false }; return; }
       this.state = 'TITLE'; this.timer = 0.2;   // back to pick a mode
-    }
+    } else if (s === 'REPLAY') this.replayRelease(p);
   },
 
   // ── TITLE ──
@@ -6384,7 +6439,73 @@ const Engine = {
   drawShareButton() {
     const B = this.BTN_SHARE;
     g.rect(B.x, B.y, B.w, B.h, PAL.accent); g.text('SHARE', CX, B.y + 15, 10, PAL.bg);
-    if (Math.floor(this.time * 2) % 2) g.text('TAP ELSEWHERE TO CONTINUE', CX, CY + 104, 7, PAL.mid);
+    const R = this.BTN_REPLAY, has = this.replay.length > 0;
+    if (has) { g.box(R.x, R.y, R.w, R.h, PAL.accent); g.text('WATCH REPLAY', CX, R.y + 15, 10, PAL.accent); }
+    if (Math.floor(this.time * 2) % 2) g.text('TAP ELSEWHERE TO CONTINUE', CX, has ? CY + 128 : CY + 104, 7, PAL.mid);
+  },
+
+  // ── REPLAY ─────────────────────────────────────────────────────────────────
+  // Your camera games from the run, played back on a little TV: the numbered
+  // dots pick a clip, the buttons go back, pause and go forward. Each clip
+  // plays through and the next one follows, round and round.
+  // the TV takes the clip's shape: a tall screen for a phone held upright, a
+  // wide one for a laptop camera, both fitting this box
+  RP_SCREEN: { y: 44, w: 140, h: 128 },
+  RP_DOT_Y: 212,
+  RP_BTNS: [{ id: 'back', x: CX - 74, y: 226, w: 44, h: 24 }, { id: 'pause', x: CX - 22, y: 226, w: 44, h: 24 }, { id: 'fwd', x: CX + 30, y: 226, w: 44, h: 24 }],
+  RP_DONE: { x: CX - 50, y: 254, w: 100, h: 21 },
+  rpDot(k) { const n = this.replay.length; return CX + (k - (n - 1) / 2) * 26; },
+  replayUpdate(dt) {
+    const R = this.rp, n = this.replay.length;
+    if (!R || !n) { this.state = 'GAMEOVER'; return; }
+    if (R.paused) return;
+    R.t += dt;
+    if (R.t * this.REC_FPS >= this.replay[R.i].frames.length + 4) { R.i = (R.i + 1) % n; R.t = 0; }   // a short hold on the last frame
+  },
+  replayGo(i) { const n = this.replay.length; this.rp.i = (i + n) % n; this.rp.t = 0; },
+  replayRelease(p) {
+    const R = this.rp, n = this.replay.length;
+    if (this.hit(this.RP_DONE, p)) { Sfx.tap(); this.state = 'GAMEOVER'; this.timer = 0; return; }
+    for (const b of this.RP_BTNS) if (this.hit(b, p)) {
+      Sfx.tap();
+      if (b.id === 'pause') R.paused = !R.paused;
+      else this.replayGo(R.i + (b.id === 'fwd' ? 1 : -1));
+      return;
+    }
+    for (let k = 0; k < n; k++) if (Math.hypot(p.x - this.rpDot(k), p.y - this.RP_DOT_Y) < 12) { Sfx.tap(); this.replayGo(k); return; }
+  },
+  drawReplay() {
+    const R = this.rp, clip = this.replay[R.i], S = this.RP_SCREEN;
+    g.text('REPLAY', CX, 30, 12, PAL.accent);
+    const f = clip.frames[Math.min(clip.frames.length - 1, Math.floor(R.t * this.REC_FPS))];
+    const a = f ? f.width / f.height : 4 / 3;
+    const sw = Math.round(Math.min(S.w, S.h * a)), sh = Math.round(sw / a), sx = Math.round(CX - sw / 2), sy = S.y + Math.round((S.h - sh) / 2);
+    // the TV: a grey set around the screen, the clip in it
+    g.rect(sx - 6, sy - 6, sw + 12, sh + 12, PAL.mid); g.rect(sx - 5, sy + sh + 6, sw + 10, 1, PAL.mid);
+    g.rect(sx, sy, sw, sh, PAL.bg);
+    if (f) { ctx.imageSmoothingEnabled = true; ctx.drawImage(f, sx, sy, sw, sh); ctx.imageSmoothingEnabled = false; }   // a photo, not pixel art
+    g.rect(sx + 4, sy + 4, 30, 11, clip.won ? PAL.accent : PAL.bad);
+    g.text(clip.won ? 'WIN' : 'MISS', sx + 19, sy + 13, 8, clip.won ? PAL.bg : PAL.ink);
+    if (R.paused) { g.rect(sx + sw - 14, sy + 4, 3, 10, PAL.ink); g.rect(sx + sw - 9, sy + 4, 3, 10, PAL.ink); }
+    g.text(clip.prompt, CX, 196, 12, PAL.ink);
+    // the clip dots, joined like a timeline
+    const n = this.replay.length;
+    if (n > 1) g.rect(this.rpDot(0), this.RP_DOT_Y - 1, this.rpDot(n - 1) - this.rpDot(0), 2, PAL.mid);
+    for (let k = 0; k < n; k++) {
+      const on = k === R.i;
+      g.circle(this.rpDot(k), this.RP_DOT_Y, on ? 9 : 8, on ? PAL.accent : PAL.mid);
+      g.text(String(k + 1), this.rpDot(k), this.RP_DOT_Y + 4, 9, on ? PAL.bg : PAL.ink);
+    }
+    // back, pause / play, forward
+    const tri = (x, y, dir) => { ctx.fillStyle = PAL.ink; ctx.beginPath(); ctx.moveTo(x, y - 6); ctx.lineTo(x, y + 6); ctx.lineTo(x + dir * 8, y); ctx.closePath(); ctx.fill(); };
+    for (const b of this.RP_BTNS) {
+      g.box(b.x, b.y, b.w, b.h, PAL.mid);
+      const cx = b.x + b.w / 2, cy = b.y + b.h / 2;
+      if (b.id === 'back') { tri(cx, cy, -1); tri(cx + 8, cy, -1); }
+      if (b.id === 'fwd') { tri(cx - 8, cy, 1); tri(cx, cy, 1); }
+      if (b.id === 'pause') { if (R.paused) tri(cx - 4, cy, 1); else { g.rect(cx - 5, cy - 6, 3, 12, PAL.ink); g.rect(cx + 2, cy - 6, 3, 12, PAL.ink); } }
+    }
+    const D = this.RP_DONE; g.rect(D.x, D.y, D.w, D.h, PAL.accent); g.text('DONE', CX, D.y + 15, 10, PAL.bg);
   },
 
   // ── ALBUM SCREEN ───────────────────────────────────────────────────────────
@@ -6587,7 +6708,7 @@ const Engine = {
     if (this.sensors) { Input.enableAV(); Input.enableMotion(); Input.enableTilt(); }
     if (!this.tut && !Prefs.get('tutorial', false)) { this.startTutorial(this.mode); return; }   // the very first time: practice first
     this.reset();
-    this.album = []; this.snap = null;
+    this.album = []; this.snap = null; this.replay = []; this.rec = null;
     if (this.mode === 'run') Run.start();
     this.state = 'READY';
     this.timer = 3.2;          // 3 · 2 · 1 · GO, then the first prompt
@@ -6816,6 +6937,7 @@ const Engine = {
     if (s === 'CLEAR') { this.drawHud(); Run.drawClear(); return; }
     if (s === 'SHOP')  { this.drawHud(); Run.drawShop(); return; }
 
+    if (s === 'REPLAY') { this.drawReplay(); return; }
     if (s === 'GAMEOVER') {
       this.drawAlbum(TOP + 44);
       g.text('GAME', CX, CY - 24, 24, PAL.bad);
