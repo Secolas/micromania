@@ -261,6 +261,35 @@ const Assets = {
     cactus:   { src: 'art/cactus.png',   fw: 22,  fh: 31,  frames: 1,  fps: 1  },
     bomb:     { src: 'art/bomb.png',     fw: 22,  fh: 26,  frames: 2,  fps: 1  },
     frisbee:  { src: 'art/frisbee.png',  fw: 28,  fh: 10,  frames: 1,  fps: 1  },
+    sledder:  { src: 'art/sledder.png',  fw: 25,  fh: 35,  frames: 1,  fps: 1  },
+    nightfence:{ src: 'art/nightfence.png', fw: 21, fh: 12, frames: 1,  fps: 1  },
+    doll:     { src: 'art/doll.png',     fw: 48,  fh: 64,  frames: 3,  fps: 1  },
+    menutile: { src: 'art/menutile.png', fw: 32,  fh: 32,  frames: 1,  fps: 1  },
+    buttons:  { src: 'art/buttons.png',  fw: 104, fh: 24,  frames: 2,  fps: 1  },
+    pauseicon:{ src: 'art/pauseicon.png', fw: 12, fh: 12, frames: 1, fps: 1 },
+    scenetiles:{ src: 'art/scenetiles.png', fw: 32, fh: 32, frames: 14, fps: 1  },
+    bathtiles:{ src: 'art/bathtiles.png', fw: 16, fh: 16,  frames: 3,  fps: 1  },
+    parktree: { src: 'art/parktree.png', fw: 28,  fh: 38,  frames: 1,  fps: 1  },
+    bench:    { src: 'art/bench.png',    fw: 24,  fh: 16,  frames: 1,  fps: 1  },
+    nighthouse:{ src: 'art/nighthouse.png', fw: 64, fh: 59, frames: 1,  fps: 1  },
+    mountains:{ src: 'art/mountains.png', fw: 192, fh: 26, frames: 1,  fps: 1  },
+    pine:     { src: 'art/pine.png',     fw: 17,  fh: 27,  frames: 2,  fps: 1  },
+    umbrella: { src: 'art/umbrella.png', fw: 36,  fh: 36,  frames: 1,  fps: 1  },
+    towel:    { src: 'art/towel.png',    fw: 19,  fh: 34,  frames: 1,  fps: 1  },
+    sun:      { src: 'art/sun.png',      fw: 48, fh: 48, frames: 4, fps: 4 },
+    moon:     { src: 'art/moon.png',     fw: 19,  fh: 20,  frames: 1,  fps: 1  },
+    clouds:   { src: 'art/clouds.png',   fw: 43,  fh: 22,  frames: 4,  fps: 1  },
+    roomtiles:{ src: 'art/roomtiles.png', fw: 32, fh: 32,  frames: 6,  fps: 1  },
+    button:   { src: 'art/button.png',   fw: 104, fh: 24,  frames: 1,  fps: 1  },
+    titlesign:{ src: 'art/titlesign.png', fw: 149, fh: 68, frames: 1,  fps: 1  },
+    rocker:   { src: 'art/rocker.png',   fw: 48,  fh: 64,  frames: 7,  fps: 1  },
+    yesno:    { src: 'art/yesno.png',    fw: 48,  fh: 64,  frames: 6,  fps: 1  },
+    wag:      { src: 'art/wag.png',      fw: 48,  fh: 64,  frames: 4,  fps: 1  },
+    feed:     { src: 'art/feed.png',     fw: 48,  fh: 64,  frames: 5,  fps: 1  },
+    lean:     { src: 'art/lean.png',     fw: 48,  fh: 64,  frames: 1,  fps: 1  },
+    fullshiba:{ src: 'art/fullshiba.png', fw: 48, fh: 64,  frames: 11, fps: 1  },
+    sleepdog: { src: 'art/sleepdog.png', fw: 64,  fh: 48,  frames: 5, fps: 1  },
+    rubdog:   { src: 'art/rubdog.png',   fw: 48,  fh: 44,  frames: 13, fps: 1  },
     crowdarm: { src: 'art/crowdarm.png', fw: 14,  fh: 46,  frames: 1,  fps: 1  },
     hole:     { src: 'art/hole.png',     fw: 54,  fh: 36,  frames: 4,  fps: 1  },
     sandpile: { src: 'art/sandpile.png', fw: 40,  fh: 24,  frames: 3,  fps: 1  },
@@ -1171,9 +1200,14 @@ const g = {
     // Readable on a phone in daylight: nothing smaller than 8px, and no grey
     // text — grey (PAL.mid / TEXT_MID) is for bars and lines; as text it's white
     size = Math.max(8, size);
-    ctx.fillStyle = c === PAL.mid || c === TEXT_MID ? PAL.ink : c;
+    const col = c === PAL.mid || c === TEXT_MID ? PAL.ink : c;
     ctx.font = (bold ? 'bold ' : '') + size + 'px ui-monospace, monospace';
     ctx.textAlign = align;
+    if (col !== PAL.bg) {   // a thin dark rim round light text, so it reads on bright scenes too
+      ctx.fillStyle = 'rgba(16,16,16,0.9)';
+      for (const [ox, oy] of [[-1, 0], [1, 0], [0, -1], [0, 1], [1, 1]]) ctx.fillText(str, Math.round(x) + ox, Math.round(y) + oy);
+    }
+    ctx.fillStyle = col;
     ctx.fillText(str, Math.round(x), Math.round(y));
     ctx.textAlign = 'left';
   },
@@ -1244,6 +1278,34 @@ const g = {
     for (let xx = x + left; xx < x + w - right; xx++) ctx.drawImage(s.img, fill, 0, 1, s.fh, xx, y, 1, s.fh);
     ctx.drawImage(s.img, b, 0, right, s.fh, x + w - right, y, right, s.fh);
     return true;
+  },
+  // The whole shiba, drawn 2x with its feet (the frame's bottom row) on y.
+  // art/fullshiba.png, 48x64: the mascot's moods with a body (FULL below),
+  // then a pat on the head. art/sleepdog.png, 64x48: curled up asleep,
+  // breathing (SLEEP_BREATHE frames), then one eye open, stirring.
+  FULL: { happy: 0, cheer: 1, cheer2: 2, shut: 3, sad: 4, sad2: 5, grumpy: 6, teary: 7, pat: 8 },
+  SLEEP_BREATHE: 4, SLEEP_STIR: 4,
+  fullShiba(x, y, frame) { this.sprite('fullshiba', x, y - 64, { w: 96, h: 128, frame }); },
+  sleepDog(x, y, frame) { this.sprite('sleepdog', x, y - 48, { w: 128, h: 96, frame }); },
+  // Nine-slice: a framed sprite drawn to any w x h at x, y. Its b-px corners
+  // stay 1:1; its edges and middle are stretched from a 1-px slice through
+  // the centre, so the frame's border and fill stay crisp at any size.
+  nine(name, frame, x, y, w, h, b) {
+    const a = Assets.get(name); if (!a) return false;
+    x = Math.round(x); y = Math.round(y); w = Math.round(w); h = Math.round(h);
+    const sx = frame * a.fw, mx = sx + (a.fw >> 1), my = a.fh >> 1, iw = w - 2 * b, ih = h - 2 * b;
+    const d = (s, t, sw, sh, dx, dy, dw, dh) => { if (dw > 0 && dh > 0) ctx.drawImage(a.img, s, t, sw, sh, dx, dy, dw, dh); };
+    d(sx, 0, b, b, x, y, b, b); d(sx + a.fw - b, 0, b, b, x + w - b, y, b, b);                          // corners
+    d(sx, a.fh - b, b, b, x, y + h - b, b, b); d(sx + a.fw - b, a.fh - b, b, b, x + w - b, y + h - b, b, b);
+    d(mx, 0, 1, b, x + b, y, iw, b); d(mx, a.fh - b, 1, b, x + b, y + h - b, iw, b);                     // top, bottom
+    d(sx, my, b, 1, x, y + b, b, ih); d(sx + a.fw - b, my, b, 1, x + w - b, y + b, b, ih);               // left, right
+    d(mx, my, 1, 1, x + b, y + b, iw, ih);                                                               // middle
+    return true;
+  },
+  // A menu button in box b: gold for the main action, dark wood otherwise (art/buttons.png)
+  button(b, main) {
+    if (this.nine('buttons', main ? 1 : 0, b.x, b.y, b.w, b.h, 6)) return;
+    if (main) this.rect(b.x, b.y, b.w, b.h, PAL.accent); else this.box(b.x, b.y, b.w, b.h, PAL.mid);
   },
   // a tennis ball centred on x, y (art/ball.png, 14 across): yellow felt with
   // its white seams, or red (c = PAL.bad) when it's in danger
@@ -1564,10 +1626,11 @@ const Album = {
 /* ── SCENERY ──────────────────────────────────────────────────────────────────
    Backdrops behind the microgames, so each one reads as a place — a lawn, a
    living room, the sky — rather than shapes on black. They use a small extra
-   palette of dark, muted tones, so the sprites and the five play colours still
-   pop in front of them; the HUD, prompts and shelf stay black.
+   palette of bright, light tones (WarioWare-style); the sprites keep their dark
+   outlines and light text gets a dark rim (g.text), so both still read on them.
+   The HUD, prompts and shelf stay black.
    A game picks one with `env` in its meta:
-     'lawn'  grass seen from above          'sky'   dusk sky, drifting clouds
+     'lawn'  grass seen from above          'sky'   day sky, drifting clouds
      'bath'  bathroom tiles                 'snow'  a night ski slope
      'field@Y'  side view: sky down to a horizon, grass from the ground at Y
      'room@Y'   a living room: wallpaper down to a floor at Y ('wall@Y' is the same)
@@ -1581,14 +1644,16 @@ const Album = {
    Each is painted once into a 180x320 canvas and blitted after that, so it
    costs nothing per frame; only the clouds, surf, disco lights and stars are drawn live.
 ─────────────────────────────────────────────────────────────────────────────── */
+// the inside of the menu panels: a friendly deep blue that white and yellow text read on
+const MENU_PANEL = '#2f5597';
 const SCENE = {
-  sky0: '#131c31', sky1: '#27395b', cloud: '#34496f', star: '#4d5f82',
-  hill: '#1d3526', grass: '#284b2f', grassHi: '#386840', grassLo: '#203e26',
-  wall: '#33262d', wallHi: '#3b2c34', skirt: '#24191a', floor: '#45301f', floorLo: '#35251a',
-  tile: '#1b303a', tileHi: '#21394a', grout: '#2b4655',
-  snow: '#24324a', snowHi: '#344660', pine: '#1a2b33',
+  sky0: '#5fb6ee', sky1: '#b5e2fb', cloud: '#ffffff', star: '#d9f1ff',
+  hill: '#4aa356', grass: '#6cc664', grassHi: '#8fdc85', grassLo: '#5cb856',
+  wall: '#f6c9a8', wallHi: '#fbe3cf', skirt: '#c98a52', floor: '#e0a868', floorLo: '#c98a52',
+  tile: '#8fd3df', tileHi: '#a8e0ea', grout: '#c9eef4',
+  snow: '#dbe8f5', snowHi: '#ffffff', pine: '#2f7a5a',
   // a bright day, for the one game that should feel like one
-  day0: '#3b7cc4', day1: '#6aa5dc', dayCloud: '#e6f0fa', dayHill: '#3f8a47',
+  day0: '#5fb6ee', day1: '#b5e2fb', dayCloud: '#e6f0fa', dayHill: '#3f8a47',
   meadow: '#4a9a4f', meadowHi: '#62b466', stem: '#3d7a35',
   // the beach, for FETCH
   sea0: '#2a74ad', sea1: '#3a8cc9', wetSand: '#b99460', sand: '#dcc08a', sandLo: '#c8a86e',
@@ -1604,10 +1669,10 @@ const SCENE = {
   club: '#1a1426', clubHi: '#241b36', tileA: '#2e2246', tileB: '#3d2d5c',
   // a night outside, for HIDE
   // the road in CROSS
-  road: '#2a2d30',
+  road: '#6b7078',
   // KNOCK IT: the slingshot, its rubber bands, the crates and their stone slab
   wood: '#a8743f', woodHi: '#c99055', woodLo: '#6e4a2a', band: '#5a1f16', stone: '#7d8590', stoneLo: '#5b626b', dirt: '#7a5a3a',
-  night0: '#070b18', night1: '#141d36', nightGrass: '#14261a', nightGrassHi: '#1c3423', house: '#0d1220',
+  night0: '#1b2552', night1: '#33457e', nightGrass: '#2d5a37', nightGrassHi: '#447d4e', house: '#1e2747',
 };
 const Env = {
   cache: {},
@@ -1617,7 +1682,10 @@ const Env = {
     ctx.fillStyle = PAL.bg; ctx.fillRect(0, 0, W, H);
     ctx.drawImage(c, 0, 0, W, H);
     if (spec === 'sky') this.clouds();
-    if (spec.startsWith('sunny') || spec.startsWith('park') || spec.startsWith('nature')) this.dayClouds();
+    if (spec.startsWith('sunny') || spec.startsWith('park') || spec.startsWith('nature')) {
+      if (Assets.get('sun')) g.sprite('sun', W - 30, TOP + 28);   // art/sun.png, rays twinkling
+      this.dayClouds();
+    }
     if (spec.startsWith('beach')) this.surf(+spec.split('@')[1]);
     if (spec.startsWith('disco')) this.discoLights(+spec.split('@')[1]);
     if (spec.startsWith('night')) this.stars(+spec.split('@')[1]);
@@ -1669,6 +1737,7 @@ const Env = {
     const t = Engine.time;
     for (let i = 0; i < 3; i++) {
       const x = ((i * 83 + t * (3 + i * 2)) % (W + 70)) - 35, y = TOP + 46 + i * 28;   // below the instruction line at TOP+26
+      if (Assets.get('clouds')) { g.sprite('clouds', Math.round(x), Math.round(y - 4), { frame: i % 2 ? 0 : 1 }); continue; }
       ctx.fillStyle = SCENE.dayCloud;
       ctx.fillRect(Math.round(x - 14), Math.round(y), 28, 6);
       ctx.fillRect(Math.round(x - 9), Math.round(y - 4), 14, 4);
@@ -1684,6 +1753,8 @@ const Env = {
     }
   },
   cloud(x, cx, cy, w) {
+    const a = Assets.get('clouds');   // the art clouds, small or big by w (white: frames 0-1; 2-3 are dusk-blue copies)
+    if (a) { const f = w >= 22 ? 1 : 0; x.drawImage(a.img, f * a.fw, 0, a.fw, a.fh, Math.round(cx - a.fw / 2), Math.round(cy - a.fh + 5), a.fw, a.fh); return; }
     x.fillStyle = SCENE.cloud;
     x.fillRect(Math.round(cx - w / 2), Math.round(cy), Math.round(w), 4);
     x.fillRect(Math.round(cx - w / 3), Math.round(cy - 3), Math.round(w * 0.45), 3);
@@ -1694,13 +1765,27 @@ const Env = {
     const x = c.getContext('2d');
     let seed = 1234;                                   // same scene every time
     const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    // PixelLab scenery: fill x0..x1, y0..y1 with tiles of 'name' (pick() gives the
+    // frame), clipped to the rectangle; and draw a prop 1:1 with its feet at bx, by
+    const tiles = (name, x0, y0, x1, y1, pick) => {
+      const a = Assets.get(name); if (!a) return false;
+      x.save(); x.beginPath(); x.rect(x0, y0, x1 - x0, y1 - y0); x.clip();
+      for (let ty = y0; ty < y1; ty += a.fh) for (let tx = x0; tx < x1; tx += a.fw) x.drawImage(a.img, pick() * a.fw, 0, a.fw, a.fh, tx, ty, a.fw, a.fh);
+      x.restore(); return true;
+    };
+    const prop = (name, bx, by, frame = 0) => {
+      const a = Assets.get(name); if (!a) return false;
+      x.drawImage(a.img, frame * a.fw, 0, a.fw, a.fh, Math.round(bx - a.fw / 2), Math.round(by - a.fh), a.fw, a.fh); return true;
+    };
+    // art/scenetiles.png: 0 dry sand, 1-4 night snow, 5-7 night grass, 8-9 meadow, 11-13 meadow with flowers
+    const meadowTile = () => rnd() < 0.18 ? 11 + Math.floor(rnd() * 3) : 8 + Math.floor(rnd() * 2);
     const R = (a, b, w, h, col) => { x.fillStyle = col; x.fillRect(Math.round(a), Math.round(b), Math.round(w), Math.round(h)); };
     const mix = (a, b, k) => {                         // blend two #rrggbb colours
       const p = s => [1, 3, 5].map(i => parseInt(s.slice(i, i + 2), 16));
       const A = p(a), B = p(b);
       return '#' + A.map((v, i) => Math.round(v + (B[i] - v) * k).toString(16).padStart(2, '0')).join('');
     };
-    // dusk sky in flat bands, as pixel art does gradients
+    // the sky in flat bands, as pixel art does gradients
     const sky = (y0, y1) => {
       const bands = 8, h = (y1 - y0) / bands;
       for (let i = 0; i < bands; i++) R(0, y0 + i * h, W, h + 1, mix(SCENE.sky0, SCENE.sky1, i / (bands - 1)));
@@ -1739,14 +1824,26 @@ const Env = {
       R(0, y, W, 2, SCENE.grassHi);
       tufts(y + 3, BOT, Math.max(4, (BOT - y) / 2));
     } else if (kind === 'room' || kind === 'wall' || kind === 'bedroom') {
-      // striped wallpaper, skirting, floorboards. (A little framed picture
+      // wallpaper, skirting, floorboards (art/roomtiles.png: peach polka dots, honey boards). (A little framed picture
       // used to hang here; at this size it read as a stray UI box.)
-      for (let i = 0; i < W; i += 12) R(i, TOP, 6, y - TOP, SCENE.wall), R(i + 6, TOP, 6, y - TOP, SCENE.wallHi);
-      R(0, y - 4, W, 4, SCENE.skirt);
-      R(0, y, W, BOT - y, SCENE.floor);
-      for (let fy = y + 7, row = 0; fy < BOT; fy += 7, row++) {
-        R(0, fy, W, 1, SCENE.floorLo);
-        for (let fx = (row % 2) * 22; fx < W; fx += 44) R(fx, fy - 7, 1, 7, SCENE.floorLo);
+      const rt = Assets.get('roomtiles');
+      if (rt) {
+        const tile = (f, tx, ty) => x.drawImage(rt.img, f * 32, 0, 32, 32, tx, ty, 32, 32);
+        x.save(); x.beginPath(); x.rect(0, TOP, W, y - TOP); x.clip();
+        for (let col = 0; col * 32 < W; col++) for (let ty = y - 32; ty > TOP - 32; ty -= 32) tile(col % 2, col * 32, ty);   // from the skirting up
+        x.restore();
+        x.save(); x.beginPath(); x.rect(0, y, W, BOT - y); x.clip();
+        for (let ty = y; ty < BOT; ty += 32) for (let col = 0; col * 32 < W; col++) tile(rnd() < 0.12 ? 5 : 3, col * 32, ty);   // one board tile, a knot now and then
+        x.restore();
+        R(0, y - 4, W, 4, SCENE.skirt);
+      } else {
+        for (let i = 0; i < W; i += 12) R(i, TOP, 6, y - TOP, SCENE.wall), R(i + 6, TOP, 6, y - TOP, SCENE.wallHi);
+        R(0, y - 4, W, 4, SCENE.skirt);
+        R(0, y, W, BOT - y, SCENE.floor);
+        for (let fy = y + 7, row = 0; fy < BOT; fy += 7, row++) {
+          R(0, fy, W, 1, SCENE.floorLo);
+          for (let fx = (row % 2) * 22; fx < W; fx += 44) R(fx, fy - 7, 1, 7, SCENE.floorLo);
+        }
       }
       if (kind === 'bedroom') {
         // lights out: dim the whole room, then a window onto the night
@@ -1764,8 +1861,9 @@ const Env = {
     } else if (kind === 'sunny' || kind === 'park' || kind === 'nature') {
       const bands = 8, h = (y - TOP) / bands;
       for (let i = 0; i < bands; i++) R(0, TOP + i * h, W, h + 1, mix(SCENE.day0, SCENE.day1, i / (bands - 1)));
-      // the sun, rays and all, in the top corner
+      // the sun, rays and all, in the top corner (drawn live in paint() when it has art)
       const sx = W - 30, sy = TOP + 28;
+      if (!Assets.get('sun')) {
       x.fillStyle = PAL.accent;
       for (let k = 0; k < 8; k++) {
         const a = k * Math.PI / 4;
@@ -1773,33 +1871,44 @@ const Env = {
         R(sx + Math.cos(a) * 21 - 1, sy + Math.sin(a) * 21 - 1, 2, 2, PAL.accent);
       }
       x.beginPath(); x.arc(sx, sy, 12, 0, 6.2832); x.fill();
+      }
       if (kind === 'nature') {
         // far mountains with snowy tips, then a pine forest along the horizon
-        for (const [mx, mh, mw] of [[22, 58, 46], [78, 80, 58], [140, 64, 50], [190, 50, 40]]) {
-          for (let k = 0; k < mh; k++) {
-            const half = mw * k / mh;
-            R(mx - half, y - mh + k, half * 2 + 1, 1, k < mh * 0.22 ? SCENE.mountHi : SCENE.mount);
+        if (Assets.get('mountains') && Assets.get('pine')) {
+          prop('mountains', W / 2, y - 8);
+          for (let tx = -4; tx < W + 8; tx += 9 + rnd() * 5) prop('pine', tx, y + 1 - Math.floor(rnd() * 4), 1);
+        } else {
+          for (const [mx, mh, mw] of [[22, 58, 46], [78, 80, 58], [140, 64, 50], [190, 50, 40]]) {
+            for (let k = 0; k < mh; k++) {
+              const half = mw * k / mh;
+              R(mx - half, y - mh + k, half * 2 + 1, 1, k < mh * 0.22 ? SCENE.mountHi : SCENE.mount);
+            }
           }
-        }
-        for (let tx = -4; tx < W + 8; tx += 9 + rnd() * 5) {
-          const th = 14 + rnd() * 12;
-          for (let k = 0; k < th; k++) R(tx - k * 0.32, y - th + k, k * 0.64 + 1, 1, SCENE.forest);
-          R(tx - 1, y - 3, 2, 3, SCENE.trunk);
+          for (let tx = -4; tx < W + 8; tx += 9 + rnd() * 5) {
+            const th = 14 + rnd() * 12;
+            for (let k = 0; k < th; k++) R(tx - k * 0.32, y - th + k, k * 0.64 + 1, 1, SCENE.forest);
+            R(tx - 1, y - 3, 2, 3, SCENE.trunk);
+          }
         }
       }
       for (let i = 0; i < W; i++) { const hh = 7 + Math.sin(i / 19) * 4 + Math.sin(i / 6) * 1.5; R(i, y - hh, 1, hh, SCENE.dayHill); }
       if (kind === 'park') {
         // a row of round park trees along the far side, and a bench
-        for (const [tx, s] of [[14, 15], [44, 11], [96, 13], [128, 10], [166, 14]]) {
-          R(tx - 2, y - s - 6, 4, s + 6, SCENE.trunk);
-          x.fillStyle = SCENE.leaf; x.beginPath(); x.arc(tx, y - s - 10, s, 0, 6.2832); x.fill();
-          x.fillStyle = SCENE.leafHi; x.beginPath(); x.arc(tx - s * 0.3, y - s - 13, s * 0.5, 0, 6.2832); x.fill();
+        if (Assets.get('parktree') && Assets.get('bench')) {
+          for (const [tx, dy] of [[14, 0], [44, 4], [96, 1], [128, 5], [166, 0]]) prop('parktree', tx, y + 2 - dy);
+          prop('bench', 75, y + 1);
+        } else {
+          for (const [tx, s] of [[14, 15], [44, 11], [96, 13], [128, 10], [166, 14]]) {
+            R(tx - 2, y - s - 6, 4, s + 6, SCENE.trunk);
+            x.fillStyle = SCENE.leaf; x.beginPath(); x.arc(tx, y - s - 10, s, 0, 6.2832); x.fill();
+            x.fillStyle = SCENE.leafHi; x.beginPath(); x.arc(tx - s * 0.3, y - s - 13, s * 0.5, 0, 6.2832); x.fill();
+          }
+          R(64, y - 9, 22, 2, SCENE.trunk); R(64, y - 5, 22, 2, SCENE.trunk);      // bench slats
+          R(66, y - 9, 2, 9, PAL.bg); R(82, y - 9, 2, 9, PAL.bg);                  // its legs
         }
-        R(64, y - 9, 22, 2, SCENE.trunk); R(64, y - 5, 22, 2, SCENE.trunk);      // bench slats
-        R(66, y - 9, 2, 9, PAL.bg); R(82, y - 9, 2, 9, PAL.bg);                  // its legs
       }
       R(0, y, W, BOT - y, SCENE.meadow);
-      R(0, y, W, 2, SCENE.meadowHi);
+      if (tiles('scenetiles', 0, y, W, BOT, meadowTile)) { R(0, y, W, 1, SCENE.meadowHi); } else
       for (let i = 0; i < 18; i++) {                  // tufts and little flowers
         const tx = rnd() * W, ty = y + 3 + rnd() * (BOT - y - 5);
         R(tx, ty, 1, 2, SCENE.meadowHi); R(tx + 2, ty - 1, 1, 3, SCENE.meadowHi);
@@ -1831,47 +1940,64 @@ const Env = {
       const bands = 6, h = (y - TOP) / bands;
       for (let i = 0; i < bands; i++) R(0, TOP + i * h, W, h + 1, mix(SCENE.night0, SCENE.night1, i / (bands - 1)));
       // a crescent moon
-      x.fillStyle = PAL.ink; x.beginPath(); x.arc(32, TOP + 56, 11, 0, 6.2832); x.fill();
-      x.fillStyle = mix(SCENE.night0, SCENE.night1, Math.floor(52 / h) / (bands - 1));   // the sky band it sits in
-      x.beginPath(); x.arc(37, TOP + 52, 10, 0, 6.2832); x.fill();
+      const mn = Assets.get('moon');   // art/moon.png
+      if (mn) x.drawImage(mn.img, 32 - 10, TOP + 56 - 10);
+      else {
+        x.fillStyle = PAL.ink; x.beginPath(); x.arc(32, TOP + 56, 11, 0, 6.2832); x.fill();
+        x.fillStyle = mix(SCENE.night0, SCENE.night1, Math.floor(52 / h) / (bands - 1));   // the sky band it sits in
+        x.beginPath(); x.arc(37, TOP + 52, 10, 0, 6.2832); x.fill();
+      }
       // a house over the fence, one window still lit
       const hx = W - 62, hy = y - 46;
+      if (!prop('nighthouse', W - 38, y + 6)) {
       R(hx, hy, 44, 46, SCENE.house);
       x.fillStyle = SCENE.house; x.beginPath(); x.moveTo(hx - 5, hy); x.lineTo(hx + 22, hy - 20); x.lineTo(hx + 49, hy); x.closePath(); x.fill();
       R(hx + 8, hy + 10, 9, 9, PAL.accent); R(hx + 12, hy + 10, 1, 9, SCENE.house); R(hx + 8, hy + 14, 9, 1, SCENE.house);
       R(hx + 27, hy + 10, 9, 9, SCENE.night1);
+      }
       // a picket fence across the garden
-      for (let fx = 0; fx < W; fx += 8) { R(fx + 1, y - 18, 5, 18, SCENE.night1); R(fx + 2, y - 20, 3, 2, SCENE.night1); }
-      R(0, y - 14, W, 2, SCENE.night1); R(0, y - 6, W, 2, SCENE.night1);
+      const nf = Assets.get('nightfence');
+      if (nf) for (let fx = 0; fx < W; fx += nf.fw) x.drawImage(nf.img, fx, y - nf.fh + 1);
+      else {
+        for (let fx = 0; fx < W; fx += 8) { R(fx + 1, y - 18, 5, 18, SCENE.night1); R(fx + 2, y - 20, 3, 2, SCENE.night1); }
+        R(0, y - 14, W, 2, SCENE.night1); R(0, y - 6, W, 2, SCENE.night1);
+      }
       R(0, y, W, BOT - y, SCENE.nightGrass);
       R(0, y, W, 2, SCENE.nightGrassHi);
+      if (tiles('scenetiles', 0, y + 2, W, BOT, () => 5 + Math.floor(rnd() * 3))) {} else
       for (let i = 0; i < 12; i++) { const tx = rnd() * W, ty = y + 4 + rnd() * (BOT - y - 6); R(tx, ty, 1, 2, SCENE.nightGrassHi); R(tx + 2, ty - 1, 1, 3, SCENE.nightGrassHi); }
     } else if (kind === 'beach') {
       R(0, TOP, W, y - TOP, SCENE.sea0);
       for (let i = 0; i < 22; i++) R(rnd() * W, TOP + rnd() * (y - TOP - 3), 6 + rnd() * 10, 1, SCENE.sea1);   // swell
       R(0, y, W, 46, SCENE.wetSand);
       R(0, y + 46, W, BOT - y - 46, SCENE.sand);
+      if (tiles('scenetiles', 0, y + 46, W, BOT, () => 0)) {} else
       for (let i = 0; i < 60; i++) R(rnd() * W, y + 48 + rnd() * (BOT - y - 50), 1, 1, SCENE.sandLo);     // grain
       for (let i = 0; i < 5; i++) { const sx = 50 + rnd() * 80, sy = y + 60 + rnd() * 90; R(sx, sy, 3, 2, PAL.ink); R(sx + 1, sy - 1, 1, 1, PAL.bad); }   // shells
       // a striped towel, and a beach umbrella seen from above
-      for (let i = 0; i < 8; i++) R(10, BOT - 72 + i * 6, 28, 6, i % 2 ? PAL.ink : PAL.bad);
       const ux = W - 30, uy = BOT - 62;
+      if (prop('towel', 24, BOT - 28) && prop('umbrella', ux, uy + 18)) {} else {
+      for (let i = 0; i < 8; i++) R(10, BOT - 72 + i * 6, 28, 6, i % 2 ? PAL.ink : PAL.bad);
       for (let k = 0; k < 8; k++) {
         x.fillStyle = k % 2 ? PAL.ink : PAL.bad;
         x.beginPath(); x.moveTo(ux, uy); x.arc(ux, uy, 20, k * Math.PI / 4, (k + 1) * Math.PI / 4); x.closePath(); x.fill();
       }
       R(ux - 2, uy - 2, 4, 4, PAL.accent);
+      }
     } else if (kind === 'bath') {
+      if (!tiles('bathtiles', 0, TOP, W, BOT, () => rnd() < 0.7 ? 0 : 1 + Math.floor(rnd() * 2)))
       for (let ty = TOP; ty < BOT; ty += 16) for (let tx = 0; tx < W; tx += 16) {
         const th = Math.min(16, BOT - ty);   // the last row is cut at the field's edge, not left hanging into the shelf
         R(tx, ty, 16, th, SCENE.grout); R(tx + 1, ty + 1, 14, Math.max(0, th - 2), ((tx + ty) / 16) % 2 ? SCENE.tile : SCENE.tileHi);
       }
     } else if (kind === 'snow') {
       R(0, TOP, W, BOT - TOP, SCENE.snow);
+      if (tiles('scenetiles', 0, TOP, W, BOT, () => 1 + Math.floor(rnd() * 4))) {} else
       for (let i = 0; i < 26; i++) { const sx = rnd() * W, sy = TOP + rnd() * (BOT - TOP); R(sx, sy, 10 + rnd() * 16, 1, SCENE.snowHi); }
       // pines down both edges of the run
       for (let ty = TOP + 10; ty < BOT; ty += 34) for (const tx of [6, W - 6]) {
         const ox = tx + (rnd() - 0.5) * 6;
+        if (prop('pine', ox, ty + 20, 0)) continue;
         for (let k = 0; k < 4; k++) R(ox - 1 - k * 1.5, ty + k * 3, 3 + k * 3, 3, SCENE.pine);
       }
     }
@@ -2009,7 +2135,8 @@ class CatchCoin extends Microgame {
       if (c.bounces) { ctx.globalAlpha = 0.4; g.rect(c.x - 4, this.floor + 4, 8, 2, PAL.bg); ctx.globalAlpha = 1; }   // its shadow, once it's bouncing
       ctx.save(); ctx.translate(c.x, c.y); ctx.rotate(c.rot); g.bone(0, 0, 13); ctx.restore();
     }
-    g.sprite('catcher', this.bx, this.dogY, { w: this.dogW, h: this.dogH, color: PAL.ink,
+    if (Assets.get('hero')) g.sprite('hero', this.bx, this.floor + 11, { w: 24, h: 30, frame: Math.floor(this.t * 14) % 9 });   // like SQUEEZE / DODGE
+    else g.sprite('catcher', this.bx, this.dogY, { w: this.dogW, h: this.dogH, color: PAL.ink,
              frame: Math.floor(this.t * 8) % 5 });
     for (let i = 0; i < this.need; i++) g.rect(CX - this.need * 4 + i * 8, TOP + 5, 5, 5, i < this.got ? PAL.accent : PAL.mid);
   }
@@ -2018,6 +2145,9 @@ class CatchCoin extends Microgame {
 // 3. RUB — scrub the mud off a muddy shiba
 class RubClean extends Microgame {
   static SY = 170;   // the shiba's centre: drawn 2x (70x74), sat on the bath mat
+  // art/rubdog.png, the same shiba in 48x44 frames (drawn 2x): 0-4 squirming
+  // with its eyes shut while you scrub, then its wet-dog shake once it's clean
+  static WIGGLE = 5; static SHAKE = 8; static SHAKE_FPS = 14;
   static meta = { id: 'rub', env: 'bath', prompt: 'RUB!', hint: 'rub', duration: 3.6,
     how: 'RUB OFF\nALL THE MUD' };
   init() {
@@ -2030,6 +2160,8 @@ class RubClean extends Microgame {
     }
     this.rate = this.byD(0.05, 0.04, 0.034);
     this.bubbles = []; this.squeak = 0;
+    this.scrubT = -1;      // when you last scrubbed mud
+    this.cleanT = -1;      // when the last of it came off: the shake plays, then the win
   }
   update(dt, input) {
     for (const b of this.bubbles) { b.t += dt; b.y -= 14 * dt; }
@@ -2042,8 +2174,14 @@ class RubClean extends Microgame {
       }
       if (scrubbed && Math.random() < 0.5) this.bubbles.push({ x: input.x + (Math.random() - 0.5) * 14, y: input.y, r: 2 + Math.random() * 3, t: 0 });
       if (scrubbed && this.squeak <= 0) { Sfx.squeak(); this.squeak = 0.12; }
+      if (scrubbed) this.scrubT = this.t;
     }
-    if (this.mud.every(m => m.dirt <= 0) && !this.finished) { Sfx.bark(); this.succeed(); }
+    // all clean: it shakes itself dry, and the round is won when the shake ends
+    // (the clock running out mid-shake doesn't count against you)
+    if (this.cleanT < 0 && this.mud.every(m => m.dirt <= 0)) { this.cleanT = this.t; Sfx.bark(); }
+    this.playingOut = this.cleanT >= 0 && !this.finished;
+    const shook = !Assets.get('rubdog') || this.t - this.cleanT >= RubClean.SHAKE / RubClean.SHAKE_FPS;
+    if (this.cleanT >= 0 && shook && !this.finished) this.succeed();
   }
   draw(g) {
     g.clear();
@@ -2051,7 +2189,14 @@ class RubClean extends Microgame {
     // a floor and a bath mat to sit on, so the flat-cut paws rest on something
     g.rect(0, 204, W, BOT - 204, SCENE.grout); g.rect(0, 204, W, 2, SCENE.tileHi);
     g.sprite('bathmat', CX, 213);   // art/bathmat.png
-    g.sprite('shiba', CX, RubClean.SY, { w: 70, h: 74, frame: left === 0 ? 1 : 0 });
+    // the shiba: shaking itself dry, squirming while you scrub, else sat waiting
+    // (rubdog frames hold the 35x37 shiba at 6, 7: drawn 2x, centred 1 right, 7 up)
+    const scrubbing = this.t - this.scrubT < 0.2;
+    if (Assets.get('rubdog') && (this.cleanT >= 0 || scrubbing)) {
+      const f = this.cleanT >= 0 ? RubClean.WIGGLE + Math.min(RubClean.SHAKE - 1, Math.floor((this.t - this.cleanT) * RubClean.SHAKE_FPS))
+                                 : Math.floor(this.t * 10) % RubClean.WIGGLE;
+      g.sprite('rubdog', CX + 1, RubClean.SY - 7, { w: 96, h: 88, frame: f });
+    } else g.sprite('shiba', CX, RubClean.SY, { w: 70, h: 74, frame: left === 0 ? 1 : 0 });
     for (const m of this.mud) {
       if (m.dirt <= 0) continue;
       ctx.globalAlpha = Math.min(1, m.dirt + 0.15);
@@ -2156,19 +2301,25 @@ class SwipeArrow extends Microgame {
     const dirs = ['up', 'down', 'left', 'right'];
     this.seq = Array.from({ length: this.byD(1, 2, 3) }, () => dirs[Math.floor(Math.random() * 4)]);
     this.i = 0;
+    this.dirT = 0;   // when the current arrow came up
   }
   update(dt, input) {
     if (!input.swipe) return;
     if (input.swipe.dir === this.seq[this.i]) {
-      this.i++; Sfx.tick(); buzz(10); FX.burst(CX, CY, PAL.ink, 5, 40);
+      this.i++; if (this.i < this.seq.length) this.dirT = this.t; Sfx.tick(); buzz(10); FX.burst(CX, CY, PAL.ink, 5, 40);
       if (this.i >= this.seq.length) this.succeed();
     } else { buzz(40); FX.shake(3); this.lose(); }
   }
   draw(g) {
     g.clear();
-    const d = this.seq[this.i];
+    // once the last arrow is swiped, the shiba keeps the pose of that swipe, arrow gone
+    const done = this.i >= this.seq.length, d = this.seq[Math.min(this.i, this.seq.length - 1)];
     const ang = { up: -Math.PI / 2, down: Math.PI / 2, left: Math.PI, right: 0 }[d];
-    const ux = Math.cos(ang), uy = Math.sin(ang), sy = 167;   // paws in the grass (horizon at 190), not up in the sky
+    const ux = Math.cos(ang), uy = Math.sin(ang);
+    // paws in the grass (horizon at 190); running at you, it walks down the grass
+    // toward you (paws from y 202 to 224), then keeps running in place there
+    const sy = d === 'down' ? Math.round(176 + Math.min(22, (this.t - this.dirT) * 16)) : 167;
+    const reach = d === 'down' ? 50 : 62;  // the arrow's distance from the dog (down: just under its paws)
     // the shiba faces the way it wants you to swipe, one dedicated high-res
     // sprite per direction (running left/right, jumping up, running down).
     if (d === 'left' || d === 'right') {
@@ -2180,12 +2331,14 @@ class SwipeArrow extends Microgame {
       g.sprite('swipedown', CX, sy, { w: 112, h: 112, frame: Math.floor(this.t * 14) % 9 });
     }
     // bold arrow pushed out past the dog so it stays visible
-    ctx.save(); ctx.translate(CX + ux * 62, sy + uy * 62); ctx.rotate(ang);
-    g.line(-16, 0, 14, 0, PAL.ink, 7);
-    g.line(14, 0, 2, -12, PAL.ink, 7);
-    g.line(14, 0, 2, 12, PAL.ink, 7);
-    ctx.restore();
-    for (let k = 0; k < this.seq.length; k++) g.circle(CX - (this.seq.length - 1) * 6 + k * 12, BOT - 20, 3, k < this.i ? PAL.accent : PAL.mid);
+    if (!done) {
+      ctx.save(); ctx.translate(CX + ux * reach, sy + uy * reach); ctx.rotate(ang);
+      g.line(-16, 0, 14, 0, PAL.ink, 7);
+      g.line(14, 0, 2, -12, PAL.ink, 7);
+      g.line(14, 0, 2, 12, PAL.ink, 7);
+      ctx.restore();
+    }
+    for (let k = 0; k < this.seq.length; k++) g.circle(CX - (this.seq.length - 1) * 6 + k * 12, BOT - 6, 3, k < this.i ? PAL.accent : PAL.mid);
   }
 }
 
@@ -2222,6 +2375,16 @@ class PatShiba extends Microgame {
     const p = this.count / this.need;
     return p < 0.2 ? 14 : p < 0.4 ? 12 : p < 0.6 ? 10 : p < 0.85 ? 0 : 1 + Math.floor(this.t * 14) % 7;
   }
+  // the same moods on the full-body shiba (art/fullshiba.png); a pat plays its
+  // head-pat frames over the squish
+  fullFrame() {
+    const F = g.FULL, cheer = Math.floor(this.t * 8) % 2 ? F.cheer : F.cheer2;
+    if (this.fake) return F.grumpy;
+    if (this.won) return cheer;
+    if (this.squish > 0) return F.pat + Math.min(3 - 1, Math.floor((0.15 - this.squish) / 0.15 * 3));
+    const p = this.count / this.need;
+    return p < 0.2 ? F.teary : p < 0.4 ? F.sad2 : p < 0.6 ? F.sad : p < 0.85 ? F.happy : cheer;
+  }
   heart(x, y, c) {
     g.rect(x - 4, y - 3, 3, 2, c); g.rect(x + 1, y - 3, 3, 2, c);
     g.rect(x - 5, y - 1, 10, 2, c); g.rect(x - 4, y + 1, 8, 2, c); g.rect(x - 2, y + 3, 4, 2, c);
@@ -2229,7 +2392,8 @@ class PatShiba extends Microgame {
   draw(g) {
     g.clear();
     const sq = this.squish > 0 ? 1 : 0;
-    g.sprite('shiba', CX, CY + 4 + sq * 5, { w: 105 + sq * 8, h: 111 - sq * 10, frame: this.frame() });
+    if (Assets.get('fullshiba')) g.fullShiba(CX, 212, this.fullFrame());   // feet on the floor (room at 206)
+    else g.sprite('shiba', CX, CY + 4 + sq * 5, { w: 105 + sq * 8, h: 111 - sq * 10, frame: this.frame() });
     for (const p of this.pops) {
       ctx.globalAlpha = 1 - p.t / 0.7;
       this.heart(p.x, p.y, PAL.bad);
@@ -2459,10 +2623,15 @@ class DontTap extends Microgame {
     // a cushion, a sleeping shiba, and the Zzz drifting up off it
     g.sprite('cushion', CX, CY + 49);   // art/cushion.png
     // the calm eyes-shut face, head tipped onto the cushion, breathing slowly
-    const breath = Math.sin(this.t * 3) * 2;
-    ctx.save(); ctx.translate(CX - 4, CY + 10 - breath * 0.5); ctx.rotate(this.woke ? 0 : -0.35);
-    g.sprite(this.woke ? 'face' : 'sleepface', 0, 0, { w: 78, h: 80 + breath, frame: 0 });   // both eyes shut
-    ctx.restore();
+    if (Assets.get('sleepdog')) {
+      if (this.woke) g.fullShiba(CX, CY + 46, g.FULL.grumpy);
+      else g.sleepDog(CX, CY + 46, Math.floor(this.t * 4) % g.SLEEP_BREATHE);
+    } else {
+      const breath = Math.sin(this.t * 3) * 2;
+      ctx.save(); ctx.translate(CX - 4, CY + 10 - breath * 0.5); ctx.rotate(this.woke ? 0 : -0.35);
+      g.sprite(this.woke ? 'face' : 'sleepface', 0, 0, { w: 78, h: 80 + breath, frame: 0 });   // both eyes shut
+      ctx.restore();
+    }
     for (let i = 0; i < 3; i++) {
       const k = (this.t * 0.6 + i / 3) % 1;
       ctx.globalAlpha = 1 - k;
@@ -2682,12 +2851,17 @@ class FeedDog extends Microgame {
       if (!this.held && Math.hypot(input.x - this.tx, input.y - this.ty) < 22) this.held = true;
       if (this.held) { this.tx = input.x; this.ty = input.y; }
     } else { this.held = false; }
-    if (Math.hypot(this.tx - this.dx, this.ty - (this.dy + 6)) < 16 && !this.finished) { Sfx.chomp(); this.succeed(); }
+    if (this.ateAt == null && Math.hypot(this.tx - this.dx, this.ty - (this.dy + 6)) < 16) { this.ateAt = this.t; Sfx.chomp(); }
+    // it chews for a moment (art/feed.png), then the round is won
+    this.playingOut = this.ateAt != null && !this.finished;
+    if (this.ateAt != null && (this.t - this.ateAt >= 0.4 || !Assets.get('feed')) && !this.finished) this.succeed();
   }
   draw(g) {
     g.clear();
-    g.sprite('face', this.dx, this.dy, { w: 36, h: 37, frame: Math.floor(this.t * 6) % 9 });
-    g.bone(this.tx, this.ty, 22);                             // the treat
+    // (art/feed.png, 1x: mouth open on dx, dy + 6, then 4 frames chewing)
+    if (Assets.get('feed')) g.sprite('feed', Math.round(this.dx) + 8, this.dy + 4, { frame: this.ateAt == null ? 0 : 1 + Math.min(3, Math.floor((this.t - this.ateAt) * 10)) });
+    else g.sprite('face', this.dx, this.dy, { w: 36, h: 37, frame: Math.floor(this.t * 6) % 9 });
+    if (this.ateAt == null) g.bone(this.tx, this.ty, 22);     // the treat
     if (!this.held) g.text('GRAB', this.tx, this.ty + 18, 7, PAL.mid);
   }
 }
@@ -2799,7 +2973,7 @@ class PumpBalloon extends Microgame {
     // the shiba pumping — frame follows fill (balloon inflates 0 -> 8)
     const fr = Math.max(0, Math.min(8, Math.round(this.f * 8)));
     const wob = (this.bounce || 0) * 2;
-    g.sprite('pumpdog', CX - 6, CY + 10 - wob, { w: 78, h: 78, frame: fr });
+    g.sprite('pumpdog', CX - 6, Math.round(198 - 33 - wob), { w: 70, h: 70, frame: fr });
     g.text(this.still > 0.12 ? 'HOLD!' : 'PUMP!', CX - 6, TOP + 18, 9, this.still > 0.12 ? PAL.accent : PAL.mid);
   }
 }
@@ -3732,7 +3906,7 @@ class DryShiba extends Microgame {
     const prog = Math.min(1, this.bursts / this.need);
     const fr = Math.max(0, Math.min(8, Math.floor(prog * 8.99)));
     const j = (Math.random() - 0.5) * (this.wob * 6 + this.pop * 30);
-    g.sprite('dryshake', CX + j, CY - 4, { w: 56, h: 45, frame: fr });
+    g.sprite('dryshake', Math.round(CX + j), CY - 4, { w: 76, h: 62, frame: fr });   // 2x, crisp
     BathTime.tub(162);   // shaking off in the bath, not floating on the tiles
     for (const d of this.drops) { const k = 1 - d.t / 0.6; ctx.globalAlpha = k; g.circle(d.x, d.y, 2, PAL.ink); ctx.globalAlpha = 1; }
     g.text(this.ready ? (Input.camReady ? 'SHAKE!' : 'TAP!') : 'NOW STOP…', CX, TOP + 26, 10, this.ready ? PAL.accent : PAL.mid);
@@ -3780,11 +3954,14 @@ class LeanDodge extends Microgame {
     // the shiba leans toward the side you must move: tilt + shift grow with progress
     const tilt = s * (0.35 + prog * 0.35);                  // radians
     const shift = s * (18 + prog * 22);
-    ctx.save();
-    ctx.translate(CX + shift, CY - 2);
-    ctx.rotate(tilt);
-    g.sprite('face', 0, 0, { w: 46, h: 46, frame: Math.floor(this.t * 8) % 3 });
-    ctx.restore();
+    if (Assets.get('lean')) g.sprite('lean', Math.round(CX + shift * 0.6), CY - 2, { w: 96, h: 128, flip: s > 0 });
+    else {
+      ctx.save();
+      ctx.translate(CX + shift, CY - 2);
+      ctx.rotate(tilt);
+      g.sprite('face', 0, 0, { w: 46, h: 46, frame: Math.floor(this.t * 8) % 3 });
+      ctx.restore();
+    }
     // motion streaks on the side you're leaning, brighter as you hold
     if (prog > 0.05) {
       ctx.globalAlpha = 0.4 + prog * 0.4;
@@ -3793,7 +3970,7 @@ class LeanDodge extends Microgame {
     }
     // arrow + label as the instruction
     const ax = this.dir === 'L' ? CX - 46 : CX + 46;
-    ctx.save(); ctx.translate(ax, CY - 2);
+    ctx.save(); ctx.translate(ax, Assets.get('lean') ? CY - 78 : CY - 2);   // over the whole shiba's head
     g.line(-10 * s, 0, 10 * s, 0, PAL.ink, 5);
     g.line(10 * s, 0, 3 * s, -8, PAL.ink, 5);
     g.line(10 * s, 0, 3 * s, 8, PAL.ink, 5);
@@ -3915,11 +4092,17 @@ class FreezeStatue extends Microgame {
     const j = (Math.random() - 0.5) * this.wob * 6;
     const breath = Math.sin(this.t * 2.6) * 2;
     const stirring = this.wob > 0.15 || this.hp < 0.35;
-    ctx.save();
-    ctx.translate(CX - 4 + this.ox * 0.25 + j, 192 - breath * 0.5 + this.oy * 0.15);
-    ctx.rotate(this.woke ? 0 : -0.35 + Math.max(-0.15, Math.min(0.15, this.ox * 0.004)));
-    g.sprite(this.woke ? 'face' : stirring ? 'face' : 'sleepface', 0, 0, { w: 70, h: 72 + breath, frame: this.woke ? 0 : stirring ? 5 : 0 });
-    ctx.restore();
+    if (Assets.get('sleepdog')) {
+      const sx = Math.round(CX + this.ox * 0.25 + j), sy = Math.round(224 + this.oy * 0.15);
+      if (this.woke) g.fullShiba(sx, sy, g.FULL.grumpy);
+      else g.sleepDog(sx, sy, stirring ? g.SLEEP_STIR : Math.floor(this.t * 4) % g.SLEEP_BREATHE);
+    } else {
+      ctx.save();
+      ctx.translate(CX - 4 + this.ox * 0.25 + j, 192 - breath * 0.5 + this.oy * 0.15);
+      ctx.rotate(this.woke ? 0 : -0.35 + Math.max(-0.15, Math.min(0.15, this.ox * 0.004)));
+      g.sprite(this.woke ? 'face' : stirring ? 'face' : 'sleepface', 0, 0, { w: 70, h: 72 + breath, frame: this.woke ? 0 : stirring ? 5 : 0 });
+      ctx.restore();
+    }
     if (this.woke) g.text('!', CX + 30, 150, 18, PAL.bad);
     else if (stirring) { g.text('?', CX + 28, 156 + Math.sin(this.t * 12) * 2, 14, PAL.bad); }
     else for (let i = 0; i < 3; i++) {            // Zzz drifting up while it sleeps
@@ -4181,13 +4364,19 @@ class HeadBang extends Microgame {
       for (let v = 0; v < 8; v++) g.rect(sx + 2 + v * 3, BOT - 100, 2, 6, v < on ? (v >= 6 ? PAL.bad : PAL.accent) : PAL.mid);
     }
     // the rocker: the shiba headbanging as hard as you are
-    const nod = Math.abs(Math.sin(this.ph)), hy = CY - 18 + nod * 12 * m, rot = Math.sin(this.ph) * 0.25 * m;
-    if (!g.stretchV('micstand', CX - 14, CY + 4, BOT - 38 - CY - 4, 40, 50, 60)) {   // art/micstand.png, the mic under the chin
+    // (art/rocker.png, 2x: in a studded jacket and shades; frames 1-6 are one
+    // headbang, played once per nod of the rocking; still when you're still)
+    if (Assets.get('rocker')) g.sprite('rocker', CX, 236 - 64, { w: 96, h: 128, frame: m > 0.08 ? 1 + Math.floor((this.ph / Math.PI % 1) * 6) : 0 });
+    else {
+      const nod = Math.abs(Math.sin(this.ph)), hy = CY - 18 + nod * 12 * m, rot = Math.sin(this.ph) * 0.25 * m;
+      ctx.save(); ctx.translate(CX, hy); ctx.rotate(rot);
+      g.sprite('face', 0, 0, { w: 48, h: 48, frame: m > 0.4 ? 1 : 0 });
+      ctx.restore();
+    }
+    const micY = Assets.get('rocker') ? CY + 16 : CY + 4;   // the mic just under the rocker's chin
+    if (!g.stretchV('micstand', CX - 14, micY, BOT - 38 - micY, 40, 50, 60)) {   // art/micstand.png, in front of the rocker
       g.line(CX, CY + 18, CX, BOT - 40, PAL.mid, 2); g.cRect(CX, CY + 12, 8, 10, PAL.mid);
     }
-    ctx.save(); ctx.translate(CX, hy); ctx.rotate(rot);
-    g.sprite('face', 0, 0, { w: 48, h: 48, frame: m > 0.4 ? 1 : 0 });
-    ctx.restore();
     // the crowd's paws going up when you rock
     for (let k = 0; k < 7; k++) {
       const px = 18 + k * 24, up = Math.max(0, Math.sin(this.ph + k * 1.3)) * 10 * m;
@@ -4504,8 +4693,8 @@ class SteerRun extends Microgame {
     }
     for (const p of this.spray) { ctx.globalAlpha = 1 - p.t / 0.3; g.rect(p.x, p.y, 2, 2, PAL.ink); ctx.globalAlpha = 1; }
     // the sled under the shiba, leaning into the turn
-    g.sprite('sled', this.px, this.runY + 8);   // art/sled.png
-    g.sprite('hero', this.px, this.runY - 2, { w: 22, h: 27, frame: 0 });
+    if (Assets.get('sledder')) g.sprite('sledder', Math.round(this.px), this.runY - 4);   // art/sledder.png: the shiba from behind, sat in its sled
+    else { g.sprite('sled', this.px, this.runY + 8); g.sprite('hero', this.px, this.runY - 2, { w: 22, h: 27, frame: 0 }); }
     for (let i = 0; i < this.need; i++) g.rect(W - 8 - i * 8, TOP + 4, 5, 5, i < this.passed ? PAL.accent : PAL.mid);
     g.outline(Input.tiltReady ? 'TILT TO STEER' : 'DRAG TO STEER', CX, TOP + 22, 8, TEXT_MID);   // rimmed: the gates scroll right through this line
   }
@@ -4748,11 +4937,20 @@ class SortTreats extends Microgame {
   // bones go to the dog; chocolate is bad for dogs, so it goes in the bin
   newTreat() { this.bone = Math.random() < 0.55; this.pop = 0; this.dx = 0; this.held = false; }
   want() { return this.bone ? this.dogSide : (this.dogSide === 'left' ? 'right' : 'left'); }
+  // where a treat lands on a side: the dog's bowl, or the bin's open top
+  target(side) { return { x: side === 'left' ? 30 : W - 30, y: side === this.dogSide ? 236 : 198 }; }
+  // the treat as you drag it: from the middle, along a curve down to the bowl or
+  // the bin on the side you're dragging toward, reaching it at the side
+  treatPos() {
+    const k = Math.min(1, Math.abs(this.dx) / (CX - 30)), t = this.target(this.dx < 0 ? 'left' : 'right');
+    return { x: CX + (t.x - CX) * k, y: CY - 40 + (t.y - (CY - 40)) * k * k };
+  }
   // The treat follows your finger and counts on the side you let it go, at any
   // speed (it used to need a swipe under half a second, so a careful drag to
   // the bin did nothing). A quick flick still works the same way.
   update(dt, input) {
     if (this.pop > 0) this.pop -= dt;
+    if (this.fly && (this.fly.t += dt) > 0.25) this.fly = null;
     if (input.justDown) { this.held = true; this.x0 = input.x - this.dx; }
     if (this.held && input.down) this.dx = Math.max(-CX + 20, Math.min(CX - 20, input.x - this.x0));
     if (this.held && !input.down) {
@@ -4763,7 +4961,10 @@ class SortTreats extends Microgame {
       const side = this.dx < 0 ? 'left' : 'right';
       if (side === this.want()) {
         this.done++; buzz(12); FX.hit(side === 'left' ? 28 : W - 28, CY + 20, PAL.accent); this.pop = 0.15;
+        if (this.bone) this.fedAt = this.t;
         if (this.bone) Sfx.chomp(); else Sfx.thud();
+        const p = this.treatPos(), t = this.target(side);
+        this.fly = { x: p.x, y: p.y, tx: t.x, ty: t.y, bone: this.bone, t: 0 };
         if (this.done >= this.need) { this.succeed(); return; }
         this.newTreat();
       } else { buzz(90); FX.shake(4); if (this.bone) Sfx.growl(); else Sfx.fail(); this.lose(); return; }
@@ -4773,16 +4974,24 @@ class SortTreats extends Microgame {
     g.clear();
     const dx = this.dogSide === 'left' ? 30 : W - 30, bx = W - dx;
     // the shiba behind its bowl
-    g.sprite('face', dx, CY + 4, { w: 44, h: 45, frame: Math.floor(this.t * 6) % 3 });
-    g.sprite('bowl', dx, CY + 36);   // art/bowl.png
-    g.text('DOG', dx, CY - 26, 8, PAL.accent);
+    if (Assets.get('wag')) {   // the whole shiba, 1x (art/wag.png; cheering just after a bone)
+      if (this.t - (this.fedAt ?? -9) < 0.5) g.sprite('fullshiba', dx, 250 - 32, { frame: Math.floor(this.t * 8) % 2 ? g.FULL.cheer : g.FULL.cheer2 });
+      else g.sprite('wag', dx, 250 - 32, { frame: Math.floor(this.t * 6) % 4, flip: dx > CX });   // feet on the floor at 250
+    } else g.sprite('face', dx, CY + 4, { w: 44, h: 45, frame: Math.floor(this.t * 6) % 3 });
+    g.sprite('bowl', dx, 252 - 12);   // art/bowl.png, on the floor in front of it
+    g.text('DOG', dx, 184, 8, PAL.accent);
     // the bin
-    g.sprite('bin', bx, CY + 17);   // art/bin.png
-    g.text('BIN', bx, CY - 26, 8, PAL.ink);
+    g.sprite('bin', bx, 250 - 28);   // art/bin.png, on the floor
+    g.text('BIN', bx, 184, 8, PAL.ink);
     // the treat in the middle
     const s = 1 + this.pop * 1.5;
-    const tx = CX + this.dx, ty = CY - 40 + Math.abs(this.dx) * 0.35;   // dips toward the dog / bin as you drag
-    if (this.bone) g.bone(tx, ty, 30 * s); else g.choc(tx, ty, 26 * s);
+    // a treat just sorted, dropping into the bowl or the bin
+    if (this.fly) {
+      const f = this.fly, k = Math.min(1, f.t / 0.25), x = f.x + (f.tx - f.x) * k, y = f.y + (f.ty - f.y) * k;
+      ctx.globalAlpha = 1 - k * 0.6; if (f.bone) g.bone(x, y, 22); else g.choc(x, y, 23); ctx.globalAlpha = 1;
+    }
+    const { x: tx, y: ty } = this.treatPos();   // follows your drag down to the bowl / bin
+    if (!this.fly || this.held || this.dx) { if (this.bone) g.bone(tx, ty, 30 * s); else g.choc(tx, ty, 26 * s); }
     if (!this.held) g.text(this.bone ? 'BONE' : 'CHOCOLATE', CX, CY - 18, 7, this.bone ? PAL.accent : PAL.bad);
     g.text('DRAG IT!', CX, TOP + 22, 8, PAL.mid);
     for (let i = 0; i < this.need; i++) g.rect(CX - this.need * 4 + i * 8, BOT - 14, 5, 5, i < this.done ? PAL.accent : PAL.mid);
@@ -4854,7 +5063,8 @@ class SquidDoll extends Microgame {
     g.circle(CX, TOP + 48, 6, lit);
     // the doll: back (turned away) -> profile (spinning) -> front (watching)
     const jx = (this.phase === 'red' && this.flash > 0) ? (Math.random() - 0.5) * 6 : 0;
-    g.sprite('facedir', CX + jx, CY + 6, { w: 100, h: 100, frame: this.face });
+    if (Assets.get('doll')) g.sprite('doll', Math.round(CX + jx), 214 - 64, { w: 96, h: 128, frame: this.face === 0 ? 0 : this.face === 2 ? 1 : 2 });   // feet on the grass (field@212)
+    else g.sprite('facedir', CX + jx, CY + 6, { w: 100, h: 100, frame: this.face });
     // instruction
     const label = this.phase === 'green' ? 'RUN! MOVE!' : this.phase === 'red' ? 'FREEZE!' : '…TURNING…';
     g.text(label, CX, BOT - 18, 11, this.phase === 'red' ? PAL.bad : this.phase === 'green' ? PAL.accent : PAL.mid);
@@ -4941,11 +5151,17 @@ class WakeUp extends Microgame {
     }
     const breath = Math.sin(this.t * 2.2) * 3, j = (Math.random() - 0.5) * k * 8;
     const jump = awake ? -Math.sin(Math.min(1, this.woke / 0.3) * Math.PI) * 26 : 0;
-    ctx.save();
-    ctx.translate(CX + j, 186 - breath * 0.5 + jump);
-    ctx.rotate(awake ? 0 : -0.3 + k * 0.2);
-    g.sprite(awake || stir ? 'face' : 'sleepface', 0, 0, { w: 128 + (awake ? 10 : 0), h: 132 + breath, frame: awake ? 0 : stir ? 5 : 0 });
-    ctx.restore();
+    if (Assets.get('sleepdog')) {
+      const sx = Math.round(CX + j), sy = Math.round(242 + jump);
+      if (awake) g.fullShiba(sx, sy, Math.floor(this.t * 8) % 2 ? g.FULL.cheer : g.FULL.cheer2);
+      else g.sleepDog(sx, sy, stir ? g.SLEEP_STIR : Math.floor(this.t * 4) % g.SLEEP_BREATHE);
+    } else {
+      ctx.save();
+      ctx.translate(CX + j, 186 - breath * 0.5 + jump);
+      ctx.rotate(awake ? 0 : -0.3 + k * 0.2);
+      g.sprite(awake || stir ? 'face' : 'sleepface', 0, 0, { w: 128 + (awake ? 10 : 0), h: 132 + breath, frame: awake ? 0 : stir ? 5 : 0 });
+      ctx.restore();
+    }
     if (awake) g.text('!!', CX + 58, 110, 22, PAL.bad);
     else if (k > 0.66) g.text('!?', CX + 56, 118 + Math.sin(this.t * 14) * 2, 16, PAL.bad);
     else if (stir) g.text('?', CX + 54, 122, 14, PAL.bad);
@@ -5000,7 +5216,9 @@ class BathTime extends Microgame {
     g.clear();
     const j = (Math.random() - 0.5) * Input.shake * 8, clean = this.done > 0;
     // the shiba sits in the tub, squinting under the suds; clean = all smiles
-    g.sprite('face', CX + j, 152, { w: 64, h: 66, frame: clean ? 0 : 1 });
+    // the shiba from RUB in the tub: sudsy and squirming, then happy once clean
+    if (Assets.get('rubdog')) g.sprite('rubdog', Math.round(CX + j), 138, { w: 96, h: 88, frame: clean ? 12 : Math.floor(this.t * 10) % RubClean.WIGGLE });
+    else g.sprite('face', CX + j, 152, { w: 64, h: 66, frame: clean ? 0 : 1 });
     BathTime.tub(178);
     // a rubber duck riding the bath
     const dx = 120 + Math.sin(this.t * 2) * 6;
@@ -5315,7 +5533,7 @@ class YesNo extends Microgame {
     this.sx = 0; this.sy = 0; this.px = null; this.cool = 0.35; this.said = null; this.sayT = 0;
   }
   answer(yes) {
-    this.said = yes; this.sayT = 0.5;
+    this.said = yes; this.sayT = 0.5; this.saidAt = this.t;
     if (yes !== this.q[1]) { Sfx.growl(); buzz(90); FX.shake(4); this.lose(); return; }
     this.done++; Sfx.bark(); buzz(20); FX.hit(CX, CY - 4, PAL.accent);
     if (this.done >= this.need && !this.finished) this.succeed();
@@ -5360,11 +5578,20 @@ class YesNo extends Microgame {
     g.text(this.q[0], CX + 14, by + 29, this.q[0].length > 9 ? 9 : 11, PAL.bg);
     // the shiba, head tilted, waiting; it beams or sulks at your answer
     const happy = this.said !== null && this.said === this.q[1];
-    const tilt = this.said === null ? Math.sin(this.t * 3) * 0.12 : 0;
-    ctx.save(); ctx.translate(CX, CY + 22); ctx.rotate(tilt);
-    g.sprite('face', 0, 0, { w: 70, h: 72, frame: this.said === null ? 2 : happy ? 0 : 5 });
-    ctx.restore();
-    if (this.said !== null) g.text(this.said ? 'YES!' : 'NO!', CX, CY + 76, 14, happy ? PAL.accent : PAL.bad);
+    if (Assets.get('yesno')) {
+      // (art/wag.png while it waits; art/yesno.png: 0-3 a nod, 4-5 a head shake; 2x, feet on the floor)
+      const since = this.t - (this.saidAt || 0), fy = 232 - 64;
+      if (this.said === null) g.sprite('wag', CX, fy, { w: 96, h: 128, frame: Math.floor(this.t * 6) % 4 });
+      else if (happy) g.sprite('yesno', CX, fy, { w: 96, h: 128, frame: [0, 1, 2, 3, 2, 1][Math.floor(since * 12) % 6] });
+      else if (since < 0.6) g.sprite('yesno', CX, fy, { w: 96, h: 128, frame: 4 + Math.floor(since * 10) % 2 });
+      else g.fullShiba(CX, 232, g.FULL.sad2);
+    } else {
+      const tilt = this.said === null ? Math.sin(this.t * 3) * 0.12 : 0;
+      ctx.save(); ctx.translate(CX, CY + 22); ctx.rotate(tilt);
+      g.sprite('face', 0, 0, { w: 70, h: 72, frame: this.said === null ? 2 : happy ? 0 : 5 });
+      ctx.restore();
+    }
+    if (this.said !== null) g.text(this.said ? 'YES!' : 'NO!', Assets.get('yesno') ? CX + 58 : CX, Assets.get('yesno') ? CY + 10 : CY + 76, 14, happy ? PAL.accent : PAL.bad);   // beside the whole shiba
     if (Input.camReady) {
       // which way you're moving: a nod fills YES, a head shake fills NO
       const k = Math.min(1, (this.sx + this.sy) / 0.55), yv = this.sy / (this.sx + this.sy + 1e-6);
@@ -5775,8 +6002,10 @@ const Run = {
 
   // a treat as a card: big in the shop, small in your row
   drawTreat(t, x, y, w, h, small) {
-    g.rect(x, y, w, h, small ? PAL.mid : PAL.ink);
-    g.rect(x + 2, y + 2, w - 4, h - 4, PAL.bg);
+    if (!g.nine('buttons', 0, x, y, w, h, 6)) {   // a dark wooden card (art/buttons.png)
+      g.rect(x, y, w, h, small ? PAL.mid : PAL.ink);
+      g.rect(x + 2, y + 2, w - 4, h - 4, PAL.bg);
+    }
     if (small) { this.drawArt(t, x + w / 2, y + 13, 20); g.text(t.tag, x + w / 2, y + h - 4, 8, PAL.ink); return; }
     // 8px text wrapped to the card: the name on top, the effect bottom-up above the price
     const name = g.wrap(t.name, w - 6), desc = t.lines.flatMap(l => g.wrap(l, w - 6));
@@ -5791,7 +6020,10 @@ const Run = {
     for (let i = 0; i < n; i++) {
       const x = 8 + i * 33;
       if (this.treats[i]) this.drawTreat(this.treat(this.treats[i]), x, y, 30, 34, true);
-      else { g.box(x, y, 30, 34, PAL.mid); g.text('+', x + 15, y + 21, 10, PAL.mid); }
+      else {   // an empty slot: a dimmed wooden card
+        if (Assets.get('buttons')) { ctx.globalAlpha = 0.45; g.nine('buttons', 0, x, y, 30, 34, 6); ctx.globalAlpha = 1; } else g.box(x, y, 30, 34, PAL.mid);
+        g.text('+', x + 15, y + 21, 10, PAL.mid);
+      }
     }
   },
 
@@ -5826,8 +6058,11 @@ const Run = {
     if (!this.info) return;
     const t = this.treat(this.info), P = this.PANEL;
     ctx.globalAlpha = 0.75; g.rect(0, TOP, W, BOT - TOP, PAL.bg); ctx.globalAlpha = 1;
-    g.rect(P.x, P.y, P.w, P.h, PAL.accent);
-    g.rect(P.x + 2, P.y + 2, P.w - 4, P.h - 4, PAL.bg);
+    g.rect(P.x, P.y, P.w, P.h, PAL.bg);
+    if (!g.nine('titlesign', 0, P.x - 4, P.y - 4, P.w + 8, P.h + 8, 22)) {
+      g.rect(P.x, P.y, P.w, P.h, PAL.accent);
+      g.rect(P.x + 2, P.y + 2, P.w - 4, P.h - 4, PAL.bg);
+    }
     g.text(t.name, CX, P.y + 18, 10, PAL.accent);
     this.drawArt(t, CX, P.y + 56, 52);
     t.lines.forEach((l, i) => g.text(l, CX, P.y + 96 + i * 11, 8, PAL.ink));
@@ -5898,8 +6133,8 @@ const Run = {
     if (this.msgT > 0) g.text(this.msg, CX, this.CARD(0).y + 118, 7, PAL.bad);
     else g.text('TAP A TREAT TO BUY IT', CX, this.CARD(0).y + 118, 7, PAL.mid);
     const R = this.REROLL, N = this.NEXT;
-    g.box(R.x, R.y, R.w, R.h, PAL.mid); g.text('REROLL ' + this.reroll, R.x + R.w / 2, R.y + 15, 8, PAL.ink);
-    g.rect(N.x, N.y, N.w, N.h, PAL.accent); g.text('NEXT >', N.x + N.w / 2, N.y + 15, 9, PAL.bg);
+    g.button(R, false); g.text('REROLL ' + this.reroll, R.x + R.w / 2, R.y + 15, 8, PAL.ink);
+    g.button(N, true); g.text('NEXT >', N.x + N.w / 2, N.y + 15, 9, PAL.bg);
     this.drawInfo();
   },
 
@@ -6314,6 +6549,12 @@ const Engine = {
   MENU_SCREENS: ['SETTINGS', 'ALBUM', 'PERMS', 'GAMEOVER', 'TUTORIAL', 'TUTCAT', 'TUTDONE', 'REPLAY'],
   groupLabel(gr) { return { TAP: 'TAP', DRAG: 'DRAG', CAMERA: 'CAMERA', BLOW: 'SOUND', SHAKE: 'TILT/SHAKE' }[gr] || gr; },
   menuBg() {
+    const mt = Assets.get('menutile');
+    if (mt) {   // drifting down and to the right, like the old paw pattern
+      const o = Math.floor(this.time * 6) % 32;
+      for (let yy = -32; yy < H; yy += 32) for (let xx = -32; xx < W; xx += 32) ctx.drawImage(mt.img, xx + o, yy + o);
+      return;
+    }
     g.rect(0, 0, W, H, PAL.bg);
     const t = (this.time * 6) % 24, c = '#1c1c1c';
     for (let yy = -24; yy < H + 24; yy += 24) for (let xx = -24; xx < W + 24; xx += 24) {
@@ -6321,9 +6562,11 @@ const Engine = {
       g.rect(px, py, 5, 4, c); g.rect(px - 3, py - 4, 2, 2, c); g.rect(px, py - 6, 2, 2, c); g.rect(px + 3, py - 6, 2, 2, c); g.rect(px + 6, py - 4, 2, 2, c);
     }
   },
-  menuPanel() {
-    const x = 8, y = 8, w = W - 16, h = H - 16, c = PAL.mid;
-    ctx.globalAlpha = 0.9; g.rect(x, y, w, h, PAL.bg); ctx.globalAlpha = 1;
+  menuPanel(top = 8) {
+    const x = 8, y = top, w = W - 16, h = H - 8 - top, c = PAL.mid;
+    if (Assets.get('menutile')) g.rect(x, y, w, h, MENU_PANEL);
+    else { ctx.globalAlpha = 0.9; g.rect(x, y, w, h, PAL.bg); ctx.globalAlpha = 1; }
+    if (g.nine('titlesign', 0, x - 4, y - 4, w + 8, h + 8, 22)) return;   // art/titlesign.png as the frame
     g.rect(x + 2, y, w - 4, 1, c); g.rect(x + 2, y + h - 1, w - 4, 1, c);
     g.rect(x, y + 2, 1, h - 4, c); g.rect(x + w - 1, y + 2, 1, h - 4, c);
     for (const [cx, cy] of [[x + 1, y + 1], [x + w - 2, y + 1], [x + 1, y + h - 2], [x + w - 2, y + h - 2]]) g.rect(cx, cy, 1, 1, c);   // notched corners
@@ -6445,6 +6688,7 @@ const Engine = {
         g.outline(ch, x0 + i * step, y + idle, size, col);
       });
     };
+    if (Assets.get('titlesign')) { ctx.globalAlpha = Math.min(1, t * 3); g.stretchV('titlesign', CX - 74, 44, 86, 30, 34, 38); ctx.globalAlpha = 1; }   // art/titlesign.png, its plain middle stretched to fit the logo
     word('SHIBA', 70, PAL.ink, 0.0);
     word('MANIA', 98, PAL.accent, 0.35);
     if (t > 1.0) { ctx.globalAlpha = Math.min(1, (t - 1.0) * 3); g.outline(POOL.length + BOSSES.length + ' MICROGAMES', CX, 118, 8, PAL.ink); ctx.globalAlpha = 1; }
@@ -6466,7 +6710,10 @@ const Engine = {
     const up = (i) => (1 - back((t - 1.3 - i * 0.08) / 0.45)) * 150;   // from below the bottom edge
     // the menu: white outlined words, all alike
     const opts = [[R, 'RUN'], [C, 'CLASSIC'], [A, 'ALBUM'], [this.BTN_SET, 'SETTINGS']];
-    opts.forEach(([b, label], i) => g.outline(label, CX, b.y + up(i) + b.h / 2 + 5, 14, PAL.ink));
+    opts.forEach(([b, label], i) => {
+      if (Assets.get('button')) g.sprite('button', CX, b.y + up(i) + b.h / 2);   // art/button.png
+      g.outline(label, CX, b.y + up(i) + b.h / 2 + 5, 14, PAL.ink);
+    });
     const best = [];
     if (Run.best) best.push('RUN ' + Run.label(Run.best));
     if (this.best) best.push('CLASSIC ' + this.best);
@@ -6529,7 +6776,7 @@ const Engine = {
 
   drawShareButton() {
     const B = this.BTN_SHARE;
-    g.rect(B.x, B.y, B.w, B.h, PAL.accent); g.text('SHARE', CX, B.y + 15, 10, PAL.bg);
+    g.button(B, true); g.text('SHARE', CX, B.y + 15, 10, PAL.bg);
     const R = this.BTN_REPLAY, has = this.replay.length > 0;
     if (has) { g.box(R.x, R.y, R.w, R.h, PAL.accent); g.text('WATCH REPLAY', CX, R.y + 15, 10, PAL.accent); }
     if (Math.floor(this.time * 2) % 2) g.text('TAP ELSEWHERE TO CONTINUE', CX, has ? CY + 128 : CY + 104, 7, PAL.mid);
@@ -6596,7 +6843,7 @@ const Engine = {
       if (b.id === 'fwd') { tri(cx - 8, cy, 1); tri(cx, cy, 1); }
       if (b.id === 'pause') { if (R.paused) tri(cx - 4, cy, 1); else { g.rect(cx - 5, cy - 6, 3, 12, PAL.ink); g.rect(cx + 2, cy - 6, 3, 12, PAL.ink); } }
     }
-    const D = this.RP_DONE; g.rect(D.x, D.y, D.w, D.h, PAL.accent); g.text('DONE', CX, D.y + 15, 10, PAL.bg);
+    const D = this.RP_DONE; g.button(D, true); g.text('DONE', CX, D.y + 15, 10, PAL.bg);
   },
 
   // ── ALBUM SCREEN ───────────────────────────────────────────────────────────
@@ -6640,7 +6887,7 @@ const Engine = {
   drawAlbumScreen() {
     const items = Album.load(), n = items.length;
     const B = this.ALB_BACK;
-    g.box(B.x, B.y, B.w, B.h, PAL.mid); g.text('BACK', B.x + B.w / 2, B.y + 11, 7, PAL.ink);
+    g.button(B, false); g.text('BACK', B.x + B.w / 2, B.y + 11, 7, PAL.ink);
     if (this.albumSel >= 0) {
       const it = Album.newest(this.albumSel); if (!it) return;
       const im = Album.img(it);
@@ -6649,7 +6896,7 @@ const Engine = {
       const d = new Date(it.at);
       g.text((it.game || '') + '  ·  ' + d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }).toUpperCase(), CX, CY + 66, 7, PAL.mid);
       const S = this.ALB_SHARE, D = this.ALB_DEL;
-      g.rect(S.x, S.y, S.w, S.h, PAL.accent); g.text('SHARE', CX, S.y + 14, 10, PAL.bg);
+      g.button(S, true); g.text('SHARE', CX, S.y + 14, 10, PAL.bg);
       g.box(D.x, D.y, D.w, D.h, this.albumDel ? PAL.bad : PAL.mid);
       g.text(this.albumDel ? 'SURE?' : 'DELETE', CX, D.y + 12, 7, this.albumDel ? PAL.bad : PAL.mid);
       return;
@@ -6672,8 +6919,8 @@ const Engine = {
     }
     if (pages > 1) {
       const P = this.ALB_PREV, N = this.ALB_NEXT;
-      if (this.albumPage > 0) { g.box(P.x, P.y, P.w, P.h, PAL.mid); g.text('<', P.x + P.w / 2, P.y + 14, 10, PAL.ink); }
-      if (this.albumPage < pages - 1) { g.box(N.x, N.y, N.w, N.h, PAL.mid); g.text('>', N.x + N.w / 2, N.y + 14, 10, PAL.ink); }
+      if (this.albumPage > 0) { g.button(P, false); g.text('<', P.x + P.w / 2, P.y + 14, 10, PAL.ink); }
+      if (this.albumPage < pages - 1) { g.button(N, false); g.text('>', N.x + N.w / 2, N.y + 14, 10, PAL.ink); }
       g.text((this.albumPage + 1) + ' / ' + pages, CX, BOT - 12, 8, PAL.mid);
     }
   },
@@ -6747,7 +6994,7 @@ const Engine = {
   },
   drawSettings() {
     const B = this.ALB_BACK;
-    g.box(B.x, B.y, B.w, B.h, PAL.mid); g.text('BACK', B.x + B.w / 2, B.y + 11, 7, PAL.ink);
+    g.button(B, false); g.text('BACK', B.x + B.w / 2, B.y + 11, 7, PAL.ink);
     g.text('SETTINGS', CX, TOP + 16, 12, PAL.accent);
     g.text('SENSORS', 18, TOP + 122, 7, TEXT_MID, 'left');
     g.rect(18, TOP + 126, W - 36, 1, PAL.mid);
@@ -6756,10 +7003,11 @@ const Engine = {
       const st = this.setState(r.k), S = this.setSwitch(r), on = st === 'ON';
       if (st === 'BLOCKED') blocked = true;
       g.text(r.label, 18, r.y + 10, 9, PAL.ink, 'left');
-      if (on) { g.rect(S.x, S.y, S.w, S.h, PAL.accent); g.text('ON', S.x + S.w / 2, S.y + 14, 9, PAL.bg); }
+      if (on) { g.button(S, true); g.text('ON', S.x + S.w / 2, S.y + 14, 9, PAL.bg); }
       else {
         const c = st === 'BLOCKED' ? PAL.bad : PAL.mid;
-        g.box(S.x, S.y, S.w, S.h, c); g.text(st, S.x + S.w / 2, S.y + 14, st.length > 3 ? 7 : 9, st === 'BLOCKED' ? PAL.bad : PAL.ink);
+        if (st === 'BLOCKED' || !Assets.get('buttons')) g.box(S.x, S.y, S.w, S.h, c); else g.button(S, false);   // a blocked sensor keeps its red box
+        g.text(st, S.x + S.w / 2, S.y + 14, st.length > 3 ? 7 : 9, st === 'BLOCKED' ? PAL.bad : PAL.ink);
       }
     }
     if (blocked) {
@@ -6767,11 +7015,11 @@ const Engine = {
       g.text("BROWSER'S SITE SETTINGS", CX, TOP + 224, 7, PAL.bad);
     } else g.text('OFF: THOSE GAMES ARE SKIPPED', CX, TOP + 216, 7, TEXT_MID);
     const T = this.SET_TUT;
-    g.box(T.x, T.y, T.w, T.h, PAL.mid); g.text('HOW TO PLAY', CX, T.y + 12, 8, PAL.ink);
+    g.button(T, false); g.text('HOW TO PLAY', CX, T.y + 12, 8, PAL.ink);
     // put it on the home screen, to open like an app and play offline
     const I = this.SET_INSTALL;
     if (this.installed()) g.text('INSTALLED ON THIS PHONE', CX, I.y + 15, 8, PAL.ink);
-    else if (this.installEvt) { g.rect(I.x, I.y, I.w, I.h, PAL.accent); g.text('ADD TO HOME SCREEN', CX, I.y + 15, 9, PAL.bg); }
+    else if (this.installEvt) { g.button(I, true); g.text('ADD TO HOME SCREEN', CX, I.y + 15, 9, PAL.bg); }
     else if (/iphone|ipad|ipod/i.test(navigator.userAgent)) { g.text('ADD TO HOME SCREEN:', CX, I.y + 8, 8, PAL.ink); g.text('TAP SHARE, THEN ADD', CX, I.y + 19, 8, PAL.ink); }
     else g.text('INSTALL: BROWSER MENU', CX, I.y + 15, 8, PAL.ink);
   },
@@ -6877,6 +7125,7 @@ const Engine = {
   },
   drawPauseBtn() {
     const x = CX - 4, y = 4;
+    if (Assets.get('pauseicon')) { g.sprite('pauseicon', CX, 9); return; }   // art/pauseicon.png
     g.rect(x, y, 3, 10, PAL.ink); g.rect(x + 5, y, 3, 10, PAL.ink);   // two bars
   },
   drawPause() {
@@ -6884,8 +7133,8 @@ const Engine = {
     if (this.resumeT > 0) { g.outline(String(Math.ceil(this.resumeT / 0.5)), CX, CY + 10, 34, PAL.accent); return; }
     g.outline('PAUSED', CX, CY - 30, 18, PAL.ink);
     const R = this.PAUSE_RESUME, Q = this.PAUSE_QUIT;
-    g.rect(R.x, R.y, R.w, R.h, PAL.accent); g.text('RESUME', CX, R.y + 16, 11, PAL.bg);
-    g.box(Q.x, Q.y, Q.w, Q.h, PAL.mid); g.text('QUIT', CX, Q.y + 14, 9, PAL.ink);
+    g.button(R, true); g.text('RESUME', CX, R.y + 16, 11, PAL.bg);
+    g.button(Q, false); g.text('QUIT', CX, Q.y + 14, 9, PAL.ink);
   },
 
   // ── TUTORIAL ───────────────────────────────────────────────────────────────
@@ -6933,7 +7182,7 @@ const Engine = {
       g.text(this.tut && this.tut.mode ? 'NOW FOR REAL...' : 'HAVE FUN!', CX, CY + 6, 10, PAL.ink);
       return;
     }
-    const K = this.TUT_SKIP_CARD; g.box(K.x, K.y, K.w, K.h, PAL.mid); g.text('SKIP', K.x + K.w / 2, K.y + 11, 8, PAL.ink);
+    const K = this.TUT_SKIP_CARD; g.button(K, false); g.text('SKIP', K.x + K.w / 2, K.y + 11, 8, PAL.ink);
     if (this.state === 'TUTCAT') {   // one kind of game: its tag, its icon, what to do
       const c = this.tut.cat, n = this.tut.step + 1;
       g.text(n + ' / 5', 22, K.y + 11, 8, PAL.ink, 'left');
@@ -7007,7 +7256,8 @@ const Engine = {
   drawScene() {
     g.clear();
     const s = this.state;
-    if (this.MENU_SCREENS.includes(s)) { this.menuBg(); this.menuPanel(); }
+    if (this.MENU_SCREENS.includes(s) || s === 'PERMS') { this.menuBg(); this.menuPanel(); }
+    else if (['STAGE', 'CLEAR', 'SHOP'].includes(s)) { this.menuBg(); this.menuPanel(TOP + 6); }   // below RUN's HUD row
 
     if (s === 'TITLE') { this.drawTitle(); return; }
 
@@ -7047,15 +7297,16 @@ const Engine = {
 
     if (s === 'READY') {
       const n = Math.ceil(this.timer - 0.2);
+      this.menuBg();
       this.drawHud();
       if (n > 0) {
         // each number pops in large and shrinks as its second elapses
         const frac = (this.timer - 0.2) - (n - 1);   // 1 -> 0 across the second
         const size = 40 + (1 - frac) * 26;
         ctx.globalAlpha = Math.min(1, frac * 2.5);
-        g.text(String(n), CX, CY + size * 0.35, size, PAL.ink);
+        g.outline(String(n), CX, CY + size * 0.35, size, PAL.ink);
         ctx.globalAlpha = 1;
-        g.text('GET READY', CX, TOP + 40, 11, PAL.mid);
+        g.outline('GET READY', CX, TOP + 40, 11, PAL.ink);
       } else {
         const p = Math.min(1, (-this.timer + 0.2) * 6);
         g.rect(0, CY - 30, W, 60, PAL.accent);
@@ -7067,7 +7318,7 @@ const Engine = {
     if (s === 'PROMPT') {
       const m = this.game.meta;
       // a dimmed look at where the next game happens, behind its instructions
-      if (m.env) { Env.paint(m.env); ctx.globalAlpha = 0.62; g.rect(0, 0, W, H, PAL.bg); ctx.globalAlpha = 1; }
+      if (m.env) { Env.paint(m.env); ctx.globalAlpha = 0.35; g.rect(0, 0, W, H, PAL.bg); ctx.globalAlpha = 1; }
       // a boss looks like any other prompt, plus its crest: a crown over BOSS
       if (this.isBoss) {
         const by = CY - 92, bob = Math.round(Math.sin(this.time * 6) * 1.5);
@@ -7196,7 +7447,7 @@ const Engine = {
   drawHud() {
     if (this.tut) {   // practice: no lives to lose, and a way out
       g.text('PRACTICE ' + (this.tut.step + 1) + ' / 5', 6, 13, 8, PAL.accent, 'left');
-      const S = this.TUT_SKIP; g.box(S.x, S.y, S.w, S.h, PAL.mid); g.text('SKIP', S.x + S.w / 2, S.y + 11, 8, PAL.ink);
+      const S = this.TUT_SKIP; g.button(S, false); g.text('SKIP', S.x + S.w / 2, S.y + 11, 8, PAL.ink);
       g.rect(0, TOP - 1, W, 1, PAL.mid);
       return;
     }
