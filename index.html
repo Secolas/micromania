@@ -248,7 +248,7 @@ const Assets = {
     couch:    { src: 'art/couch.png',    fw: 74,  fh: 55,  frames: 1,  fps: 1  },
     crate:    { src: 'art/crate.png',    fw: 14,  fh: 12,  frames: 1,  fps: 1  },
     slingshot:{ src: 'art/slingshot.png', fw: 24, fh: 36,  frames: 2,  fps: 1  },
-    bone16:   { src: 'art/bone16.png',   fw: 16,  fh: 8,   frames: 1,  fps: 1  },
+    bone:     { src: 'art/bone.png',     fw: 28,  fh: 14,  frames: 8,  fps: 1  },
     fence:    { src: 'art/fence.png',    fw: 21,  fh: 12,  frames: 1,  fps: 1  },
     gatepost: { src: 'art/gatepost.png', fw: 6,   fh: 14,  frames: 1,  fps: 1  },
     pot:      { src: 'art/pot.png',      fw: 18,  fh: 22,  frames: 2,  fps: 1  },
@@ -1143,13 +1143,16 @@ const g = {
     this.rect(x, y, w, h, bg);
     this.rect(x, y, Math.max(0, Math.min(1, pct)) * w, h, c);
   },
-  // A dog bone centred on x, y, w wide (half as tall) — the game's treat, drawn
-  // in rects so it stays pixel art at any size.
+  // A dog bone centred on x, y, about w wide — the game's treat, the same bone
+  // everywhere (art/bone.png). BONES are its widths, one per frame, then the
+  // same frames in grey (c = PAL.mid: too dear, already taken). It's drawn 1:1
+  // at the nearest width; past the biggest, at a whole multiple of it.
+  BONES: [14, 16, 22, 28],
   bone(x, y, w, c = PAL.accent) {
-    const k = w / 8, ox = x - 3 * k, oy = y - 2 * k;
-    const r = (a, b, rw, rh) => ctx.fillRect(ox + a * k, oy + b * k, rw * k, rh * k);
-    ctx.fillStyle = c;
-    r(0, 1, 6, 2); r(-1, 0, 2, 2); r(-1, 2, 2, 2); r(5, 0, 2, 2); r(5, 2, 2, 2);
+    const B = this.BONES, top = B[B.length - 1], k = w > top * 1.5 ? Math.round(w / top) : 1;
+    let i = 0; for (let j = 1; j < B.length; j++) if (Math.abs(B[j] - w / k) < Math.abs(B[i] - w / k)) i = j;
+    const a = Assets.get('bone');
+    this.sprite('bone', x, y, { frame: i + (c === PAL.mid ? B.length : 0), w: (a ? a.fw : top) * k, h: (a ? a.fh : top / 2) * k });
   },
   // A chocolate bar, w wide: red wrapper torn back from a few squares. Bad for
   // dogs, which is the joke wherever it turns up.
@@ -3513,7 +3516,7 @@ class KnockStack extends Microgame {
     this.settle = spent && !moving ? this.settle + dt : 0;
     if (this.settle > 0.3) { this.playingOut = false; this.lose(); }
   }
-  // a wooden crate (art/crate.png) and the bone (art/bone16.png), drawn 1:1 at their physics boxes
+  // a wooden crate (art/crate.png), drawn 1:1 at its physics box
   crate(w, h) { g.sprite('crate', 0, 0, { w, h }); }
   draw(g) {
     g.clear();
@@ -3524,7 +3527,7 @@ class KnockStack extends Microgame {
     for (const b of this.blocks) {
       if (b.gone) continue;
       ctx.save(); ctx.translate(b.x, b.y); ctx.rotate(b.rot || 0);
-      if (b.bone) g.sprite('bone16', 0, 0); else this.crate(b.w, b.h);
+      if (b.bone) g.bone(0, 0, b.w); else this.crate(b.w, b.h);
       ctx.restore();
     }
     // the shot's dotted trail, Angry Birds style
@@ -4809,7 +4812,7 @@ class BeachDig extends Microgame {
     if (this.dug === 0) { g.line(this.hx - 7, this.hy - 7, this.hx + 7, this.hy + 7, PAL.bad, 3); g.line(this.hx + 7, this.hy - 7, this.hx - 7, this.hy + 7, PAL.bad, 3); }   // X marks the spot
     if (this.found > 0) {                                       // the bone rises out of the hole
       const up = Math.min(1, this.found / 0.25) * 16;
-      g.bone(this.hx, this.hy - up, 26, PAL.bg); g.bone(this.hx, this.hy - up - 1, 24, PAL.ink);
+      g.bone(this.hx, this.hy - up, 26);
     }
     // the shiba from behind, paws going, bobbing on each scoop
     const bob = this.pop > 0 ? -3 : 0;
@@ -5674,10 +5677,8 @@ const Run = {
   },
 
   // ── DRAW ─────────────────────────────────────────────────────────────────
-  bone(x, y, c = PAL.ink, k = 1) {
-    const r = (a, b, w, h) => g.rect(x + a * k, y + b * k, w * k, h * k, c);
-    r(0, 1, 6, 2); r(-1, 0, 2, 2); r(-1, 2, 2, 2); r(5, 0, 2, 2); r(5, 2, 2, 2);
-  },
+  // the game's bone (g.bone) in the box a 7k x 4k bone drawn from x, y used to fill
+  bone(x, y, c = PAL.ink, k = 1) { g.bone(x + 2.5 * k, y + 2 * k, 8 * k, c); },
 
   // a treat's picture centred on x, y at about size s
   drawArt(t, x, y, s) {
