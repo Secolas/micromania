@@ -261,6 +261,7 @@ const Assets = {
     cactus:   { src: 'art/cactus.png',   fw: 22,  fh: 31,  frames: 1,  fps: 1  },
     bomb:     { src: 'art/bomb.png',     fw: 22,  fh: 26,  frames: 2,  fps: 1  },
     frisbee:  { src: 'art/frisbee.png',  fw: 28,  fh: 10,  frames: 1,  fps: 1  },
+    rubdog:   { src: 'art/rubdog.png',   fw: 48,  fh: 44,  frames: 13, fps: 1  },
     crowdarm: { src: 'art/crowdarm.png', fw: 14,  fh: 46,  frames: 1,  fps: 1  },
     hole:     { src: 'art/hole.png',     fw: 54,  fh: 36,  frames: 4,  fps: 1  },
     sandpile: { src: 'art/sandpile.png', fw: 40,  fh: 24,  frames: 3,  fps: 1  },
@@ -2018,6 +2019,9 @@ class CatchCoin extends Microgame {
 // 3. RUB — scrub the mud off a muddy shiba
 class RubClean extends Microgame {
   static SY = 170;   // the shiba's centre: drawn 2x (70x74), sat on the bath mat
+  // art/rubdog.png, the same shiba in 48x44 frames (drawn 2x): 0-4 squirming
+  // with its eyes shut while you scrub, then its wet-dog shake once it's clean
+  static WIGGLE = 5; static SHAKE = 8; static SHAKE_FPS = 14;
   static meta = { id: 'rub', env: 'bath', prompt: 'RUB!', hint: 'rub', duration: 3.6,
     how: 'RUB OFF\nALL THE MUD' };
   init() {
@@ -2030,6 +2034,8 @@ class RubClean extends Microgame {
     }
     this.rate = this.byD(0.05, 0.04, 0.034);
     this.bubbles = []; this.squeak = 0;
+    this.scrubT = -1;      // when you last scrubbed mud
+    this.cleanT = -1;      // when the last of it came off: the shake plays, then the win
   }
   update(dt, input) {
     for (const b of this.bubbles) { b.t += dt; b.y -= 14 * dt; }
@@ -2042,8 +2048,14 @@ class RubClean extends Microgame {
       }
       if (scrubbed && Math.random() < 0.5) this.bubbles.push({ x: input.x + (Math.random() - 0.5) * 14, y: input.y, r: 2 + Math.random() * 3, t: 0 });
       if (scrubbed && this.squeak <= 0) { Sfx.squeak(); this.squeak = 0.12; }
+      if (scrubbed) this.scrubT = this.t;
     }
-    if (this.mud.every(m => m.dirt <= 0) && !this.finished) { Sfx.bark(); this.succeed(); }
+    // all clean: it shakes itself dry, and the round is won when the shake ends
+    // (the clock running out mid-shake doesn't count against you)
+    if (this.cleanT < 0 && this.mud.every(m => m.dirt <= 0)) { this.cleanT = this.t; Sfx.bark(); }
+    this.playingOut = this.cleanT >= 0 && !this.finished;
+    const shook = !Assets.get('rubdog') || this.t - this.cleanT >= RubClean.SHAKE / RubClean.SHAKE_FPS;
+    if (this.cleanT >= 0 && shook && !this.finished) this.succeed();
   }
   draw(g) {
     g.clear();
@@ -2051,7 +2063,14 @@ class RubClean extends Microgame {
     // a floor and a bath mat to sit on, so the flat-cut paws rest on something
     g.rect(0, 204, W, BOT - 204, SCENE.grout); g.rect(0, 204, W, 2, SCENE.tileHi);
     g.sprite('bathmat', CX, 213);   // art/bathmat.png
-    g.sprite('shiba', CX, RubClean.SY, { w: 70, h: 74, frame: left === 0 ? 1 : 0 });
+    // the shiba: shaking itself dry, squirming while you scrub, else sat waiting
+    // (rubdog frames hold the 35x37 shiba at 6, 7: drawn 2x, centred 1 right, 7 up)
+    const scrubbing = this.t - this.scrubT < 0.2;
+    if (Assets.get('rubdog') && (this.cleanT >= 0 || scrubbing)) {
+      const f = this.cleanT >= 0 ? RubClean.WIGGLE + Math.min(RubClean.SHAKE - 1, Math.floor((this.t - this.cleanT) * RubClean.SHAKE_FPS))
+                                 : Math.floor(this.t * 10) % RubClean.WIGGLE;
+      g.sprite('rubdog', CX + 1, RubClean.SY - 7, { w: 96, h: 88, frame: f });
+    } else g.sprite('shiba', CX, RubClean.SY, { w: 70, h: 74, frame: left === 0 ? 1 : 0 });
     for (const m of this.mud) {
       if (m.dirt <= 0) continue;
       ctx.globalAlpha = Math.min(1, m.dirt + 0.15);
