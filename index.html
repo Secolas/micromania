@@ -261,6 +261,7 @@ const Assets = {
     cactus:   { src: 'art/cactus.png',   fw: 22,  fh: 31,  frames: 1,  fps: 1  },
     bomb:     { src: 'art/bomb.png',     fw: 22,  fh: 26,  frames: 2,  fps: 1  },
     frisbee:  { src: 'art/frisbee.png',  fw: 28,  fh: 10,  frames: 1,  fps: 1  },
+    menutile: { src: 'art/menutile.png', fw: 32,  fh: 32,  frames: 1,  fps: 1  },
     buttons:  { src: 'art/buttons.png',  fw: 104, fh: 24,  frames: 2,  fps: 1  },
     pauseicon:{ src: 'art/pauseicon.png', fw: 12, fh: 12, frames: 1, fps: 1 },
     scenetiles:{ src: 'art/scenetiles.png', fw: 32, fh: 32, frames: 14, fps: 1  },
@@ -1196,9 +1197,14 @@ const g = {
     // Readable on a phone in daylight: nothing smaller than 8px, and no grey
     // text — grey (PAL.mid / TEXT_MID) is for bars and lines; as text it's white
     size = Math.max(8, size);
-    ctx.fillStyle = c === PAL.mid || c === TEXT_MID ? PAL.ink : c;
+    const col = c === PAL.mid || c === TEXT_MID ? PAL.ink : c;
     ctx.font = (bold ? 'bold ' : '') + size + 'px ui-monospace, monospace';
     ctx.textAlign = align;
+    if (col !== PAL.bg) {   // a thin dark rim round light text, so it reads on bright scenes too
+      ctx.fillStyle = 'rgba(16,16,16,0.9)';
+      for (const [ox, oy] of [[-1, 0], [1, 0], [0, -1], [0, 1], [1, 1]]) ctx.fillText(str, Math.round(x) + ox, Math.round(y) + oy);
+    }
+    ctx.fillStyle = col;
     ctx.fillText(str, Math.round(x), Math.round(y));
     ctx.textAlign = 'left';
   },
@@ -1617,10 +1623,11 @@ const Album = {
 /* ── SCENERY ──────────────────────────────────────────────────────────────────
    Backdrops behind the microgames, so each one reads as a place — a lawn, a
    living room, the sky — rather than shapes on black. They use a small extra
-   palette of dark, muted tones, so the sprites and the five play colours still
-   pop in front of them; the HUD, prompts and shelf stay black.
+   palette of bright, light tones (WarioWare-style); the sprites keep their dark
+   outlines and light text gets a dark rim (g.text), so both still read on them.
+   The HUD, prompts and shelf stay black.
    A game picks one with `env` in its meta:
-     'lawn'  grass seen from above          'sky'   dusk sky, drifting clouds
+     'lawn'  grass seen from above          'sky'   day sky, drifting clouds
      'bath'  bathroom tiles                 'snow'  a night ski slope
      'field@Y'  side view: sky down to a horizon, grass from the ground at Y
      'room@Y'   a living room: wallpaper down to a floor at Y ('wall@Y' is the same)
@@ -1634,14 +1641,16 @@ const Album = {
    Each is painted once into a 180x320 canvas and blitted after that, so it
    costs nothing per frame; only the clouds, surf, disco lights and stars are drawn live.
 ─────────────────────────────────────────────────────────────────────────────── */
+// the inside of the menu panels: a friendly deep blue that white and yellow text read on
+const MENU_PANEL = '#2f5597';
 const SCENE = {
-  sky0: '#131c31', sky1: '#27395b', cloud: '#34496f', star: '#4d5f82',
-  hill: '#1d3526', grass: '#284b2f', grassHi: '#386840', grassLo: '#203e26',
-  wall: '#33262d', wallHi: '#3b2c34', skirt: '#24191a', floor: '#45301f', floorLo: '#35251a',
-  tile: '#1b303a', tileHi: '#21394a', grout: '#2b4655',
-  snow: '#24324a', snowHi: '#344660', pine: '#1a2b33',
+  sky0: '#5fb6ee', sky1: '#b5e2fb', cloud: '#ffffff', star: '#d9f1ff',
+  hill: '#4aa356', grass: '#6cc664', grassHi: '#8fdc85', grassLo: '#5cb856',
+  wall: '#f6c9a8', wallHi: '#fbe3cf', skirt: '#c98a52', floor: '#e0a868', floorLo: '#c98a52',
+  tile: '#8fd3df', tileHi: '#a8e0ea', grout: '#c9eef4',
+  snow: '#dbe8f5', snowHi: '#ffffff', pine: '#2f7a5a',
   // a bright day, for the one game that should feel like one
-  day0: '#3b7cc4', day1: '#6aa5dc', dayCloud: '#e6f0fa', dayHill: '#3f8a47',
+  day0: '#5fb6ee', day1: '#b5e2fb', dayCloud: '#e6f0fa', dayHill: '#3f8a47',
   meadow: '#4a9a4f', meadowHi: '#62b466', stem: '#3d7a35',
   // the beach, for FETCH
   sea0: '#2a74ad', sea1: '#3a8cc9', wetSand: '#b99460', sand: '#dcc08a', sandLo: '#c8a86e',
@@ -1657,10 +1666,10 @@ const SCENE = {
   club: '#1a1426', clubHi: '#241b36', tileA: '#2e2246', tileB: '#3d2d5c',
   // a night outside, for HIDE
   // the road in CROSS
-  road: '#2a2d30',
+  road: '#6b7078',
   // KNOCK IT: the slingshot, its rubber bands, the crates and their stone slab
   wood: '#a8743f', woodHi: '#c99055', woodLo: '#6e4a2a', band: '#5a1f16', stone: '#7d8590', stoneLo: '#5b626b', dirt: '#7a5a3a',
-  night0: '#070b18', night1: '#141d36', nightGrass: '#14261a', nightGrassHi: '#1c3423', house: '#0d1220',
+  night0: '#1b2552', night1: '#33457e', nightGrass: '#2d5a37', nightGrassHi: '#447d4e', house: '#1e2747',
 };
 const Env = {
   cache: {},
@@ -1741,8 +1750,8 @@ const Env = {
     }
   },
   cloud(x, cx, cy, w) {
-    const a = Assets.get('clouds');   // the dusk-blue art clouds, small or big by w
-    if (a) { const f = w >= 22 ? 3 : 2; x.drawImage(a.img, f * a.fw, 0, a.fw, a.fh, Math.round(cx - a.fw / 2), Math.round(cy - a.fh + 5), a.fw, a.fh); return; }
+    const a = Assets.get('clouds');   // the art clouds, small or big by w (white: frames 0-1; 2-3 are dusk-blue copies)
+    if (a) { const f = w >= 22 ? 1 : 0; x.drawImage(a.img, f * a.fw, 0, a.fw, a.fh, Math.round(cx - a.fw / 2), Math.round(cy - a.fh + 5), a.fw, a.fh); return; }
     x.fillStyle = SCENE.cloud;
     x.fillRect(Math.round(cx - w / 2), Math.round(cy), Math.round(w), 4);
     x.fillRect(Math.round(cx - w / 3), Math.round(cy - 3), Math.round(w * 0.45), 3);
@@ -1773,7 +1782,7 @@ const Env = {
       const A = p(a), B = p(b);
       return '#' + A.map((v, i) => Math.round(v + (B[i] - v) * k).toString(16).padStart(2, '0')).join('');
     };
-    // dusk sky in flat bands, as pixel art does gradients
+    // the sky in flat bands, as pixel art does gradients
     const sky = (y0, y1) => {
       const bands = 8, h = (y1 - y0) / bands;
       for (let i = 0; i < bands; i++) R(0, y0 + i * h, W, h + 1, mix(SCENE.sky0, SCENE.sky1, i / (bands - 1)));
@@ -1812,7 +1821,7 @@ const Env = {
       R(0, y, W, 2, SCENE.grassHi);
       tufts(y + 3, BOT, Math.max(4, (BOT - y) / 2));
     } else if (kind === 'room' || kind === 'wall' || kind === 'bedroom') {
-      // striped wallpaper, skirting, floorboards. (A little framed picture
+      // wallpaper, skirting, floorboards (art/roomtiles.png: peach polka dots, honey boards). (A little framed picture
       // used to hang here; at this size it read as a stray UI box.)
       const rt = Assets.get('roomtiles');
       if (rt) {
@@ -2956,7 +2965,7 @@ class PumpBalloon extends Microgame {
     // the shiba pumping — frame follows fill (balloon inflates 0 -> 8)
     const fr = Math.max(0, Math.min(8, Math.round(this.f * 8)));
     const wob = (this.bounce || 0) * 2;
-    g.sprite('pumpdog', CX - 6, Math.round(CY + 10 - wob), { w: 70, h: 70, frame: fr });
+    g.sprite('pumpdog', CX - 6, Math.round(198 - 33 - wob), { w: 70, h: 70, frame: fr });
     g.text(this.still > 0.12 ? 'HOLD!' : 'PUMP!', CX - 6, TOP + 18, 9, this.still > 0.12 ? PAL.accent : PAL.mid);
   }
 }
@@ -4947,14 +4956,14 @@ class SortTreats extends Microgame {
     const dx = this.dogSide === 'left' ? 30 : W - 30, bx = W - dx;
     // the shiba behind its bowl
     if (Assets.get('wag')) {   // the whole shiba, 1x (art/wag.png; cheering just after a bone)
-      if (this.t - (this.fedAt ?? -9) < 0.5) g.sprite('fullshiba', dx, CY + 8, { frame: Math.floor(this.t * 8) % 2 ? g.FULL.cheer : g.FULL.cheer2 });
-      else g.sprite('wag', dx, CY + 8, { frame: Math.floor(this.t * 6) % 4, flip: dx > CX });
+      if (this.t - (this.fedAt ?? -9) < 0.5) g.sprite('fullshiba', dx, 250 - 32, { frame: Math.floor(this.t * 8) % 2 ? g.FULL.cheer : g.FULL.cheer2 });
+      else g.sprite('wag', dx, 250 - 32, { frame: Math.floor(this.t * 6) % 4, flip: dx > CX });   // feet on the floor at 250
     } else g.sprite('face', dx, CY + 4, { w: 44, h: 45, frame: Math.floor(this.t * 6) % 3 });
-    g.sprite('bowl', dx, CY + 36);   // art/bowl.png
-    g.text('DOG', dx, CY - 26, 8, PAL.accent);
+    g.sprite('bowl', dx, 252 - 12);   // art/bowl.png, on the floor in front of it
+    g.text('DOG', dx, 184, 8, PAL.accent);
     // the bin
-    g.sprite('bin', bx, CY + 17);   // art/bin.png
-    g.text('BIN', bx, CY - 26, 8, PAL.ink);
+    g.sprite('bin', bx, 250 - 28);   // art/bin.png, on the floor
+    g.text('BIN', bx, 184, 8, PAL.ink);
     // the treat in the middle
     const s = 1 + this.pop * 1.5;
     const tx = CX + this.dx, ty = CY - 40 + Math.abs(this.dx) * 0.35;   // dips toward the dog / bin as you drag
@@ -6515,6 +6524,12 @@ const Engine = {
   MENU_SCREENS: ['SETTINGS', 'ALBUM', 'PERMS', 'GAMEOVER', 'TUTORIAL', 'TUTCAT', 'TUTDONE', 'REPLAY'],
   groupLabel(gr) { return { TAP: 'TAP', DRAG: 'DRAG', CAMERA: 'CAMERA', BLOW: 'SOUND', SHAKE: 'TILT/SHAKE' }[gr] || gr; },
   menuBg() {
+    const mt = Assets.get('menutile');
+    if (mt) {   // drifting down and to the right, like the old paw pattern
+      const o = Math.floor(this.time * 6) % 32;
+      for (let yy = -32; yy < H; yy += 32) for (let xx = -32; xx < W; xx += 32) ctx.drawImage(mt.img, xx + o, yy + o);
+      return;
+    }
     g.rect(0, 0, W, H, PAL.bg);
     const t = (this.time * 6) % 24, c = '#1c1c1c';
     for (let yy = -24; yy < H + 24; yy += 24) for (let xx = -24; xx < W + 24; xx += 24) {
@@ -6522,9 +6537,10 @@ const Engine = {
       g.rect(px, py, 5, 4, c); g.rect(px - 3, py - 4, 2, 2, c); g.rect(px, py - 6, 2, 2, c); g.rect(px + 3, py - 6, 2, 2, c); g.rect(px + 6, py - 4, 2, 2, c);
     }
   },
-  menuPanel() {
-    const x = 8, y = 8, w = W - 16, h = H - 16, c = PAL.mid;
-    ctx.globalAlpha = 0.9; g.rect(x, y, w, h, PAL.bg); ctx.globalAlpha = 1;
+  menuPanel(top = 8) {
+    const x = 8, y = top, w = W - 16, h = H - 8 - top, c = PAL.mid;
+    if (Assets.get('menutile')) g.rect(x, y, w, h, MENU_PANEL);
+    else { ctx.globalAlpha = 0.9; g.rect(x, y, w, h, PAL.bg); ctx.globalAlpha = 1; }
     if (g.nine('titlesign', 0, x - 4, y - 4, w + 8, h + 8, 22)) return;   // art/titlesign.png as the frame
     g.rect(x + 2, y, w - 4, 1, c); g.rect(x + 2, y + h - 1, w - 4, 1, c);
     g.rect(x, y + 2, 1, h - 4, c); g.rect(x + w - 1, y + 2, 1, h - 4, c);
@@ -7215,7 +7231,8 @@ const Engine = {
   drawScene() {
     g.clear();
     const s = this.state;
-    if (this.MENU_SCREENS.includes(s)) { this.menuBg(); this.menuPanel(); }
+    if (this.MENU_SCREENS.includes(s) || s === 'PERMS') { this.menuBg(); this.menuPanel(); }
+    else if (['STAGE', 'CLEAR', 'SHOP'].includes(s)) { this.menuBg(); this.menuPanel(TOP + 6); }   // below RUN's HUD row
 
     if (s === 'TITLE') { this.drawTitle(); return; }
 
@@ -7255,15 +7272,16 @@ const Engine = {
 
     if (s === 'READY') {
       const n = Math.ceil(this.timer - 0.2);
+      this.menuBg();
       this.drawHud();
       if (n > 0) {
         // each number pops in large and shrinks as its second elapses
         const frac = (this.timer - 0.2) - (n - 1);   // 1 -> 0 across the second
         const size = 40 + (1 - frac) * 26;
         ctx.globalAlpha = Math.min(1, frac * 2.5);
-        g.text(String(n), CX, CY + size * 0.35, size, PAL.ink);
+        g.outline(String(n), CX, CY + size * 0.35, size, PAL.ink);
         ctx.globalAlpha = 1;
-        g.text('GET READY', CX, TOP + 40, 11, PAL.mid);
+        g.outline('GET READY', CX, TOP + 40, 11, PAL.ink);
       } else {
         const p = Math.min(1, (-this.timer + 0.2) * 6);
         g.rect(0, CY - 30, W, 60, PAL.accent);
@@ -7275,7 +7293,7 @@ const Engine = {
     if (s === 'PROMPT') {
       const m = this.game.meta;
       // a dimmed look at where the next game happens, behind its instructions
-      if (m.env) { Env.paint(m.env); ctx.globalAlpha = 0.62; g.rect(0, 0, W, H, PAL.bg); ctx.globalAlpha = 1; }
+      if (m.env) { Env.paint(m.env); ctx.globalAlpha = 0.35; g.rect(0, 0, W, H, PAL.bg); ctx.globalAlpha = 1; }
       // a boss looks like any other prompt, plus its crest: a crown over BOSS
       if (this.isBoss) {
         const by = CY - 92, bob = Math.round(Math.sin(this.time * 6) * 1.5);
