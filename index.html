@@ -226,7 +226,6 @@ const Assets = {
     shiba:  { src: ART.shiba,          fw: 35, fh: 37, frames: 17, fps: 14 },
     catcher:{ src: ART.catcher,        fw: 40, fh: 56, frames: 5,  fps: 8  },
     // bug:    { src: 'art/bug.png',    fw: 16, fh: 16, frames: 2, fps: 8 },
-    // coin:   { src: 'art/coin.png',   fw: 8,  fh: 8,  frames: 4, fps: 10 },
     hero:   { src: ART.hero,            fw: 78, fh: 96, frames: 9,  fps: 14 },
     face:   { src: ART.face,            fw: 31, fh: 32, frames: 9,  fps: 6  },
     plane:  { src: ART.plane,          fw: 35, fh: 31, frames: 9,  fps: 16 },
@@ -2629,9 +2628,7 @@ class FeedDog extends Microgame {
   draw(g) {
     g.clear();
     g.sprite('face', this.dx, this.dy, { w: 36, h: 37, frame: Math.floor(this.t * 6) % 9 });
-    g.cRect(this.tx, this.ty, 14, 7, PAL.accent);            // the treat
-    g.cRect(this.tx - 7, this.ty, 5, 9, PAL.accent);
-    g.cRect(this.tx + 7, this.ty, 5, 9, PAL.accent);
+    g.bone(this.tx, this.ty, 22);                             // the treat
     if (!this.held) g.text('GRAB', this.tx, this.ty + 18, 7, PAL.mid);
   }
 }
