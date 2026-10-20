@@ -2748,7 +2748,7 @@ class FeedDog extends Microgame {
   draw(g) {
     g.clear();
     // (art/feed.png, 1x: mouth open on dx, dy + 6, then 4 frames chewing)
-    if (Assets.get('feed')) g.sprite('feed', Math.round(this.dx) + 8, this.dy + 15, { frame: this.ateAt == null ? 0 : 1 + Math.min(3, Math.floor((this.t - this.ateAt) * 10)) });
+    if (Assets.get('feed')) g.sprite('feed', Math.round(this.dx) + 8, this.dy + 4, { frame: this.ateAt == null ? 0 : 1 + Math.min(3, Math.floor((this.t - this.ateAt) * 10)) });
     else g.sprite('face', this.dx, this.dy, { w: 36, h: 37, frame: Math.floor(this.t * 6) % 9 });
     if (this.ateAt == null) g.bone(this.tx, this.ty, 22);     // the treat
     if (!this.held) g.text('GRAB', this.tx, this.ty + 18, 7, PAL.mid);
