@@ -249,6 +249,9 @@ const Assets = {
     crate:    { src: 'art/crate.png',    fw: 14,  fh: 12,  frames: 1,  fps: 1  },
     slingshot:{ src: 'art/slingshot.png', fw: 24, fh: 36,  frames: 2,  fps: 1  },
     bone16:   { src: 'art/bone16.png',   fw: 16,  fh: 8,   frames: 1,  fps: 1  },
+    fence:    { src: 'art/fence.png',    fw: 21,  fh: 12,  frames: 1,  fps: 1  },
+    gatepost: { src: 'art/gatepost.png', fw: 6,   fh: 14,  frames: 1,  fps: 1  },
+    pot:      { src: 'art/pot.png',      fw: 18,  fh: 22,  frames: 2,  fps: 1  },
   },
   cache: {},
   load() {
@@ -1180,16 +1183,12 @@ const g = {
     ctx.beginPath(); ctx.arc(x - r * 1.15, y, r * 0.95, -0.85, 0.85); ctx.stroke();
     ctx.beginPath(); ctx.arc(x + r * 1.15, y, r * 0.95, Math.PI - 0.85, Math.PI + 0.85); ctx.stroke();
   },
-  // a falling flower pot, w wide, centred on x, y
-  pot(x, y, w) {
-    const h = 9;
-    this.rect(x - w / 2 - 1, y - h / 2, w + 2, 3, PAL.bad);                 // rim
-    ctx.fillStyle = PAL.bad; ctx.beginPath();                               // tapering body
-    ctx.moveTo(x - w / 2, y - h / 2 + 3); ctx.lineTo(x + w / 2, y - h / 2 + 3);
-    ctx.lineTo(x + w * 0.32, y + h / 2); ctx.lineTo(x - w * 0.32, y + h / 2); ctx.closePath(); ctx.fill();
-    this.rect(x - w / 2 + 1, y - h / 2 - 1, w - 2, 1, PAL.mid);             // soil
-    this.rect(x, y - h / 2 - 6, 1, 5, PAL.mid);                             // stem
-    this.circle(x + 0.5, y - h / 2 - 7, 2.5, PAL.accent);                   // flower
+  // a flower pot (art/pot.png) centred across x, its base 4 px below y.
+  // POTS are its sizes, one per frame: the rim width, for hitboxes.
+  POTS: [14, 18],
+  pot(x, y, size) {
+    const a = Assets.get('pot');
+    this.sprite('pot', x, y + 5 - (a ? a.fh : 22) / 2, { frame: size });
   },
   // a car seen from above, w long, nose pointing the way it drives (dir ±1)
   car(x, y, w, dir) {
@@ -1203,13 +1202,14 @@ const g = {
     const nose = dir > 0 ? x0 + w - 2 : x0;
     this.rect(nose, y0 + 1, 2, 2, PAL.accent); this.rect(nose, y0 + h - 3, 2, 2, PAL.accent); // headlights
   },
-  // a stretch of picket fence from x0 to x1, centred on y
+  // a stretch of picket fence from x0 to x1, centred on y: art/fence.png (a
+  // seamless run of pickets) tiled 1:1 along it, the last tile cut to fit
   fence(x0, x1, y) {
+    x0 = Math.round(x0); x1 = Math.round(x1); y = Math.round(y);
     if (x1 - x0 < 1) return;
-    this.rect(x0, y - 2, x1 - x0, 2, PAL.mid); this.rect(x0, y + 2, x1 - x0, 2, PAL.mid);   // rails
-    for (let x = x0 + 1; x < x1 - 2; x += 6) {
-      this.rect(x, y - 4, 4, 9, PAL.ink); this.rect(x + 1, y - 5, 2, 1, PAL.ink);          // pickets
-    }
+    const a = Assets.get('fence');
+    if (!a) { this.sprite('fence', (x0 + x1) / 2, y, { w: x1 - x0, h: 12 }); return; }
+    for (let x = x0; x < x1; x += a.fw) { const w = Math.min(a.fw, x1 - x); ctx.drawImage(a.img, 0, 0, w, a.fh, x, y - a.fh / 2, w, a.fh); }
   },
   // Draws a PixelLab sprite, or a labelled placeholder if the art isn't in yet.
   sprite(name, x, y, o = {}) {
@@ -1541,6 +1541,8 @@ const SCENE = {
   leaf: '#2f7a3a', leafHi: '#3f9449', trunk: '#6b4a2e',
   // the open countryside, for SWAT: far blue mountains and a pine forest edge
   mount: '#5f88b6', mountHi: '#e6f0fa', forest: '#2a6634',
+  // DODGE's terracotta flower pots (art/pot.png), for the shards when one smashes
+  pot: '#e0573b',
   // the couch in CHARGE: shade and shine on the red upholstery
   couchLo: '#b8332a', couchHi: '#ff8a7a',
   // the disco, for DANCE: a dark club, a checkered floor
@@ -2332,7 +2334,7 @@ class Dodge extends Microgame {
   }
   smash(b, y) {
     for (let k = 0; k < 7; k++) this.shards.push({ x: b.x + (Math.random() - 0.5) * b.w, y, vx: (Math.random() - 0.5) * 140, vy: -60 - Math.random() * 90,
-      r: Math.random() * 6, s: 2 + Math.floor(Math.random() * 3), c: k < 5 ? PAL.bad : k === 5 ? SCENE.dirt : PAL.accent, t: 0, bounced: false });
+      r: Math.random() * 6, s: 2 + Math.floor(Math.random() * 3), c: k < 5 ? SCENE.pot : k === 5 ? SCENE.dirt : PAL.accent, t: 0, bounced: false });
     Sfx.crunch(); Sfx.thud();
   }
   update(dt, input) {
@@ -2348,7 +2350,8 @@ class Dodge extends Microgame {
         if (this.blocks.every(b => b.y > TOP + 50 || Math.abs(b.x - x) > 52)) break;
         x = 14 + Math.random() * (W - 28);
       }
-      this.blocks.push({ x, y: TOP - 8, w: 12 + Math.random() * 10, vy: this.v0, rot: 0, spin: (Math.random() - 0.5) * 1.6 });
+      const size = Math.random() < 0.5 ? 0 : 1;   // a small pot or a big one
+      this.blocks.push({ x, y: TOP - 8, size, w: g.POTS[size], vy: this.v0, rot: 0, spin: (Math.random() - 0.5) * 1.6 });
     }
     for (const b of this.blocks) {
       b.vy += this.grav * dt; b.y += b.vy * dt; b.rot += b.spin * dt;
@@ -2371,7 +2374,7 @@ class Dodge extends Microgame {
     for (const b of this.blocks) {
       // a shadow on the ground warns where each one will land
       ctx.globalAlpha = Math.min(0.5, Math.max(0, (b.y - TOP) / (BOT - TOP))); g.rect(b.x - b.w / 2, BOT - 5, b.w, 2, PAL.mid); ctx.globalAlpha = 1;
-      ctx.save(); ctx.translate(b.x, b.y); ctx.rotate(b.rot); g.pot(0, 0, b.w); ctx.restore();
+      ctx.save(); ctx.translate(b.x, b.y); ctx.rotate(b.rot); g.pot(0, 0, b.size); ctx.restore();
     }
     for (const sh of this.shards) {
       ctx.globalAlpha = Math.min(1, (1.1 - sh.t) * 3);
@@ -2870,12 +2873,16 @@ class Squeeze extends Microgame {
   }
   draw(g) {
     g.clear();
+    // the fences stay in the play field: one that's passed the shiba slides
+    // out under its bottom edge, not over the mascot's shelf
+    ctx.save(); ctx.beginPath(); ctx.rect(0, TOP, W, BOT - TOP); ctx.clip();
     for (const w of this.walls) {
       g.fence(0, w.gx - this.gap / 2, w.y);
       g.fence(w.gx + this.gap / 2, W, w.y);
-      // gate posts either side of the gap
-      g.rect(w.gx - this.gap / 2 - 2, w.y - 7, 3, 13, PAL.bad); g.rect(w.gx + this.gap / 2 - 1, w.y - 7, 3, 13, PAL.bad);
+      // red gate posts either side of the gap (art/gatepost.png)
+      g.sprite('gatepost', w.gx - this.gap / 2, w.y); g.sprite('gatepost', w.gx + this.gap / 2, w.y);
     }
+    ctx.restore();
     g.sprite('hero', this.px, this.py - 4, { w: 24, h: 30, frame: Math.floor(this.t * 14) % 9 });
     g.rect(0, BOT - 3, W, 3, PAL.mid);
   }
