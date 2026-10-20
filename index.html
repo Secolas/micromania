@@ -261,6 +261,46 @@ const Assets = {
     cactus:   { src: 'art/cactus.png',   fw: 22,  fh: 31,  frames: 1,  fps: 1  },
     bomb:     { src: 'art/bomb.png',     fw: 22,  fh: 26,  frames: 2,  fps: 1  },
     frisbee:  { src: 'art/frisbee.png',  fw: 28,  fh: 10,  frames: 1,  fps: 1  },
+    crowdarm: { src: 'art/crowdarm.png', fw: 14,  fh: 46,  frames: 1,  fps: 1  },
+    hole:     { src: 'art/hole.png',     fw: 54,  fh: 36,  frames: 4,  fps: 1  },
+    sandpile: { src: 'art/sandpile.png', fw: 40,  fh: 24,  frames: 3,  fps: 1  },
+    bigbed:   { src: 'art/bigbed.png',   fw: 84,  fh: 43,  frames: 1,  fps: 1  },
+    cushion:  { src: 'art/cushion.png',  fw: 102, fh: 16,  frames: 1,  fps: 1  },
+    cushion52:{ src: 'art/cushion52.png', fw: 52, fh: 8,   frames: 1,  fps: 1  },
+    finish:   { src: 'art/finish.png',   fw: 28,  fh: 44,  frames: 1,  fps: 1  },
+    slab:     { src: 'art/slab.png',     fw: 26,  fh: 7,   frames: 1,  fps: 1  },
+    speaker:  { src: 'art/speaker.png',  fw: 28,  fh: 29,  frames: 1,  fps: 1  },
+    micstand: { src: 'art/micstand.png', fw: 28,  fh: 92,  frames: 1,  fps: 1  },
+    hedge:    { src: 'art/hedge.png',    fw: 48,  fh: 14,  frames: 1,  fps: 1  },
+    bathmat:  { src: 'art/bathmat.png',  fw: 100, fh: 16,  frames: 1,  fps: 1  },
+    laser:    { src: 'art/laser.png',    fw: 22,  fh: 19,  frames: 1,  fps: 1  },
+    pipe:     { src: 'art/pipe.png',     fw: 18,  fh: 52,  frames: 1,  fps: 1  },
+    platform: { src: 'art/platform.png', fw: 58,  fh: 9,   frames: 2,  fps: 1  },
+    gate:     { src: 'art/gate.png',     fw: 10,  fh: 22,  frames: 2,  fps: 1  },
+    sled:     { src: 'art/sled.png',     fw: 27,  fh: 11,  frames: 1,  fps: 1  },
+    hurdle:   { src: 'art/hurdle.png',   fw: 16,  fh: 25,  frames: 1,  fps: 1  },
+    plank:    { src: 'art/plank.png',    fw: 127, fh: 3,   frames: 1,  fps: 1  },
+    stand:    { src: 'art/stand.png',    fw: 23,  fh: 56,  frames: 1,  fps: 1  },
+    longcrate:{ src: 'art/longcrate.png', fw: 53, fh: 16,  frames: 1,  fps: 1  },
+    bin:      { src: 'art/bin.png',      fw: 38,  fh: 56,  frames: 1,  fps: 1  },
+    bowl:     { src: 'art/bowl.png',     fw: 40,  fh: 24,  frames: 1,  fps: 1  },
+    duck:     { src: 'art/duck.png',     fw: 25,  fh: 24,  frames: 1,  fps: 1  },
+    suds:     { src: 'art/suds.png',     fw: 19,  fh: 17,  frames: 2,  fps: 1  },
+    mud:      { src: 'art/mud.png',      fw: 16,  fh: 12,  frames: 1,  fps: 1  },
+    firstaid: { src: 'art/firstaid.png', fw: 24,  fh: 22,  frames: 1,  fps: 1  },
+    speech:   { src: 'art/speech.png',   fw: 126, fh: 70,  frames: 1,  fps: 1  },
+    beam:     { src: 'art/beam.png',     fw: 61,  fh: 5,   frames: 1,  fps: 1  },
+    tissuebox:{ src: 'art/tissuebox.png', fw: 68, fh: 34,  frames: 1,  fps: 1  },
+    tissue:   { src: 'art/tissue.png',   fw: 24,  fh: 51,  frames: 1,  fps: 1  },
+    wand:     { src: 'art/wand.png',     fw: 28,  fh: 28,  frames: 1,  fps: 1  },
+    bubble:   { src: 'art/bubble.png',   fw: 108, fh: 108, frames: 9,  fps: 1  },
+    cake:     { src: 'art/cake.png',     fw: 58,  fh: 32,  frames: 1,  fps: 1  },
+    candle:   { src: 'art/candle.png',   fw: 4,   fh: 25,  frames: 2,  fps: 1  },
+    trafficlight: { src: 'art/trafficlight.png', fw: 19, fh: 62, frames: 3, fps: 1 },
+    jug:      { src: 'art/jug.png',      fw: 27,  fh: 36,  frames: 1,  fps: 1  },
+    jar:      { src: 'art/jar.png',      fw: 38,  fh: 63,  frames: 1,  fps: 1  },
+    seed:     { src: 'art/seed.png',     fw: 16,  fh: 14,  frames: 1,  fps: 1  },
+    dandelion:{ src: 'art/dandelion.png', fw: 25, fh: 104, frames: 1,  fps: 1  },
   },
   cache: {},
   load() {
@@ -1183,6 +1223,28 @@ const g = {
     const a = Assets.get('doghouse');
     this.sprite('doghouse', x, y - (a ? a.fh : s) / 2);
   },
+  // Sprite 'name' drawn 1:1 with its top-left at x, y, h px tall: rows 0..a-1
+  // as drawn, then row 'fill' repeated, then rows b..end at the bottom. For
+  // art whose middle is plain (a stem, a sheet, a glass wall) and whose height
+  // the game changes. Returns false when the art isn't loaded.
+  stretchV(name, x, y, h, a, fill, b, frame = 0) {
+    const s = Assets.get(name); if (!s) return false;
+    const sx = frame * s.fw, bot = s.fh - b, top = Math.min(a, Math.max(0, h - bot));
+    ctx.drawImage(s.img, sx, 0, s.fw, top, x, y, s.fw, top);
+    for (let yy = y + top; yy < y + h - bot; yy++) ctx.drawImage(s.img, sx, fill, s.fw, 1, x, yy, s.fw, 1);
+    ctx.drawImage(s.img, sx, b, s.fw, bot, x, y + h - bot, s.fw, bot);
+    return true;
+  },
+  // The same across: sprite 'name' 1:1 with its top-left at x, y, w px wide:
+  // columns 0..a-1, column 'fill' repeated, then columns b..end.
+  stretchH(name, x, y, w, a, fill, b) {
+    const s = Assets.get(name); if (!s) return false;
+    const right = s.fw - b, left = Math.min(a, Math.max(0, w - right));
+    ctx.drawImage(s.img, 0, 0, left, s.fh, x, y, left, s.fh);
+    for (let xx = x + left; xx < x + w - right; xx++) ctx.drawImage(s.img, fill, 0, 1, s.fh, xx, y, 1, s.fh);
+    ctx.drawImage(s.img, b, 0, right, s.fh, x + w - right, y, right, s.fh);
+    return true;
+  },
   // a tennis ball centred on x, y (art/ball.png, 14 across): yellow felt with
   // its white seams, or red (c = PAL.bad) when it's in danger
   tennis(x, y, r, c = PAL.accent) { this.sprite('ball', x, y, { frame: c === PAL.bad ? 1 : 0 }); },
@@ -1955,6 +2017,7 @@ class CatchCoin extends Microgame {
 
 // 3. RUB — scrub the mud off a muddy shiba
 class RubClean extends Microgame {
+  static SY = 170;   // the shiba's centre: drawn 2x (70x74), sat on the bath mat
   static meta = { id: 'rub', env: 'bath', prompt: 'RUB!', hint: 'rub', duration: 3.6,
     how: 'RUB OFF\nALL THE MUD' };
   init() {
@@ -1962,8 +2025,8 @@ class RubClean extends Microgame {
     this.mud = [];
     const n = this.byD(6, 8, 10);
     for (let i = 0; i < n; i++) {
-      const a = Math.random() * 6.2832, d = Math.sqrt(Math.random()) * 38;
-      this.mud.push({ x: CX + Math.cos(a) * d * 1.1, y: CY + 4 + Math.sin(a) * d, r: 8 + Math.random() * 5, dirt: 1 });
+      const a = Math.random() * 6.2832, d = Math.sqrt(Math.random()) * 24;
+      this.mud.push({ x: CX + Math.cos(a) * d, y: RubClean.SY + 4 + Math.sin(a) * d, r: 8 + Math.random() * 5, dirt: 1 });
     }
     this.rate = this.byD(0.05, 0.04, 0.034);
     this.bubbles = []; this.squeak = 0;
@@ -1987,14 +2050,12 @@ class RubClean extends Microgame {
     const left = this.mud.filter(m => m.dirt > 0).length;
     // a floor and a bath mat to sit on, so the flat-cut paws rest on something
     g.rect(0, 204, W, BOT - 204, SCENE.grout); g.rect(0, 204, W, 2, SCENE.tileHi);
-    g.rect(CX - 50, 206, 100, 10, PAL.mid); for (let mx = CX - 46; mx < CX + 48; mx += 8) g.rect(mx, 216, 3, 3, PAL.mid);
-    g.sprite('shiba', CX, CY + 4, { w: 110, h: 116, frame: left === 0 ? 1 : 0 });
+    g.sprite('bathmat', CX, 213);   // art/bathmat.png
+    g.sprite('shiba', CX, RubClean.SY, { w: 70, h: 74, frame: left === 0 ? 1 : 0 });
     for (const m of this.mud) {
       if (m.dirt <= 0) continue;
       ctx.globalAlpha = Math.min(1, m.dirt + 0.15);
-      g.circle(m.x, m.y, m.r, PAL.mid);
-      g.circle(m.x + m.r * 0.5, m.y - m.r * 0.6, m.r * 0.45, PAL.mid);   // splat lobes
-      g.circle(m.x - m.r * 0.6, m.y + m.r * 0.4, m.r * 0.35, PAL.mid);
+      g.sprite('mud', m.x, m.y, { flip: this.mud.indexOf(m) % 2 === 1 });   // art/mud.png
       ctx.globalAlpha = 1;
     }
     for (const b of this.bubbles) {
@@ -2029,17 +2090,14 @@ class PullTissue extends Microgame {
     g.clear();
     // dispenser box mounted at the top
     const boxY = TOP + 14, boxH = 34;
-    g.rect(CX - 34, boxY, 68, boxH, PAL.mid);
-    g.rect(CX - 34, boxY, 68, 4, PAL.ink);
-    g.text('TISSUES', CX, boxY + 22, 8, PAL.bg);
-    // slot
-    g.rect(CX - 20, boxY + boxH - 3, 40, 3, PAL.bg);
     // the sheet hanging out of the slot — visibly slides down when pulled
+    // (art/tissue.png, its plain middle stretched to the length)
     const hang = 26 + this.sheetY * 34;
     const sheetTop = boxY + boxH - 2;
-    g.rect(CX - 16, sheetTop, 32, hang, PAL.ink);
-    g.rect(CX - 16, sheetTop, 32, hang, PAL.ink);
-    g.box(CX - 16, sheetTop, 32, hang, PAL.mid);
+    if (!g.stretchV('tissue', CX - 12, sheetTop, hang, 6, 20, 40)) {
+      g.rect(CX - 16, sheetTop, 32, hang, PAL.ink); g.box(CX - 16, sheetTop, 32, hang, PAL.mid);
+    }
+    g.sprite('tissuebox', CX, boxY + boxH / 2);   // art/tissuebox.png, over the sheet's top
     // your grab point + a pulsing DOWN arrow so the gesture is obvious
     const ay = sheetTop + hang + 8 + Math.sin(this.cue) * 3;
     g.line(CX, sheetTop + hang, CX, ay, PAL.accent, 2);
@@ -2399,8 +2457,7 @@ class DontTap extends Microgame {
   draw(g) {
     g.clear();
     // a cushion, a sleeping shiba, and the Zzz drifting up off it
-    g.rect(CX - 52, CY + 44, 104, 14, PAL.bad);
-    g.rect(CX - 46, CY + 40, 92, 6, PAL.bad);
+    g.sprite('cushion', CX, CY + 49);   // art/cushion.png
     // the calm eyes-shut face, head tipped onto the cushion, breathing slowly
     const breath = Math.sin(this.t * 3) * 2;
     ctx.save(); ctx.translate(CX - 4, CY + 10 - breath * 0.5); ctx.rotate(this.woke ? 0 : -0.35);
@@ -2505,7 +2562,7 @@ class FollowDot extends Microgame {
     const held = this.off === 0 && this.grace <= 0;
     // where your finger has to stay, and the laser dot itself
     ctx.globalAlpha = held ? 0.35 : 0.2; g.circle(this.x, this.y, this.r, held ? PAL.accent : PAL.mid); ctx.globalAlpha = 1;
-    g.circle(this.x, this.y, 6, PAL.bad); g.circle(this.x, this.y, 3, PAL.ink);
+    g.sprite('laser', this.x, this.y);   // art/laser.png
     if (this.off > 0 && this.grace <= 0) g.bar(30, BOT - 14, W - 60, 5, 1 - this.off / 0.42, PAL.bad, PAL.mid);
   }
 }
@@ -2812,7 +2869,9 @@ class CutRope extends Microgame {
   }
   draw(g) {
     g.clear();
-    g.rect(0, this.y0 - 4, W, 4, PAL.ink);       // the beam they hang from
+    const bm = Assets.get('beam');               // the beam they hang from (art/beam.png, tiled)
+    if (bm) for (let x = 0; x < W; x += bm.fw) ctx.drawImage(bm.img, x, this.y0 - 5);
+    else g.rect(0, this.y0 - 4, W, 4, PAL.ink);
     // the shiba, sat on the floor where the bone's swing turns
     const eat = this.falling.some(f => f.eaten);
     g.sprite('shiba', this.dogX, BOT - 22, { w: 40, h: 42, frame: eat ? 1 + Math.floor(this.t * 14) % 7 : 0 });
@@ -2889,6 +2948,7 @@ class Squeeze extends Microgame {
 
 // 20. BLOW — blow a big bubble (mic, or tap-fallback)
 class BlowSail extends Microgame {
+  static BUBBLES = [16, 24, 34, 44, 52, 66, 80, 94, 108];   // art/bubble.png's sizes, one per frame
   static meta = { id: 'blow', env: 'field@240', prompt: 'BLOW!', hint: 'blow', duration: 4.2, photo: true, photoCap: 'BIG BUBBLE!',
     how: { mic: 'BLOW INTO THE MIC\nBLOW A BIG BUBBLE', touch: 'TAP FAST\nTO BLOW A BUBBLE' } };
   init() {
@@ -2926,12 +2986,11 @@ class BlowSail extends Microgame {
     const k = Math.min(1, this.fill / this.need);
     // the wand, and the bubble swelling off its ring
     const wx = CX - 30, wy = BOT - 40;
-    g.line(wx - 26, wy + 26, wx - 6, wy + 6, PAL.mid, 3);
-    ctx.strokeStyle = PAL.mid; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(wx, wy, 8, 0, 6.2832); ctx.stroke();
+    g.sprite('wand', wx - 9, wy + 10);   // art/wand.png: its ring on wx, wy
+    // the bubble (art/bubble.png) at the nearest of its nine sizes, 1:1
     const r = 8 + k * 46, bx = wx + r * 0.75, by = wy - r * 0.75;
-    ctx.globalAlpha = 0.18; g.circle(bx, by, r, PAL.ink); ctx.globalAlpha = 1;
-    ctx.strokeStyle = PAL.ink; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(bx, by, r, 0, 6.2832); ctx.stroke();
-    ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(bx, by, r * 0.7, -2.4, -1.7); ctx.stroke();   // the shine
+    const D = BlowSail.BUBBLES; let f = 0; for (let i = 1; i < D.length; i++) if (Math.abs(D[i] - 2 * r) < Math.abs(D[f] - 2 * r)) f = i;
+    ctx.globalAlpha = 0.9; g.sprite('bubble', bx, by, { frame: f }); ctx.globalAlpha = 1;
     // a shiba watching it grow, more delighted the bigger it gets
     if (Input.micReady) g.text('BLOW!', CX, TOP + 24, 9, PAL.mid);
     else g.text('TAP FAST TO BLOW', CX, TOP + 24, 7, PAL.mid);
@@ -3145,12 +3204,14 @@ class Flappy extends Microgame {
   draw(g) {
     g.clear();
     for (const p of this.pipes) {
-      g.rect(p.x - this.pipeW / 2, TOP, this.pipeW, p.cy - this.gap / 2 - TOP, PAL.bad);
-      g.rect(p.x - this.pipeW / 2, p.cy + this.gap / 2, this.pipeW, BOT - (p.cy + this.gap / 2), PAL.bad);
-      g.rect(p.x - this.pipeW / 2 - 3, p.cy - this.gap / 2 - 6, this.pipeW + 6, 6, PAL.bad);   // caps
-      g.rect(p.x - this.pipeW / 2 - 3, p.cy + this.gap / 2, this.pipeW + 6, 6, PAL.bad);
-      g.rect(p.x - this.pipeW / 2 + 2, TOP, 2, p.cy - this.gap / 2 - TOP - 6, PAL.mid);          // shine
-      g.rect(p.x - this.pipeW / 2 + 2, p.cy + this.gap / 2 + 6, 2, BOT - (p.cy + this.gap / 2) - 6, PAL.mid);
+      const x0 = Math.round(p.x) - 9, gt = p.cy - this.gap / 2, gb = p.cy + this.gap / 2;
+      if (Assets.get('pipe')) {
+        g.stretchV('pipe', x0, gb, BOT - gb, 9, 20, 52);
+        ctx.save(); ctx.translate(0, gt); ctx.scale(1, -1); g.stretchV('pipe', x0, 0, gt - TOP, 9, 20, 52); ctx.restore();
+        continue;
+      }
+      g.rect(p.x - this.pipeW / 2, TOP, this.pipeW, gt - TOP, PAL.bad);
+      g.rect(p.x - this.pipeW / 2, gb, this.pipeW, BOT - gb, PAL.bad);
     }
     g.sprite('plane', this.bx, this.y, { w: this.planeW, h: this.planeH, frame: Math.floor(this.t * 16) % 9 });
     for (let i = 0; i < this.need; i++) g.rect(CX - this.need * 4 + i * 8, TOP + 4, 5, 5, i < this.passed ? PAL.accent : PAL.mid);
@@ -3243,7 +3304,13 @@ class Doodle extends Microgame {
   }
   draw(g) {
     g.clear();
-    for (const p of this.plats) g.rect(p.x - this.pw / 2, p.y, this.pw, 4, p.used ? PAL.mid : PAL.accent);
+    const pa = Assets.get('platform'), hl = Math.ceil(this.pw / 2), hr = this.pw - hl;
+    for (const p of this.plats) {
+      if (!pa) { g.rect(p.x - this.pw / 2, p.y, this.pw, 4, p.used ? PAL.mid : PAL.accent); continue; }
+      const f = p.used ? pa.fw : 0, x0 = Math.round(p.x - this.pw / 2), y0 = Math.round(p.y) - 1;
+      ctx.drawImage(pa.img, f, 0, hl, pa.fh, x0, y0, hl, pa.fh);
+      ctx.drawImage(pa.img, f + pa.fw - hr, 0, hr, pa.fh, x0 + hl, y0, hr, pa.fh);
+    }
     // jump sprite keyed to velocity: stretched tall (8) rising, crouched (0)
     // landing, mid frames in between for the transition
     const fr = Math.max(0, Math.min(8, Math.round(4 - this.vy / 55)));
@@ -3531,7 +3598,7 @@ class KnockStack extends Microgame {
     g.clear();
     const ox = this.ox, oy = this.oy, gy = this.groundY;
     // the stone slab the tower stands on
-    g.rect(this.baseX - 13, gy - 3, 26, 5, SCENE.stoneLo); g.rect(this.baseX - 13, gy - 3, 26, 1, SCENE.stone);
+    g.sprite('slab', this.baseX, gy);   // art/slab.png
     // crates and the bone, tumbling as they go
     for (const b of this.blocks) {
       if (b.gone) continue;
@@ -3616,8 +3683,7 @@ class MoveCam extends Microgame {
     // the race lane, and the finish flag waiting at the far end
     for (let x = 22; x < W - 26; x += 8) g.rect(x, gy + 10, 4, 1, PAL.ink);
     const fx = W - 18, fy = gy + 10;   // the flag stands on the lane, like the runner
-    g.rect(fx, fy - 34, 2, 34, PAL.bg);
-    for (let r = 0; r < 3; r++) for (let c = 0; c < 4; c++) g.rect(fx + 2 + c * 4, fy - 34 + r * 4, 4, 4, (r + c) % 2 ? PAL.bg : PAL.ink);
+    g.sprite('finish', fx + 10, fy - 22);   // art/finish.png, its foot on the lane
     // dust behind its paws, speed lines when it's flat out
     for (const d of this.dust) { ctx.globalAlpha = 1 - d.t / 0.4; g.rect(d.x, d.y, 3, 3, PAL.mid); ctx.globalAlpha = 1; }
     const rx = this.runX();
@@ -3841,8 +3907,9 @@ class FreezeStatue extends Microgame {
     g.clear();
     if (this.paused) { g.text('ALLOW CAMERA…', CX, CY - 6, 11, PAL.ink); g.text('(then hold still)', CX, CY + 12, 7, PAL.mid); return; }
     // a round dog bed on the bedroom floor
-    ctx.fillStyle = SCENE.trunk; ctx.beginPath(); ctx.ellipse(CX, 222, 56, 16, 0, 0, 6.2832); ctx.fill();
-    ctx.fillStyle = PAL.bad; ctx.beginPath(); ctx.ellipse(CX, 220, 46, 10, 0, 0, 6.2832); ctx.fill();
+    if (!g.stretchH('bigbed', CX - 56, 222 - 24, 112, 42, 42, 43)) {   // art/bigbed.png
+      ctx.fillStyle = PAL.bad; ctx.beginPath(); ctx.ellipse(CX, 220, 46, 10, 0, 0, 6.2832); ctx.fill();
+    }
     // the sleeper: both eyes shut, breathing slowly; it twitches and peeks
     // one eye open when you move, and is wide awake once you've woken it
     const j = (Math.random() - 0.5) * this.wob * 6;
@@ -4043,8 +4110,7 @@ class HideLens extends Microgame {
     // it, ducked and relieved once you've covered the lens (gone dark)
     const hidFr = this.dark ? (5 + Math.floor(this.t * 6) % 4) : (Math.floor(this.t * 8) % 5);
     g.sprite('hidedog', CX, BOT - 50, { w: 52, h: 52, frame: hidFr });
-    g.rect(CX - 30, BOT - 40, 60, 18, PAL.mid);
-    g.box(CX - 30, BOT - 40, 60, 18, PAL.ink);
+    g.sprite('longcrate', CX, BOT - 31);   // art/longcrate.png
     // the darkness the lens is actually seeing, painted over everything
     if (this.cover > 0.02) { ctx.globalAlpha = Math.min(0.92, this.cover); g.clear(PAL.bg); ctx.globalAlpha = 1; }
     g.text(this.settle > 0 ? 'GET READY…' : (Input.camReady ? 'COVER THE CAMERA!' : 'HOLD THE SCREEN!'), CX, TOP + 26, 9, this.dark ? PAL.accent : PAL.ink);
@@ -4108,8 +4174,7 @@ class HeadBang extends Microgame {
     for (const sx of [6, W - 34]) {
       for (let k = 0; k < 2; k++) {
         const sy = BOT - 92 + k * 34;
-        g.rect(sx, sy, 28, 32, PAL.ink); g.rect(sx + 1, sy + 1, 26, 30, PAL.bg);
-        g.circle(sx + 14, sy + 16, 10 + (lit ? 1 : 0), PAL.mid); g.circle(sx + 14, sy + 16, 4, PAL.bg);
+        g.sprite('speaker', sx + 14, sy + 17 - (lit ? 1 : 0));   // art/speaker.png, kicking on the beat
       }
       // a VU meter on top of each stack: how hard you're rocking, live
       const on = Math.round(Math.min(1, this.pow / 0.4) * 8);
@@ -4117,15 +4182,17 @@ class HeadBang extends Microgame {
     }
     // the rocker: the shiba headbanging as hard as you are
     const nod = Math.abs(Math.sin(this.ph)), hy = CY - 18 + nod * 12 * m, rot = Math.sin(this.ph) * 0.25 * m;
-    g.line(CX, CY + 18, CX, BOT - 40, PAL.mid, 2); g.rect(CX - 10, BOT - 41, 20, 2, PAL.mid);   // mic stand
-    g.cRect(CX, CY + 12, 8, 10, PAL.mid);                                                          // the mic, just under the chin
+    if (!g.stretchV('micstand', CX - 14, CY + 4, BOT - 38 - CY - 4, 40, 50, 60)) {   // art/micstand.png, the mic under the chin
+      g.line(CX, CY + 18, CX, BOT - 40, PAL.mid, 2); g.cRect(CX, CY + 12, 8, 10, PAL.mid);
+    }
     ctx.save(); ctx.translate(CX, hy); ctx.rotate(rot);
     g.sprite('face', 0, 0, { w: 48, h: 48, frame: m > 0.4 ? 1 : 0 });
     ctx.restore();
     // the crowd's paws going up when you rock
     for (let k = 0; k < 7; k++) {
       const px = 18 + k * 24, up = Math.max(0, Math.sin(this.ph + k * 1.3)) * 10 * m;
-      g.rect(px - 3, BOT - 26 - up, 6, 26 + up, PAL.mid); g.circle(px, BOT - 27 - up, 5, PAL.ink);
+      // (art/crowdarm.png: the paw, then its plain arm repeated down to the floor)
+      if (!g.stretchV('crowdarm', px - 7, BOT - 32 - up, 32 + up, 14, 20, 40)) { g.rect(px - 3, BOT - 26 - up, 6, 26 + up, PAL.mid); g.circle(px, BOT - 27 - up, 5, PAL.ink); }
     }
     // the ROCK meter
     g.text('ROCK', 24, TOP + 26, 8, PAL.accent, 'left');
@@ -4191,19 +4258,19 @@ class RedLight extends Microgame {
     const lit = red ? PAL.bad : amber ? PAL.accent : PAL.accent;
     // the lamp, three bulbs with one of them on, on a pole that stands in the field
     const LX = W - 30;
-    g.rect(LX - 2, TOP + 68, 4, 214 - TOP - 68, PAL.mid);
-    g.rect(LX - 13, TOP + 8, 26, 60, PAL.mid);
-    g.circle(LX, TOP + 20, 8, red ? PAL.bad : PAL.bg);
-    g.circle(LX, TOP + 38, 8, amber ? PAL.accent : PAL.bg);
-    g.circle(LX, TOP + 56, 8, this.light === 'green' ? PAL.ink : PAL.bg);
+    // (art/trafficlight.png: red, amber, green lit; rows 54+ are the pole)
+    if (!g.stretchV('trafficlight', LX - 9, TOP + 8, 214 - TOP - 8, 54, 58, 62, red ? 0 : amber ? 1 : 2)) {
+      g.rect(LX - 2, TOP + 68, 4, 214 - TOP - 68, PAL.mid); g.rect(LX - 13, TOP + 8, 26, 60, PAL.mid);
+    }
     // the shiba doll spins like SQUID: back turned on green (go), mid-spin on
     // amber, facing you on red (watching) — facedir frames 4=back, 2=profile, 0=front
     const bob = red ? 0 : Math.abs(Math.sin(this.t * 12)) * 4;   // bounces on green
     const df = red ? 0 : amber ? 2 : 4;
     g.sprite('facedir', CX - 10, 190 + bob, { w: 72, h: 72, frame: df });
     // it peeks over a hedge, so it's sitting in the field rather than floating over it
-    g.rect(0, 216, W, 12, SCENE.leaf);
-    ctx.fillStyle = SCENE.leaf; for (let hx = 6; hx < W; hx += 14) { ctx.beginPath(); ctx.arc(hx, 217, 8, Math.PI, 0); ctx.fill(); }
+    const hd = Assets.get('hedge');   // art/hedge.png, tiled
+    if (hd) { g.rect(0, 222, W, 4, SCENE.leaf); for (let hx = 0; hx < W; hx += hd.fw) ctx.drawImage(hd.img, hx, 211); }
+    else { g.rect(0, 216, W, 12, SCENE.leaf); ctx.fillStyle = SCENE.leaf; for (let hx = 6; hx < W; hx += 14) { ctx.beginPath(); ctx.arc(hx, 217, 8, Math.PI, 0); ctx.fill(); } }
     g.rect(0, 226, W, 2, SCENE.grassLo);
     g.text(red ? 'FREEZE!' : amber ? 'ABOUT TO STOP…' : 'TAP! TAP! TAP!', CX - 10, 128, red ? 12 : 10, lit);
     // progress, and how close being caught is
@@ -4311,10 +4378,11 @@ class BalanceBall extends Microgame {
     g.clear();
     const near = Math.abs(this.pos) > 0.7;
     // a stand from the grass (horizon at 200) up to the pivot, so the seesaw isn't hanging in the air
-    g.rect(CX - 3, CY + 6, 6, 200 - CY - 2, PAL.mid); g.rect(CX - 12, 200, 24, 4, PAL.mid);
+    if (!g.stretchV('stand', CX - 11, CY + 4, 204 - CY - 4, 20, 30, 40)) { g.rect(CX - 3, CY + 6, 6, 200 - CY - 2, PAL.mid); g.rect(CX - 12, 200, 24, 4, PAL.mid); }
     ctx.save(); ctx.translate(CX, CY + 6); ctx.rotate(this.tilt * 0.5);
-    g.rect(-this.half, -2, this.half * 2, 4, PAL.mid);       // plank
-    g.rect(-5, 1, 10, 4, PAL.mid);                           // pivot
+    const pk = Assets.get('plank');   // art/plank.png, its middle 2 x half
+    if (pk) ctx.drawImage(pk.img, Math.floor((pk.fw - this.half * 2) / 2), 0, this.half * 2, pk.fh, -this.half, -2, this.half * 2, pk.fh);
+    else g.rect(-this.half, -2, this.half * 2, 4, PAL.mid);
     const bx = this.pos * this.half;
     g.sprite('face', bx, -12, { w: 20, h: 20, frame: Math.floor(this.t * 8) % 3 });
     ctx.restore();
@@ -4359,18 +4427,21 @@ class PourCup extends Microgame {
     const t = Input.tiltReady ? Input.tiltX : (Input.down ? 0.6 : 0);
     const tip = Math.max(-1, Math.min(1, t)) * 0.7;
     ctx.save(); ctx.translate(CX - 4, TOP + 46); ctx.rotate(tip);
-    g.rect(-11, -16, 22, 30, PAL.mid); g.rect(-8, -22, 10, 7, PAL.mid); g.rect(10, -10, 5, 14, PAL.mid);   // jug, spout, handle
-    g.rect(-9, -4, 18, 16, PAL.ink);                                                                       // water inside
+    g.sprite('jug', 1, -4);   // art/jug.png, its spout up on the left
     ctx.restore();
-    const cw = 52, ch = 66, cx0 = CX - cw / 2, cy0 = BOT - ch - 8;
+    // the inside of the jar's glass: cw x ch, its bottom at cy0 + ch
+    const cw = 26, ch = 66, cx0 = CX - cw / 2, cy0 = BOT - ch - 22;
     if (this.pouring) { ctx.globalAlpha = 0.8; g.rect(CX - 2, TOP + 56, 3, cy0 + ch - this.fill * ch - TOP - 56, PAL.ink); ctx.globalAlpha = 1; }
     // the dog's water bowl (tall, so the line is easy to see) and the shiba waiting by it
-    g.rect(cx0 - 4, cy0 - 3, cw + 8, 4, PAL.bad);                   // rim
-    g.rect(cx0, cy0, 3, ch, PAL.bad); g.rect(cx0 + cw - 3, cy0, 3, ch, PAL.bad); g.rect(cx0, cy0 + ch - 3, cw, 3, PAL.bad);
-    g.rect(cx0 + 3, cy0 + ch - 3 - this.fill * (ch - 6), cw - 6, this.fill * (ch - 6), inBand ? PAL.accent : PAL.ink);
+    // (art/jar.png: glass rows 9-47 inside, row 20 repeated to make it ch tall)
+    if (!g.stretchV('jar', cx0 - 6, cy0 - 9, ch + 24, 20, 20, 39)) {
+      g.rect(cx0 - 4, cy0 - 3, cw + 8, 4, PAL.bad);
+      g.rect(cx0, cy0, 3, ch, PAL.bad); g.rect(cx0 + cw - 3, cy0, 3, ch, PAL.bad);
+    }
+    ctx.globalAlpha = 0.85; g.rect(cx0, cy0 + ch - this.fill * ch, cw, this.fill * ch, inBand ? PAL.accent : '#4f9fe0'); ctx.globalAlpha = 1;
     g.line(cx0 - 6, cy0 + ch - this.lo * ch, cx0 + cw + 6, cy0 + ch - this.lo * ch, PAL.accent, 1);
     g.line(cx0 - 6, cy0 + ch - this.hi * ch, cx0 + cw + 6, cy0 + ch - this.hi * ch, PAL.accent, 1);
-    g.sprite('shiba', cx0 - 26, BOT - 20, { w: 36, h: 38, frame: inBand ? 1 : 0 });   // sat on the floor by its bowl, clear of the mascot's corner
+    g.sprite('shiba', CX - 52, BOT - 20, { w: 36, h: 38, frame: inBand ? 1 : 0 });   // sat on the floor by its bowl, clear of the mascot's corner
     const msg = this.fill > 0.92 ? 'STOP!'
               : (inBand && !this.pouring) ? 'HOLD STEADY!'
               : inBand ? 'LEVEL OFF!'
@@ -4429,12 +4500,11 @@ class SteerRun extends Microgame {
     for (const s of this.snow) g.rect(s.x, s.y, 2, 2, PAL.mid);
     for (const gt of this.gates) {
       const l = gt.x - this.gap / 2, r = gt.x + this.gap / 2;
-      g.rect(l - 1, gt.y - 14, 2, 18, PAL.ink); g.rect(r - 1, gt.y - 14, 2, 18, PAL.ink);   // poles
-      g.rect(l + 1, gt.y - 14, 9, 6, PAL.accent); g.rect(r - 10, gt.y - 14, 9, 6, PAL.bad); // flags
+      g.sprite('gate', l + 4, gt.y - 6, { frame: 0 }); g.sprite('gate', r - 3, gt.y - 6, { frame: 1 });   // poles, flags inward
     }
     for (const p of this.spray) { ctx.globalAlpha = 1 - p.t / 0.3; g.rect(p.x, p.y, 2, 2, PAL.ink); ctx.globalAlpha = 1; }
     // the sled under the shiba, leaning into the turn
-    g.rect(this.px - 10, this.runY + 6, 20, 5, PAL.bad); g.rect(this.px - 12, this.runY + 11, 24, 2, PAL.ink);
+    g.sprite('sled', this.px, this.runY + 8);   // art/sled.png
     g.sprite('hero', this.px, this.runY - 2, { w: 22, h: 27, frame: 0 });
     for (let i = 0; i < this.need; i++) g.rect(W - 8 - i * 8, TOP + 4, 5, 5, i < this.passed ? PAL.accent : PAL.mid);
     g.outline(Input.tiltReady ? 'TILT TO STEER' : 'DRAG TO STEER', CX, TOP + 22, 8, TEXT_MID);   // rimmed: the gates scroll right through this line
@@ -4470,14 +4540,20 @@ class BlowCandles extends Microgame {
     g.clear();
     if (this.paused) { g.text('ALLOW MIC…', CX, CY - 6, 12, PAL.ink); g.text('(then blow)', CX, CY + 12, 7, PAL.mid); return; }
     const cw = 34 + this.n * 14, cx0 = CX - cw / 2, cakeY = BOT - 34;
-    g.rect(cx0, cakeY, cw, 24, PAL.accent); g.rect(cx0, cakeY - 3, cw, 3, PAL.ink);
+    // the cake (art/cake.png, 58 wide): its two ends, and its middle (cols
+    // 20-39) repeated between them to the width the candles need
+    const ck = Assets.get('cake'), ctop = cakeY - 6;
+    if (ck) {
+      ctx.drawImage(ck.img, 0, 0, 20, 32, cx0, ctop, 20, 32);
+      for (let x = 20; x < cw - 18; x += 20) { const w = Math.min(20, cw - 18 - x); ctx.drawImage(ck.img, 20, 0, w, 32, cx0 + x, ctop, w, 32); }
+      ctx.drawImage(ck.img, 40, 0, 18, 32, cx0 + cw - 18, ctop, 18, 32);
+    } else { g.rect(cx0, cakeY, cw, 24, PAL.accent); g.rect(cx0, cakeY - 3, cw, 3, PAL.ink); }
     for (let i = 0; i < this.n; i++) {
       const x = cx0 + (i + 0.5) * cw / this.n, top = cakeY - 20;
-      g.rect(x - 1, top, 2, 18, PAL.mid);                   // candle
-      if (this.lit[i] > 0) {                                // flame flickers while lit
-        const f = 3 + Math.sin(this.t * 20 + i) * this.lit[i];
-        g.circle(x, top - 3, Math.max(1, f * this.lit[i]), PAL.bad);
-      } else { for (let k = 0; k < 3; k++) g.rect(x, top - 5 - k * 3, 1, 2, PAL.mid); }  // smoke
+      // a candle (art/candle.png: lit, out), its wax top at top; a dying flame flickers
+      const lit = this.lit[i] > 0 && (this.lit[i] > 0.6 || Math.floor(this.t * 16 + i) % 2);
+      g.sprite('candle', x, top - 7 + 12.5, { frame: lit ? 0 : 1 });
+      if (this.lit[i] <= 0) for (let k = 0; k < 3; k++) g.rect(x, top - 9 - k * 3, 1, 2, PAL.mid);  // smoke
     }
     g.text(Input.micReady ? 'BLOW THEM OUT!' : 'TAP FAST!', CX, TOP + 24, 9, PAL.mid);
     const out = this.lit.filter(l => l <= 0).length;
@@ -4525,20 +4601,18 @@ class Dandelion extends Microgame {
   draw(g) {
     g.clear();
     // the stem, a couple of leaves at its foot, and the seed head
-    g.line(CX, CY - 8, CX + 2, BOT - 16, SCENE.stem, 3);
-    g.rect(CX - 12, BOT - 24, 12, 3, SCENE.stem); g.rect(CX + 3, BOT - 30, 11, 3, SCENE.stem);
-    g.circle(CX, CY - 8, 4, SCENE.stem);
+    if (!g.stretchV('dandelion', CX - 12, CY - 15, BOT - 16 - (CY - 15), 40, 40, 41)) {
+      g.line(CX, CY - 8, CX + 2, BOT - 16, SCENE.stem, 3);
+      g.circle(CX, CY - 8, 4, SCENE.stem);
+    }
     for (const s of this.seeds) {
       if (s.gone && s.t > 0.9) continue;
       ctx.globalAlpha = s.gone ? Math.max(0, 1 - s.t / 0.9) : 1;
       if (!s.gone) g.line(CX, CY - 8, s.x, s.y, s === this.held ? PAL.accent : PAL.ink, 1);   // the stalk stretches as you pull
       // the seed's fluffy parachute: little white spokes round a dot
+      // (art/seed.png), spinning once it's off
       const sp = s.gone ? s.t * s.spin : 0;
-      for (let k = 0; k < 5; k++) {
-        const a = sp + k * 1.2566;
-        g.line(s.x, s.y, s.x + Math.cos(a) * 4, s.y + Math.sin(a) * 4, PAL.ink, 1);
-      }
-      g.circle(s.x, s.y, 1.5, PAL.ink);
+      ctx.save(); ctx.translate(s.x, s.y); ctx.rotate(sp); g.sprite('seed', 0, 0); ctx.restore();
       ctx.globalAlpha = 1;
     }
     g.text('DRAG THE SEEDS OFF!', CX - 14, TOP + 24, 9, PAL.ink);   // clear of the sun
@@ -4638,7 +4712,7 @@ class StackBlocks extends Microgame {
   draw(g) {
     g.clear();
     // a cushion on the floor, dead centre, so the first one has a clear target
-    g.rect(this.baseX - 26, this.stackY - 6, 52, 6, PAL.bad); g.rect(this.baseX - 22, this.stackY - 8, 44, 2, PAL.bad);
+    g.sprite('cushion52', this.baseX, this.stackY - 4);   // art/cushion52.png
     // the tower, bottom up, so each one sits in front of the one it's on
     const cheer = this.result === 'win';
     for (let i = 0; i < this.done; i++) {
@@ -4700,11 +4774,10 @@ class SortTreats extends Microgame {
     const dx = this.dogSide === 'left' ? 30 : W - 30, bx = W - dx;
     // the shiba behind its bowl
     g.sprite('face', dx, CY + 4, { w: 44, h: 45, frame: Math.floor(this.t * 6) % 3 });
-    g.rect(dx - 20, CY + 28, 40, 8, PAL.bad); g.rect(dx - 16, CY + 36, 32, 4, PAL.bad);
+    g.sprite('bowl', dx, CY + 36);   // art/bowl.png
     g.text('DOG', dx, CY - 26, 8, PAL.accent);
     // the bin
-    g.rect(bx - 15, CY + 2, 30, 38, PAL.mid); g.rect(bx - 18, CY - 2, 36, 5, PAL.ink); g.rect(bx - 4, CY - 6, 8, 4, PAL.ink);
-    for (let i = -1; i <= 1; i++) g.rect(bx + i * 8 - 1, CY + 9, 2, 26, PAL.bg);
+    g.sprite('bin', bx, CY + 17);   // art/bin.png
     g.text('BIN', bx, CY - 26, 8, PAL.ink);
     // the treat in the middle
     const s = 1 + this.pop * 1.5;
@@ -4815,9 +4888,10 @@ class BeachDig extends Microgame {
     g.clear();
     const k = Math.min(1, this.dug / this.need), rw = 12 + k * 18, rh = 6 + k * 8;
     // the sand pile thrown up behind the dog, and the hole getting deeper
-    ctx.fillStyle = SCENE.sandLo; ctx.beginPath(); ctx.ellipse(this.hx + 30, this.hy + 6, 8 + k * 12, 4 + k * 6, 0, 0, 6.2832); ctx.fill();
-    ctx.fillStyle = SCENE.wetSand; ctx.beginPath(); ctx.ellipse(this.hx, this.hy, rw + 3, rh + 2, 0, 0, 6.2832); ctx.fill();
-    ctx.fillStyle = SCENE.trunk; ctx.beginPath(); ctx.ellipse(this.hx, this.hy + 1, rw, rh, 0, 0, 6.2832); ctx.fill();
+    // (art/sandpile.png, art/hole.png: the nearest size, 1:1)
+    const near = (ws, w) => ws.reduce((b, v, i) => Math.abs(v - w) < Math.abs(ws[b] - w) ? i : b, 0);
+    g.sprite('sandpile', this.hx + 30, this.hy + 10 - 12, { frame: near([17, 26, 40], 2 * (8 + k * 12)) });
+    g.sprite('hole', this.hx, this.hy + 1, { frame: near([30, 42, 54, 48], 2 * (rw + 3)) });
     if (this.dug === 0) { g.line(this.hx - 7, this.hy - 7, this.hx + 7, this.hy + 7, PAL.bad, 3); g.line(this.hx + 7, this.hy - 7, this.hx - 7, this.hy + 7, PAL.bad, 3); }   // X marks the spot
     if (this.found > 0) {                                       // the bone rises out of the hole
       const up = Math.min(1, this.found / 0.25) * 16;
@@ -4862,8 +4936,9 @@ class WakeUp extends Microgame {
     if (this.paused) { g.text('ALLOW MIC…', CX, CY - 6, 11, PAL.ink); g.text('(then shout!)', CX, CY + 12, 7, PAL.mid); return; }
     const k = Math.min(1, this.fill / this.need), stir = k > 0.33, awake = this.woke > 0;
     // a huge dog bed across the floor
-    ctx.fillStyle = SCENE.trunk; ctx.beginPath(); ctx.ellipse(CX, 240, 84, 22, 0, 0, 6.2832); ctx.fill();
-    ctx.fillStyle = PAL.bad; ctx.beginPath(); ctx.ellipse(CX, 237, 72, 14, 0, 0, 6.2832); ctx.fill();
+    if (!g.stretchH('bigbed', CX - 84, 240 - 22, 168, 42, 42, 43)) {   // art/bigbed.png
+      ctx.fillStyle = PAL.bad; ctx.beginPath(); ctx.ellipse(CX, 237, 72, 14, 0, 0, 6.2832); ctx.fill();
+    }
     const breath = Math.sin(this.t * 2.2) * 3, j = (Math.random() - 0.5) * k * 8;
     const jump = awake ? -Math.sin(Math.min(1, this.woke / 0.3) * Math.PI) * 26 : 0;
     ctx.save();
@@ -4920,7 +4995,7 @@ class BathTime extends Microgame {
   // the tub (art/tub.png): white enamel, a rim with the water in it, little
   // feet; its rim's top at y - 4, x 24..156 (DRY OFF sits in it too)
   static tub(y) { g.sprite('tub', CX, y + 28); }
-  bubble(x, y, r) { g.circle(x, y, r + 1, PAL.mid); g.circle(x, y, r, PAL.ink); g.circle(x - r * 0.35, y - r * 0.35, Math.max(1, r * 0.22), SCENE.dayCloud); }
+  bubble(x, y, r) { g.sprite('suds', x, y, { frame: r < 8 ? 0 : 1 }); }   // art/suds.png: small, big
   draw(g) {
     g.clear();
     const j = (Math.random() - 0.5) * Input.shake * 8, clean = this.done > 0;
@@ -4929,7 +5004,7 @@ class BathTime extends Microgame {
     BathTime.tub(178);
     // a rubber duck riding the bath
     const dx = 120 + Math.sin(this.t * 2) * 6;
-    g.circle(dx, 176, 6, PAL.accent); g.circle(dx + 5, 170, 4, PAL.accent); g.rect(dx + 8, 169, 4, 2, PAL.bad); g.rect(dx + 5, 168, 1, 1, PAL.bg);
+    g.sprite('duck', dx + 3, 172);   // art/duck.png
     for (const s of this.suds) this.bubble(s.x + j * 0.5, s.y, s.r);
     for (const f of this.flying) { ctx.globalAlpha = 1 - f.t / 0.8; this.bubble(f.x, f.y, f.r); ctx.globalAlpha = 1; }
     g.text(clean ? 'SQUEAKY CLEAN!' : 'SHAKE!', CX, TOP + 26, 11, PAL.accent);
@@ -5122,9 +5197,11 @@ class BarkJump extends Microgame {
     for (const o of this.obs) {
       if (o.x < -14) continue;
       const top = this.ground - o.h;
-      g.rect(o.x - 8, top, 3, o.h, PAL.bg); g.rect(o.x + 5, top, 3, o.h, PAL.bg);
-      for (let i = 0; i < 4; i++) g.rect(o.x - 8 + i * 4, top, 4, 6, i % 2 ? PAL.bad : PAL.ink);
-      if (o.tall) { g.rect(o.x + 6, top - 10, 1, 10, PAL.bg); g.rect(o.x + 7, top - 10, 6, 5, PAL.bad); }
+      if (o.tall) g.sprite('gate', o.x + 10, top - 9, { frame: 1, flip: true });   // its red flag
+      if (!g.stretchV('hurdle', Math.round(o.x) - 8, top, o.h, 7, 12, 22)) {
+        g.rect(o.x - 8, top, 3, o.h, PAL.bg); g.rect(o.x + 5, top, 3, o.h, PAL.bg);
+        for (let i = 0; i < 4; i++) g.rect(o.x - 8 + i * 4, top, 4, 6, i % 2 ? PAL.bad : PAL.ink);
+      }
     }
     const drawY = this.ground - this.dogH / 2 - this.y;
     if (this.onGround) g.sprite('swiperight', this.px, drawY, { w: this.dogW * 2, h: this.dogH * 2, frame: Math.floor(this.legT * 14) % 9 });
@@ -5269,15 +5346,16 @@ class YesNo extends Microgame {
     else if (kind === 'ball') g.tennis(x, y, 8);
     else if (kind === 'choc') g.choc(x, y, 22);
     else if (kind === 'paw') g.paw(x, y, 20, PAL.bad);
-    else if (kind === 'tub') { g.rect(x - 12, y - 3, 24, 10, PAL.mid); g.rect(x - 14, y - 5, 28, 3, PAL.mid); for (let i = 0; i < 3; i++) g.circle(x - 7 + i * 7, y - 7, 3, SCENE.dayCloud); }
-    else { g.rect(x - 3, y - 10, 6, 20, PAL.bad); g.rect(x - 10, y - 3, 20, 6, PAL.bad); }   // a first-aid cross
+    else if (kind === 'tub') g.sprite('duck', x, y);     // bath time: the rubber duck
+    else g.sprite('firstaid', x, y);                       // the vet: a first-aid kit
   }
   draw(g) {
     g.clear();
     if (this.paused) { g.text('ALLOW CAMERA…', CX, CY - 6, 11, PAL.ink); g.text('(then nod or shake)', CX, CY + 12, 7, PAL.mid); return; }
     // the question, in a speech bubble over the shiba's head
     const by = TOP + 30;
-    g.rect(CX - 62, by, 124, 50, PAL.ink); g.rect(CX - 6, by + 50, 12, 6, PAL.ink); g.rect(CX - 3, by + 56, 6, 4, PAL.ink);
+    if (Assets.get('speech')) g.sprite('speech', CX, by - 3 + 35);   // art/speech.png
+    else { g.rect(CX - 62, by, 124, 50, PAL.ink); g.rect(CX - 6, by + 50, 12, 6, PAL.ink); }
     this.icon(this.q[2], CX - 40, by + 25);
     g.text(this.q[0], CX + 14, by + 29, this.q[0].length > 9 ? 9 : 11, PAL.bg);
     // the shiba, head tilted, waiting; it beams or sulks at your answer
@@ -6887,20 +6965,27 @@ const Engine = {
   // The round clock as a lit fuse burning toward a bomb in the bottom-left
   // corner. The last quarter the bomb flashes red and the spark spits harder.
   drawFuse(pct) {
-    // the bomb sits wholly inside the shelf; a plain cord runs out from under it
-    // along the bottom and burns back toward it, a small spark at the tip
-    const bx = 12, by = H - 13, cy = H - 4, x0 = bx + 5, end = x0 + (W - x0 - 6) * pct, late = pct < 0.25;
+    // the bomb sits wholly inside the shelf. The cord leaves the tip of its fuse
+    // stub, runs right, drops to the bottom and along it, and burns back along
+    // that path, a small spark at its end, reaching the bomb as time runs out.
+    const bx = 12, by = H - 13, cy = H - 4, late = pct < 0.25;
     const t = this.time, hot = late && Math.floor(t * 8) % 2;
-    g.rect(x0, cy, end - x0, 2, TEXT_MID); g.rect(x0, by + 5, 2, cy - by - 5, TEXT_MID);   // drawn first, so the bomb covers where it goes in
-    for (let x = x0 + 6; x < end - 2; x += 4) g.rect(x, cy, 1, 1, PAL.ink);   // a twist every few pixels
-    g.sprite('bomb', bx + 1, by - 3, { frame: hot ? 1 : 0 });   // art/bomb.png: its body centred on bx, by; red when hot
+    g.sprite('bomb', bx + 1, by - 3, { frame: hot ? 1 : 0 });   // art/bomb.png: its body centred on bx, by; red when hot; stub tip at (14, H - 29)
+    const P = [[14, H - 29], [25, H - 29], [25, cy], [W - 6, cy]];
+    let left = (11 + (cy - H + 29) + (W - 31)) * pct, ex = P[0][0], ey = P[0][1];
+    for (let i = 1; i < P.length && left > 0; i++) {
+      const [ax, ay] = P[i - 1], [qx, qy] = P[i], len = Math.abs(qx - ax) + Math.abs(qy - ay), d = Math.min(len, left);
+      ex = ax + Math.sign(qx - ax) * d; ey = ay + Math.sign(qy - ay) * d; left -= d;
+      g.rect(Math.min(ax, ex), Math.min(ay, ey), Math.abs(ex - ax) + 2, Math.abs(ey - ay) + 2, TEXT_MID);
+      if (ay === qy && ay === cy) for (let x = ax + 6; x < ex - 2; x += 4) g.rect(x, cy, 1, 1, PAL.ink);   // a twist every few pixels
+    }
     // the spark: a flickering star, with a few bits jumping up off it
     const f = Math.floor(t * 20) % 2, r = late ? 3 : 2;
-    g.rect(end - r, cy, r * 2 + 1, 2, PAL.accent); g.rect(end - 1, cy - r + 1, 2, r * 2, PAL.accent);
-    g.rect(end, cy, 1, 1, f ? PAL.ink : PAL.bad);
+    g.rect(ex - r, ey, r * 2 + 1, 2, PAL.accent); g.rect(ex - 1, ey - r + 1, 2, r * 2, PAL.accent);
+    g.rect(ex, ey, 1, 1, f ? PAL.ink : PAL.bad);
     for (let i = 0; i < (late ? 5 : 3); i++) {
       const k = ((t * 3 + i * 0.37) % 1), a = i * 2.1 + t;
-      g.rect(end + Math.cos(a) * 5 * k, cy - 7 * k, 1, 1, i % 2 ? PAL.accent : PAL.bad);
+      g.rect(ex + Math.cos(a) * 5 * k, ey - 7 * k, 1, 1, i % 2 ? PAL.accent : PAL.bad);
     }
   },
 
