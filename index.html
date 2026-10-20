@@ -2185,11 +2185,12 @@ class SwipeArrow extends Microgame {
     const dirs = ['up', 'down', 'left', 'right'];
     this.seq = Array.from({ length: this.byD(1, 2, 3) }, () => dirs[Math.floor(Math.random() * 4)]);
     this.i = 0;
+    this.dirT = 0;   // when the current arrow came up
   }
   update(dt, input) {
     if (!input.swipe) return;
     if (input.swipe.dir === this.seq[this.i]) {
-      this.i++; Sfx.tick(); buzz(10); FX.burst(CX, CY, PAL.ink, 5, 40);
+      this.i++; this.dirT = this.t; Sfx.tick(); buzz(10); FX.burst(CX, CY, PAL.ink, 5, 40);
       if (this.i >= this.seq.length) this.succeed();
     } else { buzz(40); FX.shake(3); this.lose(); }
   }
@@ -2198,7 +2199,9 @@ class SwipeArrow extends Microgame {
     const d = this.seq[this.i];
     const ang = { up: -Math.PI / 2, down: Math.PI / 2, left: Math.PI, right: 0 }[d];
     const ux = Math.cos(ang), uy = Math.sin(ang);
-    const sy = d === 'down' ? 198 : 167;   // paws in the grass (horizon at 190); running at you, it stands well into it
+    // paws in the grass (horizon at 190); running at you, it walks down the grass
+    // toward you (paws from y 202 to 224), then keeps running in place there
+    const sy = d === 'down' ? Math.round(176 + Math.min(22, (this.t - this.dirT) * 16)) : 167;
     const reach = d === 'down' ? 50 : 62;  // the arrow's distance from the dog (down: just under its paws)
     // the shiba faces the way it wants you to swipe, one dedicated high-res
     // sprite per direction (running left/right, jumping up, running down).
