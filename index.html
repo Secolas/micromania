@@ -261,6 +261,17 @@ const Assets = {
     cactus:   { src: 'art/cactus.png',   fw: 22,  fh: 31,  frames: 1,  fps: 1  },
     bomb:     { src: 'art/bomb.png',     fw: 22,  fh: 26,  frames: 2,  fps: 1  },
     frisbee:  { src: 'art/frisbee.png',  fw: 28,  fh: 10,  frames: 1,  fps: 1  },
+    tissuebox:{ src: 'art/tissuebox.png', fw: 68, fh: 34,  frames: 1,  fps: 1  },
+    tissue:   { src: 'art/tissue.png',   fw: 24,  fh: 51,  frames: 1,  fps: 1  },
+    wand:     { src: 'art/wand.png',     fw: 28,  fh: 28,  frames: 1,  fps: 1  },
+    bubble:   { src: 'art/bubble.png',   fw: 108, fh: 108, frames: 9,  fps: 1  },
+    cake:     { src: 'art/cake.png',     fw: 58,  fh: 32,  frames: 1,  fps: 1  },
+    candle:   { src: 'art/candle.png',   fw: 4,   fh: 25,  frames: 2,  fps: 1  },
+    trafficlight: { src: 'art/trafficlight.png', fw: 19, fh: 62, frames: 3, fps: 1 },
+    jug:      { src: 'art/jug.png',      fw: 27,  fh: 36,  frames: 1,  fps: 1  },
+    jar:      { src: 'art/jar.png',      fw: 38,  fh: 63,  frames: 1,  fps: 1  },
+    seed:     { src: 'art/seed.png',     fw: 16,  fh: 14,  frames: 1,  fps: 1  },
+    dandelion:{ src: 'art/dandelion.png', fw: 25, fh: 104, frames: 1,  fps: 1  },
   },
   cache: {},
   load() {
@@ -1183,6 +1194,18 @@ const g = {
     const a = Assets.get('doghouse');
     this.sprite('doghouse', x, y - (a ? a.fh : s) / 2);
   },
+  // Sprite 'name' drawn 1:1 with its top-left at x, y, h px tall: rows 0..a-1
+  // as drawn, then row 'fill' repeated, then rows b..end at the bottom. For
+  // art whose middle is plain (a stem, a sheet, a glass wall) and whose height
+  // the game changes. Returns false when the art isn't loaded.
+  stretchV(name, x, y, h, a, fill, b, frame = 0) {
+    const s = Assets.get(name); if (!s) return false;
+    const sx = frame * s.fw, bot = s.fh - b, top = Math.min(a, Math.max(0, h - bot));
+    ctx.drawImage(s.img, sx, 0, s.fw, top, x, y, s.fw, top);
+    for (let yy = y + top; yy < y + h - bot; yy++) ctx.drawImage(s.img, sx, fill, s.fw, 1, x, yy, s.fw, 1);
+    ctx.drawImage(s.img, sx, b, s.fw, bot, x, y + h - bot, s.fw, bot);
+    return true;
+  },
   // a tennis ball centred on x, y (art/ball.png, 14 across): yellow felt with
   // its white seams, or red (c = PAL.bad) when it's in danger
   tennis(x, y, r, c = PAL.accent) { this.sprite('ball', x, y, { frame: c === PAL.bad ? 1 : 0 }); },
@@ -2029,17 +2052,14 @@ class PullTissue extends Microgame {
     g.clear();
     // dispenser box mounted at the top
     const boxY = TOP + 14, boxH = 34;
-    g.rect(CX - 34, boxY, 68, boxH, PAL.mid);
-    g.rect(CX - 34, boxY, 68, 4, PAL.ink);
-    g.text('TISSUES', CX, boxY + 22, 8, PAL.bg);
-    // slot
-    g.rect(CX - 20, boxY + boxH - 3, 40, 3, PAL.bg);
     // the sheet hanging out of the slot — visibly slides down when pulled
+    // (art/tissue.png, its plain middle stretched to the length)
     const hang = 26 + this.sheetY * 34;
     const sheetTop = boxY + boxH - 2;
-    g.rect(CX - 16, sheetTop, 32, hang, PAL.ink);
-    g.rect(CX - 16, sheetTop, 32, hang, PAL.ink);
-    g.box(CX - 16, sheetTop, 32, hang, PAL.mid);
+    if (!g.stretchV('tissue', CX - 12, sheetTop, hang, 6, 20, 40)) {
+      g.rect(CX - 16, sheetTop, 32, hang, PAL.ink); g.box(CX - 16, sheetTop, 32, hang, PAL.mid);
+    }
+    g.sprite('tissuebox', CX, boxY + boxH / 2);   // art/tissuebox.png, over the sheet's top
     // your grab point + a pulsing DOWN arrow so the gesture is obvious
     const ay = sheetTop + hang + 8 + Math.sin(this.cue) * 3;
     g.line(CX, sheetTop + hang, CX, ay, PAL.accent, 2);
@@ -2889,6 +2909,7 @@ class Squeeze extends Microgame {
 
 // 20. BLOW — blow a big bubble (mic, or tap-fallback)
 class BlowSail extends Microgame {
+  static BUBBLES = [16, 24, 34, 44, 52, 66, 80, 94, 108];   // art/bubble.png's sizes, one per frame
   static meta = { id: 'blow', env: 'field@240', prompt: 'BLOW!', hint: 'blow', duration: 4.2, photo: true, photoCap: 'BIG BUBBLE!',
     how: { mic: 'BLOW INTO THE MIC\nBLOW A BIG BUBBLE', touch: 'TAP FAST\nTO BLOW A BUBBLE' } };
   init() {
@@ -2926,12 +2947,11 @@ class BlowSail extends Microgame {
     const k = Math.min(1, this.fill / this.need);
     // the wand, and the bubble swelling off its ring
     const wx = CX - 30, wy = BOT - 40;
-    g.line(wx - 26, wy + 26, wx - 6, wy + 6, PAL.mid, 3);
-    ctx.strokeStyle = PAL.mid; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(wx, wy, 8, 0, 6.2832); ctx.stroke();
+    g.sprite('wand', wx - 9, wy + 10);   // art/wand.png: its ring on wx, wy
+    // the bubble (art/bubble.png) at the nearest of its nine sizes, 1:1
     const r = 8 + k * 46, bx = wx + r * 0.75, by = wy - r * 0.75;
-    ctx.globalAlpha = 0.18; g.circle(bx, by, r, PAL.ink); ctx.globalAlpha = 1;
-    ctx.strokeStyle = PAL.ink; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(bx, by, r, 0, 6.2832); ctx.stroke();
-    ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(bx, by, r * 0.7, -2.4, -1.7); ctx.stroke();   // the shine
+    const D = BlowSail.BUBBLES; let f = 0; for (let i = 1; i < D.length; i++) if (Math.abs(D[i] - 2 * r) < Math.abs(D[f] - 2 * r)) f = i;
+    ctx.globalAlpha = 0.9; g.sprite('bubble', bx, by, { frame: f }); ctx.globalAlpha = 1;
     // a shiba watching it grow, more delighted the bigger it gets
     if (Input.micReady) g.text('BLOW!', CX, TOP + 24, 9, PAL.mid);
     else g.text('TAP FAST TO BLOW', CX, TOP + 24, 7, PAL.mid);
@@ -4191,11 +4211,10 @@ class RedLight extends Microgame {
     const lit = red ? PAL.bad : amber ? PAL.accent : PAL.accent;
     // the lamp, three bulbs with one of them on, on a pole that stands in the field
     const LX = W - 30;
-    g.rect(LX - 2, TOP + 68, 4, 214 - TOP - 68, PAL.mid);
-    g.rect(LX - 13, TOP + 8, 26, 60, PAL.mid);
-    g.circle(LX, TOP + 20, 8, red ? PAL.bad : PAL.bg);
-    g.circle(LX, TOP + 38, 8, amber ? PAL.accent : PAL.bg);
-    g.circle(LX, TOP + 56, 8, this.light === 'green' ? PAL.ink : PAL.bg);
+    // (art/trafficlight.png: red, amber, green lit; rows 54+ are the pole)
+    if (!g.stretchV('trafficlight', LX - 9, TOP + 8, 214 - TOP - 8, 54, 58, 62, red ? 0 : amber ? 1 : 2)) {
+      g.rect(LX - 2, TOP + 68, 4, 214 - TOP - 68, PAL.mid); g.rect(LX - 13, TOP + 8, 26, 60, PAL.mid);
+    }
     // the shiba doll spins like SQUID: back turned on green (go), mid-spin on
     // amber, facing you on red (watching) — facedir frames 4=back, 2=profile, 0=front
     const bob = red ? 0 : Math.abs(Math.sin(this.t * 12)) * 4;   // bounces on green
@@ -4359,18 +4378,21 @@ class PourCup extends Microgame {
     const t = Input.tiltReady ? Input.tiltX : (Input.down ? 0.6 : 0);
     const tip = Math.max(-1, Math.min(1, t)) * 0.7;
     ctx.save(); ctx.translate(CX - 4, TOP + 46); ctx.rotate(tip);
-    g.rect(-11, -16, 22, 30, PAL.mid); g.rect(-8, -22, 10, 7, PAL.mid); g.rect(10, -10, 5, 14, PAL.mid);   // jug, spout, handle
-    g.rect(-9, -4, 18, 16, PAL.ink);                                                                       // water inside
+    g.sprite('jug', 1, -4);   // art/jug.png, its spout up on the left
     ctx.restore();
-    const cw = 52, ch = 66, cx0 = CX - cw / 2, cy0 = BOT - ch - 8;
+    // the inside of the jar's glass: cw x ch, its bottom at cy0 + ch
+    const cw = 26, ch = 66, cx0 = CX - cw / 2, cy0 = BOT - ch - 22;
     if (this.pouring) { ctx.globalAlpha = 0.8; g.rect(CX - 2, TOP + 56, 3, cy0 + ch - this.fill * ch - TOP - 56, PAL.ink); ctx.globalAlpha = 1; }
     // the dog's water bowl (tall, so the line is easy to see) and the shiba waiting by it
-    g.rect(cx0 - 4, cy0 - 3, cw + 8, 4, PAL.bad);                   // rim
-    g.rect(cx0, cy0, 3, ch, PAL.bad); g.rect(cx0 + cw - 3, cy0, 3, ch, PAL.bad); g.rect(cx0, cy0 + ch - 3, cw, 3, PAL.bad);
-    g.rect(cx0 + 3, cy0 + ch - 3 - this.fill * (ch - 6), cw - 6, this.fill * (ch - 6), inBand ? PAL.accent : PAL.ink);
+    // (art/jar.png: glass rows 9-47 inside, row 20 repeated to make it ch tall)
+    if (!g.stretchV('jar', cx0 - 6, cy0 - 9, ch + 24, 20, 20, 39)) {
+      g.rect(cx0 - 4, cy0 - 3, cw + 8, 4, PAL.bad);
+      g.rect(cx0, cy0, 3, ch, PAL.bad); g.rect(cx0 + cw - 3, cy0, 3, ch, PAL.bad);
+    }
+    ctx.globalAlpha = 0.85; g.rect(cx0, cy0 + ch - this.fill * ch, cw, this.fill * ch, inBand ? PAL.accent : '#4f9fe0'); ctx.globalAlpha = 1;
     g.line(cx0 - 6, cy0 + ch - this.lo * ch, cx0 + cw + 6, cy0 + ch - this.lo * ch, PAL.accent, 1);
     g.line(cx0 - 6, cy0 + ch - this.hi * ch, cx0 + cw + 6, cy0 + ch - this.hi * ch, PAL.accent, 1);
-    g.sprite('shiba', cx0 - 26, BOT - 20, { w: 36, h: 38, frame: inBand ? 1 : 0 });   // sat on the floor by its bowl, clear of the mascot's corner
+    g.sprite('shiba', CX - 52, BOT - 20, { w: 36, h: 38, frame: inBand ? 1 : 0 });   // sat on the floor by its bowl, clear of the mascot's corner
     const msg = this.fill > 0.92 ? 'STOP!'
               : (inBand && !this.pouring) ? 'HOLD STEADY!'
               : inBand ? 'LEVEL OFF!'
@@ -4470,14 +4492,20 @@ class BlowCandles extends Microgame {
     g.clear();
     if (this.paused) { g.text('ALLOW MIC…', CX, CY - 6, 12, PAL.ink); g.text('(then blow)', CX, CY + 12, 7, PAL.mid); return; }
     const cw = 34 + this.n * 14, cx0 = CX - cw / 2, cakeY = BOT - 34;
-    g.rect(cx0, cakeY, cw, 24, PAL.accent); g.rect(cx0, cakeY - 3, cw, 3, PAL.ink);
+    // the cake (art/cake.png, 58 wide): its two ends, and its middle (cols
+    // 20-39) repeated between them to the width the candles need
+    const ck = Assets.get('cake'), ctop = cakeY - 6;
+    if (ck) {
+      ctx.drawImage(ck.img, 0, 0, 20, 32, cx0, ctop, 20, 32);
+      for (let x = 20; x < cw - 18; x += 20) { const w = Math.min(20, cw - 18 - x); ctx.drawImage(ck.img, 20, 0, w, 32, cx0 + x, ctop, w, 32); }
+      ctx.drawImage(ck.img, 40, 0, 18, 32, cx0 + cw - 18, ctop, 18, 32);
+    } else { g.rect(cx0, cakeY, cw, 24, PAL.accent); g.rect(cx0, cakeY - 3, cw, 3, PAL.ink); }
     for (let i = 0; i < this.n; i++) {
       const x = cx0 + (i + 0.5) * cw / this.n, top = cakeY - 20;
-      g.rect(x - 1, top, 2, 18, PAL.mid);                   // candle
-      if (this.lit[i] > 0) {                                // flame flickers while lit
-        const f = 3 + Math.sin(this.t * 20 + i) * this.lit[i];
-        g.circle(x, top - 3, Math.max(1, f * this.lit[i]), PAL.bad);
-      } else { for (let k = 0; k < 3; k++) g.rect(x, top - 5 - k * 3, 1, 2, PAL.mid); }  // smoke
+      // a candle (art/candle.png: lit, out), its wax top at top; a dying flame flickers
+      const lit = this.lit[i] > 0 && (this.lit[i] > 0.6 || Math.floor(this.t * 16 + i) % 2);
+      g.sprite('candle', x, top - 7 + 12.5, { frame: lit ? 0 : 1 });
+      if (this.lit[i] <= 0) for (let k = 0; k < 3; k++) g.rect(x, top - 9 - k * 3, 1, 2, PAL.mid);  // smoke
     }
     g.text(Input.micReady ? 'BLOW THEM OUT!' : 'TAP FAST!', CX, TOP + 24, 9, PAL.mid);
     const out = this.lit.filter(l => l <= 0).length;
@@ -4525,20 +4553,18 @@ class Dandelion extends Microgame {
   draw(g) {
     g.clear();
     // the stem, a couple of leaves at its foot, and the seed head
-    g.line(CX, CY - 8, CX + 2, BOT - 16, SCENE.stem, 3);
-    g.rect(CX - 12, BOT - 24, 12, 3, SCENE.stem); g.rect(CX + 3, BOT - 30, 11, 3, SCENE.stem);
-    g.circle(CX, CY - 8, 4, SCENE.stem);
+    if (!g.stretchV('dandelion', CX - 12, CY - 15, BOT - 16 - (CY - 15), 40, 40, 41)) {
+      g.line(CX, CY - 8, CX + 2, BOT - 16, SCENE.stem, 3);
+      g.circle(CX, CY - 8, 4, SCENE.stem);
+    }
     for (const s of this.seeds) {
       if (s.gone && s.t > 0.9) continue;
       ctx.globalAlpha = s.gone ? Math.max(0, 1 - s.t / 0.9) : 1;
       if (!s.gone) g.line(CX, CY - 8, s.x, s.y, s === this.held ? PAL.accent : PAL.ink, 1);   // the stalk stretches as you pull
       // the seed's fluffy parachute: little white spokes round a dot
+      // (art/seed.png), spinning once it's off
       const sp = s.gone ? s.t * s.spin : 0;
-      for (let k = 0; k < 5; k++) {
-        const a = sp + k * 1.2566;
-        g.line(s.x, s.y, s.x + Math.cos(a) * 4, s.y + Math.sin(a) * 4, PAL.ink, 1);
-      }
-      g.circle(s.x, s.y, 1.5, PAL.ink);
+      ctx.save(); ctx.translate(s.x, s.y); ctx.rotate(sp); g.sprite('seed', 0, 0); ctx.restore();
       ctx.globalAlpha = 1;
     }
     g.text('DRAG THE SEEDS OFF!', CX - 14, TOP + 24, 9, PAL.ink);   // clear of the sun
