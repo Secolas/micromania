@@ -261,6 +261,8 @@ const Assets = {
     cactus:   { src: 'art/cactus.png',   fw: 22,  fh: 31,  frames: 1,  fps: 1  },
     bomb:     { src: 'art/bomb.png',     fw: 22,  fh: 26,  frames: 2,  fps: 1  },
     frisbee:  { src: 'art/frisbee.png',  fw: 28,  fh: 10,  frames: 1,  fps: 1  },
+    buttons:  { src: 'art/buttons.png',  fw: 104, fh: 24,  frames: 2,  fps: 1  },
+    pauseicon:{ src: 'art/pauseicon.png', fw: 12, fh: 12, frames: 1, fps: 1 },
     scenetiles:{ src: 'art/scenetiles.png', fw: 32, fh: 32, frames: 14, fps: 1  },
     bathtiles:{ src: 'art/bathtiles.png', fw: 16, fh: 16,  frames: 3,  fps: 1  },
     parktree: { src: 'art/parktree.png', fw: 28,  fh: 38,  frames: 1,  fps: 1  },
@@ -1276,6 +1278,26 @@ const g = {
   SLEEP_BREATHE: 4, SLEEP_STIR: 4,
   fullShiba(x, y, frame) { this.sprite('fullshiba', x, y - 64, { w: 96, h: 128, frame }); },
   sleepDog(x, y, frame) { this.sprite('sleepdog', x, y - 48, { w: 128, h: 96, frame }); },
+  // Nine-slice: a framed sprite drawn to any w x h at x, y. Its b-px corners
+  // stay 1:1; its edges and middle are stretched from a 1-px slice through
+  // the centre, so the frame's border and fill stay crisp at any size.
+  nine(name, frame, x, y, w, h, b) {
+    const a = Assets.get(name); if (!a) return false;
+    x = Math.round(x); y = Math.round(y); w = Math.round(w); h = Math.round(h);
+    const sx = frame * a.fw, mx = sx + (a.fw >> 1), my = a.fh >> 1, iw = w - 2 * b, ih = h - 2 * b;
+    const d = (s, t, sw, sh, dx, dy, dw, dh) => { if (dw > 0 && dh > 0) ctx.drawImage(a.img, s, t, sw, sh, dx, dy, dw, dh); };
+    d(sx, 0, b, b, x, y, b, b); d(sx + a.fw - b, 0, b, b, x + w - b, y, b, b);                          // corners
+    d(sx, a.fh - b, b, b, x, y + h - b, b, b); d(sx + a.fw - b, a.fh - b, b, b, x + w - b, y + h - b, b, b);
+    d(mx, 0, 1, b, x + b, y, iw, b); d(mx, a.fh - b, 1, b, x + b, y + h - b, iw, b);                     // top, bottom
+    d(sx, my, b, 1, x, y + b, b, ih); d(sx + a.fw - b, my, b, 1, x + w - b, y + b, b, ih);               // left, right
+    d(mx, my, 1, 1, x + b, y + b, iw, ih);                                                               // middle
+    return true;
+  },
+  // A menu button in box b: gold for the main action, dark wood otherwise (art/buttons.png)
+  button(b, main) {
+    if (this.nine('buttons', main ? 1 : 0, b.x, b.y, b.w, b.h, 6)) return;
+    if (main) this.rect(b.x, b.y, b.w, b.h, PAL.accent); else this.box(b.x, b.y, b.w, b.h, PAL.mid);
+  },
   // a tennis ball centred on x, y (art/ball.png, 14 across): yellow felt with
   // its white seams, or red (c = PAL.bad) when it's in danger
   tennis(x, y, r, c = PAL.accent) { this.sprite('ball', x, y, { frame: c === PAL.bad ? 1 : 0 }); },
@@ -5946,8 +5968,10 @@ const Run = {
 
   // a treat as a card: big in the shop, small in your row
   drawTreat(t, x, y, w, h, small) {
-    g.rect(x, y, w, h, small ? PAL.mid : PAL.ink);
-    g.rect(x + 2, y + 2, w - 4, h - 4, PAL.bg);
+    if (!g.nine('buttons', 0, x, y, w, h, 6)) {   // a dark wooden card (art/buttons.png)
+      g.rect(x, y, w, h, small ? PAL.mid : PAL.ink);
+      g.rect(x + 2, y + 2, w - 4, h - 4, PAL.bg);
+    }
     if (small) { this.drawArt(t, x + w / 2, y + 13, 20); g.text(t.tag, x + w / 2, y + h - 4, 8, PAL.ink); return; }
     // 8px text wrapped to the card: the name on top, the effect bottom-up above the price
     const name = g.wrap(t.name, w - 6), desc = t.lines.flatMap(l => g.wrap(l, w - 6));
@@ -5962,7 +5986,10 @@ const Run = {
     for (let i = 0; i < n; i++) {
       const x = 8 + i * 33;
       if (this.treats[i]) this.drawTreat(this.treat(this.treats[i]), x, y, 30, 34, true);
-      else { g.box(x, y, 30, 34, PAL.mid); g.text('+', x + 15, y + 21, 10, PAL.mid); }
+      else {   // an empty slot: a dimmed wooden card
+        if (Assets.get('buttons')) { ctx.globalAlpha = 0.45; g.nine('buttons', 0, x, y, 30, 34, 6); ctx.globalAlpha = 1; } else g.box(x, y, 30, 34, PAL.mid);
+        g.text('+', x + 15, y + 21, 10, PAL.mid);
+      }
     }
   },
 
@@ -5997,8 +6024,11 @@ const Run = {
     if (!this.info) return;
     const t = this.treat(this.info), P = this.PANEL;
     ctx.globalAlpha = 0.75; g.rect(0, TOP, W, BOT - TOP, PAL.bg); ctx.globalAlpha = 1;
-    g.rect(P.x, P.y, P.w, P.h, PAL.accent);
-    g.rect(P.x + 2, P.y + 2, P.w - 4, P.h - 4, PAL.bg);
+    g.rect(P.x, P.y, P.w, P.h, PAL.bg);
+    if (!g.nine('titlesign', 0, P.x - 4, P.y - 4, P.w + 8, P.h + 8, 22)) {
+      g.rect(P.x, P.y, P.w, P.h, PAL.accent);
+      g.rect(P.x + 2, P.y + 2, P.w - 4, P.h - 4, PAL.bg);
+    }
     g.text(t.name, CX, P.y + 18, 10, PAL.accent);
     this.drawArt(t, CX, P.y + 56, 52);
     t.lines.forEach((l, i) => g.text(l, CX, P.y + 96 + i * 11, 8, PAL.ink));
@@ -6069,8 +6099,8 @@ const Run = {
     if (this.msgT > 0) g.text(this.msg, CX, this.CARD(0).y + 118, 7, PAL.bad);
     else g.text('TAP A TREAT TO BUY IT', CX, this.CARD(0).y + 118, 7, PAL.mid);
     const R = this.REROLL, N = this.NEXT;
-    g.box(R.x, R.y, R.w, R.h, PAL.mid); g.text('REROLL ' + this.reroll, R.x + R.w / 2, R.y + 15, 8, PAL.ink);
-    g.rect(N.x, N.y, N.w, N.h, PAL.accent); g.text('NEXT >', N.x + N.w / 2, N.y + 15, 9, PAL.bg);
+    g.button(R, false); g.text('REROLL ' + this.reroll, R.x + R.w / 2, R.y + 15, 8, PAL.ink);
+    g.button(N, true); g.text('NEXT >', N.x + N.w / 2, N.y + 15, 9, PAL.bg);
     this.drawInfo();
   },
 
@@ -6495,6 +6525,7 @@ const Engine = {
   menuPanel() {
     const x = 8, y = 8, w = W - 16, h = H - 16, c = PAL.mid;
     ctx.globalAlpha = 0.9; g.rect(x, y, w, h, PAL.bg); ctx.globalAlpha = 1;
+    if (g.nine('titlesign', 0, x - 4, y - 4, w + 8, h + 8, 22)) return;   // art/titlesign.png as the frame
     g.rect(x + 2, y, w - 4, 1, c); g.rect(x + 2, y + h - 1, w - 4, 1, c);
     g.rect(x, y + 2, 1, h - 4, c); g.rect(x + w - 1, y + 2, 1, h - 4, c);
     for (const [cx, cy] of [[x + 1, y + 1], [x + w - 2, y + 1], [x + 1, y + h - 2], [x + w - 2, y + h - 2]]) g.rect(cx, cy, 1, 1, c);   // notched corners
@@ -6704,7 +6735,7 @@ const Engine = {
 
   drawShareButton() {
     const B = this.BTN_SHARE;
-    g.rect(B.x, B.y, B.w, B.h, PAL.accent); g.text('SHARE', CX, B.y + 15, 10, PAL.bg);
+    g.button(B, true); g.text('SHARE', CX, B.y + 15, 10, PAL.bg);
     const R = this.BTN_REPLAY, has = this.replay.length > 0;
     if (has) { g.box(R.x, R.y, R.w, R.h, PAL.accent); g.text('WATCH REPLAY', CX, R.y + 15, 10, PAL.accent); }
     if (Math.floor(this.time * 2) % 2) g.text('TAP ELSEWHERE TO CONTINUE', CX, has ? CY + 128 : CY + 104, 7, PAL.mid);
@@ -6771,7 +6802,7 @@ const Engine = {
       if (b.id === 'fwd') { tri(cx - 8, cy, 1); tri(cx, cy, 1); }
       if (b.id === 'pause') { if (R.paused) tri(cx - 4, cy, 1); else { g.rect(cx - 5, cy - 6, 3, 12, PAL.ink); g.rect(cx + 2, cy - 6, 3, 12, PAL.ink); } }
     }
-    const D = this.RP_DONE; g.rect(D.x, D.y, D.w, D.h, PAL.accent); g.text('DONE', CX, D.y + 15, 10, PAL.bg);
+    const D = this.RP_DONE; g.button(D, true); g.text('DONE', CX, D.y + 15, 10, PAL.bg);
   },
 
   // ── ALBUM SCREEN ───────────────────────────────────────────────────────────
@@ -6815,7 +6846,7 @@ const Engine = {
   drawAlbumScreen() {
     const items = Album.load(), n = items.length;
     const B = this.ALB_BACK;
-    g.box(B.x, B.y, B.w, B.h, PAL.mid); g.text('BACK', B.x + B.w / 2, B.y + 11, 7, PAL.ink);
+    g.button(B, false); g.text('BACK', B.x + B.w / 2, B.y + 11, 7, PAL.ink);
     if (this.albumSel >= 0) {
       const it = Album.newest(this.albumSel); if (!it) return;
       const im = Album.img(it);
@@ -6824,7 +6855,7 @@ const Engine = {
       const d = new Date(it.at);
       g.text((it.game || '') + '  ·  ' + d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }).toUpperCase(), CX, CY + 66, 7, PAL.mid);
       const S = this.ALB_SHARE, D = this.ALB_DEL;
-      g.rect(S.x, S.y, S.w, S.h, PAL.accent); g.text('SHARE', CX, S.y + 14, 10, PAL.bg);
+      g.button(S, true); g.text('SHARE', CX, S.y + 14, 10, PAL.bg);
       g.box(D.x, D.y, D.w, D.h, this.albumDel ? PAL.bad : PAL.mid);
       g.text(this.albumDel ? 'SURE?' : 'DELETE', CX, D.y + 12, 7, this.albumDel ? PAL.bad : PAL.mid);
       return;
@@ -6847,8 +6878,8 @@ const Engine = {
     }
     if (pages > 1) {
       const P = this.ALB_PREV, N = this.ALB_NEXT;
-      if (this.albumPage > 0) { g.box(P.x, P.y, P.w, P.h, PAL.mid); g.text('<', P.x + P.w / 2, P.y + 14, 10, PAL.ink); }
-      if (this.albumPage < pages - 1) { g.box(N.x, N.y, N.w, N.h, PAL.mid); g.text('>', N.x + N.w / 2, N.y + 14, 10, PAL.ink); }
+      if (this.albumPage > 0) { g.button(P, false); g.text('<', P.x + P.w / 2, P.y + 14, 10, PAL.ink); }
+      if (this.albumPage < pages - 1) { g.button(N, false); g.text('>', N.x + N.w / 2, N.y + 14, 10, PAL.ink); }
       g.text((this.albumPage + 1) + ' / ' + pages, CX, BOT - 12, 8, PAL.mid);
     }
   },
@@ -6922,7 +6953,7 @@ const Engine = {
   },
   drawSettings() {
     const B = this.ALB_BACK;
-    g.box(B.x, B.y, B.w, B.h, PAL.mid); g.text('BACK', B.x + B.w / 2, B.y + 11, 7, PAL.ink);
+    g.button(B, false); g.text('BACK', B.x + B.w / 2, B.y + 11, 7, PAL.ink);
     g.text('SETTINGS', CX, TOP + 16, 12, PAL.accent);
     g.text('SENSORS', 18, TOP + 122, 7, TEXT_MID, 'left');
     g.rect(18, TOP + 126, W - 36, 1, PAL.mid);
@@ -6931,10 +6962,11 @@ const Engine = {
       const st = this.setState(r.k), S = this.setSwitch(r), on = st === 'ON';
       if (st === 'BLOCKED') blocked = true;
       g.text(r.label, 18, r.y + 10, 9, PAL.ink, 'left');
-      if (on) { g.rect(S.x, S.y, S.w, S.h, PAL.accent); g.text('ON', S.x + S.w / 2, S.y + 14, 9, PAL.bg); }
+      if (on) { g.button(S, true); g.text('ON', S.x + S.w / 2, S.y + 14, 9, PAL.bg); }
       else {
         const c = st === 'BLOCKED' ? PAL.bad : PAL.mid;
-        g.box(S.x, S.y, S.w, S.h, c); g.text(st, S.x + S.w / 2, S.y + 14, st.length > 3 ? 7 : 9, st === 'BLOCKED' ? PAL.bad : PAL.ink);
+        if (st === 'BLOCKED' || !Assets.get('buttons')) g.box(S.x, S.y, S.w, S.h, c); else g.button(S, false);   // a blocked sensor keeps its red box
+        g.text(st, S.x + S.w / 2, S.y + 14, st.length > 3 ? 7 : 9, st === 'BLOCKED' ? PAL.bad : PAL.ink);
       }
     }
     if (blocked) {
@@ -6942,11 +6974,11 @@ const Engine = {
       g.text("BROWSER'S SITE SETTINGS", CX, TOP + 224, 7, PAL.bad);
     } else g.text('OFF: THOSE GAMES ARE SKIPPED', CX, TOP + 216, 7, TEXT_MID);
     const T = this.SET_TUT;
-    g.box(T.x, T.y, T.w, T.h, PAL.mid); g.text('HOW TO PLAY', CX, T.y + 12, 8, PAL.ink);
+    g.button(T, false); g.text('HOW TO PLAY', CX, T.y + 12, 8, PAL.ink);
     // put it on the home screen, to open like an app and play offline
     const I = this.SET_INSTALL;
     if (this.installed()) g.text('INSTALLED ON THIS PHONE', CX, I.y + 15, 8, PAL.ink);
-    else if (this.installEvt) { g.rect(I.x, I.y, I.w, I.h, PAL.accent); g.text('ADD TO HOME SCREEN', CX, I.y + 15, 9, PAL.bg); }
+    else if (this.installEvt) { g.button(I, true); g.text('ADD TO HOME SCREEN', CX, I.y + 15, 9, PAL.bg); }
     else if (/iphone|ipad|ipod/i.test(navigator.userAgent)) { g.text('ADD TO HOME SCREEN:', CX, I.y + 8, 8, PAL.ink); g.text('TAP SHARE, THEN ADD', CX, I.y + 19, 8, PAL.ink); }
     else g.text('INSTALL: BROWSER MENU', CX, I.y + 15, 8, PAL.ink);
   },
@@ -7052,6 +7084,7 @@ const Engine = {
   },
   drawPauseBtn() {
     const x = CX - 4, y = 4;
+    if (Assets.get('pauseicon')) { g.sprite('pauseicon', CX, 9); return; }   // art/pauseicon.png
     g.rect(x, y, 3, 10, PAL.ink); g.rect(x + 5, y, 3, 10, PAL.ink);   // two bars
   },
   drawPause() {
@@ -7059,8 +7092,8 @@ const Engine = {
     if (this.resumeT > 0) { g.outline(String(Math.ceil(this.resumeT / 0.5)), CX, CY + 10, 34, PAL.accent); return; }
     g.outline('PAUSED', CX, CY - 30, 18, PAL.ink);
     const R = this.PAUSE_RESUME, Q = this.PAUSE_QUIT;
-    g.rect(R.x, R.y, R.w, R.h, PAL.accent); g.text('RESUME', CX, R.y + 16, 11, PAL.bg);
-    g.box(Q.x, Q.y, Q.w, Q.h, PAL.mid); g.text('QUIT', CX, Q.y + 14, 9, PAL.ink);
+    g.button(R, true); g.text('RESUME', CX, R.y + 16, 11, PAL.bg);
+    g.button(Q, false); g.text('QUIT', CX, Q.y + 14, 9, PAL.ink);
   },
 
   // ── TUTORIAL ───────────────────────────────────────────────────────────────
@@ -7108,7 +7141,7 @@ const Engine = {
       g.text(this.tut && this.tut.mode ? 'NOW FOR REAL...' : 'HAVE FUN!', CX, CY + 6, 10, PAL.ink);
       return;
     }
-    const K = this.TUT_SKIP_CARD; g.box(K.x, K.y, K.w, K.h, PAL.mid); g.text('SKIP', K.x + K.w / 2, K.y + 11, 8, PAL.ink);
+    const K = this.TUT_SKIP_CARD; g.button(K, false); g.text('SKIP', K.x + K.w / 2, K.y + 11, 8, PAL.ink);
     if (this.state === 'TUTCAT') {   // one kind of game: its tag, its icon, what to do
       const c = this.tut.cat, n = this.tut.step + 1;
       g.text(n + ' / 5', 22, K.y + 11, 8, PAL.ink, 'left');
@@ -7371,7 +7404,7 @@ const Engine = {
   drawHud() {
     if (this.tut) {   // practice: no lives to lose, and a way out
       g.text('PRACTICE ' + (this.tut.step + 1) + ' / 5', 6, 13, 8, PAL.accent, 'left');
-      const S = this.TUT_SKIP; g.box(S.x, S.y, S.w, S.h, PAL.mid); g.text('SKIP', S.x + S.w / 2, S.y + 11, 8, PAL.ink);
+      const S = this.TUT_SKIP; g.button(S, false); g.text('SKIP', S.x + S.w / 2, S.y + 11, 8, PAL.ink);
       g.rect(0, TOP - 1, W, 1, PAL.mid);
       return;
     }
