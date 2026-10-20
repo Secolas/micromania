@@ -848,17 +848,6 @@ const Input = {
     const src = this._camSrc(), [sw, sh] = src ? this._camSize(src) : [0, 0];
     return sw && sh ? sw / sh : 4 / 3;
   },
-  // a w x h picture of the camera, mirrored, cropped to fill (a little above
-  // centre, where faces are) rather than squashed — for the REPLAY clips
-  snapCover(w, h) {
-    const src = this._camSrc(); if (!src) return null;
-    const [sw, sh] = this._camSize(src); if (!sw || !sh) return null;
-    const c = document.createElement('canvas'); c.width = w; c.height = h;
-    const x = c.getContext('2d'), k = Math.max(w / sw, h / sh), dw = sw * k, dh = sh * k;
-    x.translate(w, 0); x.scale(-1, 1);
-    x.drawImage(src, (w - dw) / 2, (h - dh) * 0.35, dw, dh);
-    return c;
-  },
   // the live camera, mirrored like a mirror, into a rect of its own aspect
   drawLive(c, x, y, w, h) {
     const src = this._camSrc(); if (!src) return false;
@@ -6188,12 +6177,14 @@ const Engine = {
   },
   // a frame for the REPLAY clip, at REC_FPS, the last REC_MAX of the round,
   // and on into the result for REC_TAIL frames to catch your reaction
-  REC_TAIL: 4, recTail: 0, REC_W: 192, REC_H: 144,
+  // Only camera games: the camera is on through the touch games too, but a
+  // clip of you tapping is just you staring at your phone.
+  REC_TAIL: 4, recTail: 0, REC_LONG: 192,
   recTick() {
-    if (!this.rec || this.tut || !this.shootsNow() || this.time - this.recAt < 1 / this.REC_FPS) return;
+    if (!this.rec || this.tut || !this.shootsNow() || Run.group(this.game.meta) !== 'CAMERA' || this.time - this.recAt < 1 / this.REC_FPS) return;
     if (this.state === 'RESULT' && this.recTail-- <= 0) { this.rec = null; return; }
     this.recAt = this.time;
-    const f = Input.snapCover(this.REC_W, this.REC_H);
+    const f = Input.snapPhoto(this.REC_LONG);   // the whole picture, its own shape: never cropped or stretched
     if (f) { this.rec.push(f); if (this.rec.length > this.REC_MAX) this.rec.shift(); }
   },
   keepClip() {
@@ -6473,10 +6464,12 @@ const Engine = {
   // Your camera games from the run, played back on a little TV: the numbered
   // dots pick a clip, the buttons go back, pause and go forward. Each clip
   // plays through and the next one follows, round and round.
-  RP_TV: { x: 14, y: 38, w: 152, h: 117 },
-  RP_DOT_Y: 202,
-  RP_BTNS: [{ id: 'back', x: CX - 74, y: 214, w: 44, h: 24 }, { id: 'pause', x: CX - 22, y: 214, w: 44, h: 24 }, { id: 'fwd', x: CX + 30, y: 214, w: 44, h: 24 }],
-  RP_DONE: { x: CX - 50, y: 248, w: 100, h: 22 },
+  // the TV takes the clip's shape: a tall screen for a phone held upright, a
+  // wide one for a laptop camera, both fitting this box
+  RP_SCREEN: { y: 44, w: 140, h: 128 },
+  RP_DOT_Y: 212,
+  RP_BTNS: [{ id: 'back', x: CX - 74, y: 226, w: 44, h: 24 }, { id: 'pause', x: CX - 22, y: 226, w: 44, h: 24 }, { id: 'fwd', x: CX + 30, y: 226, w: 44, h: 24 }],
+  RP_DONE: { x: CX - 50, y: 254, w: 100, h: 21 },
   rpDot(k) { const n = this.replay.length; return CX + (k - (n - 1) / 2) * 26; },
   replayUpdate(dt) {
     const R = this.rp, n = this.replay.length;
@@ -6498,18 +6491,19 @@ const Engine = {
     for (let k = 0; k < n; k++) if (Math.hypot(p.x - this.rpDot(k), p.y - this.RP_DOT_Y) < 12) { Sfx.tap(); this.replayGo(k); return; }
   },
   drawReplay() {
-    const R = this.rp, clip = this.replay[R.i], T = this.RP_TV;
+    const R = this.rp, clip = this.replay[R.i], S = this.RP_SCREEN;
     g.text('REPLAY', CX, 30, 12, PAL.accent);
-    // the TV: a grey set with a dark screen, the clip in it
-    g.rect(T.x, T.y, T.w, T.h, PAL.mid); g.rect(T.x + 1, T.y + T.h, T.w - 2, 1, PAL.mid);
-    const sx = T.x + 6, sy = T.y + 6, sw = T.w - 12, sh = Math.round(sw * 3 / 4);
-    g.rect(sx, sy, sw, sh, PAL.bg);
     const f = clip.frames[Math.min(clip.frames.length - 1, Math.floor(R.t * this.REC_FPS))];
+    const a = f ? f.width / f.height : 4 / 3;
+    const sw = Math.round(Math.min(S.w, S.h * a)), sh = Math.round(sw / a), sx = Math.round(CX - sw / 2), sy = S.y + Math.round((S.h - sh) / 2);
+    // the TV: a grey set around the screen, the clip in it
+    g.rect(sx - 6, sy - 6, sw + 12, sh + 12, PAL.mid); g.rect(sx - 5, sy + sh + 6, sw + 10, 1, PAL.mid);
+    g.rect(sx, sy, sw, sh, PAL.bg);
     if (f) { ctx.imageSmoothingEnabled = true; ctx.drawImage(f, sx, sy, sw, sh); ctx.imageSmoothingEnabled = false; }   // a photo, not pixel art
     g.rect(sx + 4, sy + 4, 30, 11, clip.won ? PAL.accent : PAL.bad);
     g.text(clip.won ? 'WIN' : 'MISS', sx + 19, sy + 13, 8, clip.won ? PAL.bg : PAL.ink);
     if (R.paused) { g.rect(sx + sw - 14, sy + 4, 3, 10, PAL.ink); g.rect(sx + sw - 9, sy + 4, 3, 10, PAL.ink); }
-    g.text(clip.prompt, CX, 176, 12, PAL.ink);
+    g.text(clip.prompt, CX, 196, 12, PAL.ink);
     // the clip dots, joined like a timeline
     const n = this.replay.length;
     if (n > 1) g.rect(this.rpDot(0), this.RP_DOT_Y - 1, this.rpDot(n - 1) - this.rpDot(0), 2, PAL.mid);

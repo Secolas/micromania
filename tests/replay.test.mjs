@@ -7,7 +7,7 @@ export default async function ({ url, launch }) {
   // a stand-in camera: every snap is a small canvas
   await page.evaluate(() => {
     Prefs.set('tutorial', true); Input.camReady = true;
-    Input.snapCover = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
+    Input.snapPhoto = long => { const c = document.createElement('canvas'); c.width = Math.round(long * 3 / 4); c.height = long; return c; };   // a phone held upright
     Engine.mode = 'classic'; Engine.sensors = true; Engine.startRun();
   });
   const play = (C, win) => page.evaluate(([name, win]) => {
@@ -18,9 +18,9 @@ export default async function ({ url, launch }) {
     return Engine.replay.length;
   }, [C, win]);
   eq(await play('MoveCam', true), 1, 'a camera game keeps a clip');
-  eq(await play('TapBug', true) >= 1, true, 'and a touch game still plays (camera on, so it may record too)');
+  eq(await play('TapBug', true), 1, 'a touch game records nothing, even with the camera on');
   const clip = await page.evaluate(() => { const c = Engine.replay[0]; return [c.prompt, c.won, c.frames.length]; });
-  assert(clip[2] >= 6 && clip[2] <= 30, 'clip length in frames: ' + clip[2]);
+  assert(clip[2] >= 6 && clip[2] <= 28, 'clip length in frames: ' + clip[2]);
   eq([clip[0], clip[1]], ['MOVE!', true], 'it remembers the game and the result');
   // game over -> WATCH REPLAY -> forward, pause, DONE
   await page.evaluate(() => { Engine.state = 'GAMEOVER'; Engine.timer = 0; });

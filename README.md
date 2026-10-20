@@ -23,8 +23,10 @@ that it's remembered.
 **Replay**: camera games quietly record a short clip of you (about three
 seconds, plus half a second of your reaction to the result). At GAME OVER,
 WATCH REPLAY plays the last five back on a little TV, with numbered dots to
-pick one and back / pause / forward buttons. The clips are cropped to fill the
-TV (never stretched) and drawn smooth like a photo. They stay in memory on the
+pick one and back / pause / forward buttons. Only camera games are recorded
+(not the touch games, even with the camera on). The clip is the whole camera
+picture, never cropped or stretched: the TV takes its shape, tall for a phone
+held upright and wide for a laptop, drawn smooth like a photo. They stay in memory on the
 phone only, and the next run starts with none.
 
 **Surprises**: once things get going, a prompt can start out normal and then
