@@ -2190,13 +2190,14 @@ class SwipeArrow extends Microgame {
   update(dt, input) {
     if (!input.swipe) return;
     if (input.swipe.dir === this.seq[this.i]) {
-      this.i++; this.dirT = this.t; Sfx.tick(); buzz(10); FX.burst(CX, CY, PAL.ink, 5, 40);
+      this.i++; if (this.i < this.seq.length) this.dirT = this.t; Sfx.tick(); buzz(10); FX.burst(CX, CY, PAL.ink, 5, 40);
       if (this.i >= this.seq.length) this.succeed();
     } else { buzz(40); FX.shake(3); this.lose(); }
   }
   draw(g) {
     g.clear();
-    const d = this.seq[this.i];
+    // once the last arrow is swiped, the shiba keeps the pose of that swipe, arrow gone
+    const done = this.i >= this.seq.length, d = this.seq[Math.min(this.i, this.seq.length - 1)];
     const ang = { up: -Math.PI / 2, down: Math.PI / 2, left: Math.PI, right: 0 }[d];
     const ux = Math.cos(ang), uy = Math.sin(ang);
     // paws in the grass (horizon at 190); running at you, it walks down the grass
@@ -2214,11 +2215,13 @@ class SwipeArrow extends Microgame {
       g.sprite('swipedown', CX, sy, { w: 112, h: 112, frame: Math.floor(this.t * 14) % 9 });
     }
     // bold arrow pushed out past the dog so it stays visible
-    ctx.save(); ctx.translate(CX + ux * reach, sy + uy * reach); ctx.rotate(ang);
-    g.line(-16, 0, 14, 0, PAL.ink, 7);
-    g.line(14, 0, 2, -12, PAL.ink, 7);
-    g.line(14, 0, 2, 12, PAL.ink, 7);
-    ctx.restore();
+    if (!done) {
+      ctx.save(); ctx.translate(CX + ux * reach, sy + uy * reach); ctx.rotate(ang);
+      g.line(-16, 0, 14, 0, PAL.ink, 7);
+      g.line(14, 0, 2, -12, PAL.ink, 7);
+      g.line(14, 0, 2, 12, PAL.ink, 7);
+      ctx.restore();
+    }
     for (let k = 0; k < this.seq.length; k++) g.circle(CX - (this.seq.length - 1) * 6 + k * 12, BOT - 6, 3, k < this.i ? PAL.accent : PAL.mid);
   }
 }
