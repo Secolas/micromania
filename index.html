@@ -245,6 +245,7 @@ const Assets = {
     swipeleft: { src: ART.swipeleft,      fw: 120, fh: 120, frames: 9,  fps: 14 },
     hidedog:{ src: ART.hidedog,         fw: 64, fh: 64, frames: 9,  fps: 8  },
     facedir:  { src: ART.facedir,        fw: 120, fh: 120, frames: 7,  fps: 1  },
+    couch:    { src: 'art/couch.png',    fw: 74,  fh: 55,  frames: 1,  fps: 1  },
   },
   cache: {},
   load() {
@@ -2235,38 +2236,21 @@ class HoldRelease extends Microgame {
     }
     return { path, end };
   }
-  // A plump red couch seen from the side, its seat cushion exactly th thick at
-  // seat — the band you have to land in. Legs on the floor, an armrest at the
-  // near end, a tall tufted back at the far end, and a bone-print pillow.
+  // A plump red couch seen from the side (art/couch.png), its seat cushion's top
+  // at seat - th/2 — where the paws land. The seat height changes every round,
+  // so the sprite is drawn 1:1 in two pieces with its plain front panel (one
+  // row, COUCH_FILL, the same all the way down) repeated between them: the
+  // back, arm and cushion above, the legs on the floor below.
+  static COUCH_SEAT = 26;   // the cushion's top row in the sprite (the back rises 26 px above it)
+  static COUCH_FILL = 43;   // a front-panel row: rows 40-47 are identical
   static couch(x0, w, seat, th, floor) {
-    const red = PAL.bad, dark = SCENE.couchLo, lite = SCENE.couchHi, wood = SCENE.trunk;
-    const rr = (x, y, ww, hh, r, c) => {
-      r = Math.max(0, Math.min(r, ww / 2, hh / 2));
-      ctx.fillStyle = c; ctx.beginPath();
-      ctx.moveTo(x + r, y); ctx.arcTo(x + ww, y, x + ww, y + hh, r); ctx.arcTo(x + ww, y + hh, x, y + hh, r);
-      ctx.arcTo(x, y + hh, x, y, r); ctx.arcTo(x, y, x + ww, y, r); ctx.closePath(); ctx.fill();
-    };
-    const top = seat - th / 2, base = floor - 4;
-    // little wooden legs
-    g.rect(x0 + 4, base, 4, 4, wood); g.rect(x0 + w - 8, base, 4, 4, wood);
-    // the body under the seat, and its shadow line
-    rr(x0 + 2, top + th - 2, w - 4, base - top - th + 2, 4, dark);
-    g.rect(x0 + 6, base - 3, w - 12, 1, PAL.bg);
-    // tall back at the far end, tufted with buttons
-    const bh = Math.max(30, th + 26), bx = x0 + w - 16;
-    rr(bx, top - bh + th, 16, base - (top - bh + th), 6, red);
-    rr(bx + 2, top - bh + th + 2, 4, base - (top - bh + th) - 8, 2, lite);
-    for (let yy = top - bh + th + 8; yy < top - 2; yy += 9) g.rect(bx + 9, yy, 2, 2, dark);
-    // the seat cushion: the landing band, with seams and a soft highlight
-    rr(x0 + 8, top, w - 22, th, Math.min(5, th / 2), red);
-    g.rect(x0 + 11, top + 1, w - 30, Math.max(1, Math.min(2, th / 4)), lite);
-    const seamX = x0 + 8 + (w - 22) / 2;
-    g.rect(seamX, top + 2, 1, th - 3, dark);
-    // a bone-print pillow leaning on the back
+    const top = Math.round(seat - th / 2), bx = x0 + w - 16, a = Assets.get('couch');
+    if (!a) { g.sprite('couch', x0 + w / 2, (top - HoldRelease.COUCH_SEAT + floor) / 2, { w, h: floor - top + HoldRelease.COUCH_SEAT }); return; }
+    const S = HoldRelease.COUCH_SEAT, F = HoldRelease.COUCH_FILL, y0 = top - S, foot = a.fh - F - 1;
+    ctx.drawImage(a.img, 0, 0, a.fw, F + 1, x0, y0, a.fw, F + 1);                           // back, arm, cushion
+    for (let y = y0 + F + 1; y < floor - foot; y++) ctx.drawImage(a.img, 0, F, a.fw, 1, x0, y, a.fw, 1);
+    ctx.drawImage(a.img, 0, F + 1, a.fw, foot, x0, floor - foot, a.fw, foot);               // the legs, on the floor
     g.circle(bx - 6, top - 5, 6, PAL.bg); g.tennis(bx - 6, top - 5, 5);   // its ball, waiting on the seat
-    // armrest at the near end: a rounded roll a little above the seat
-    rr(x0, top - 8, 12, base - top + 8, 6, red);
-    rr(x0 + 2, top - 6, 4, 6, 2, lite);
   }
 
   // the meter and couch layout, shared by update and draw
