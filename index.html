@@ -6965,20 +6965,27 @@ const Engine = {
   // The round clock as a lit fuse burning toward a bomb in the bottom-left
   // corner. The last quarter the bomb flashes red and the spark spits harder.
   drawFuse(pct) {
-    // the bomb sits wholly inside the shelf; a plain cord runs out from under it
-    // along the bottom and burns back toward it, a small spark at the tip
-    const bx = 12, by = H - 13, cy = H - 4, x0 = bx + 5, end = x0 + (W - x0 - 6) * pct, late = pct < 0.25;
+    // the bomb sits wholly inside the shelf. The cord leaves the tip of its fuse
+    // stub, runs right, drops to the bottom and along it, and burns back along
+    // that path, a small spark at its end, reaching the bomb as time runs out.
+    const bx = 12, by = H - 13, cy = H - 4, late = pct < 0.25;
     const t = this.time, hot = late && Math.floor(t * 8) % 2;
-    g.rect(x0, cy, end - x0, 2, TEXT_MID); g.rect(x0, by + 5, 2, cy - by - 5, TEXT_MID);   // drawn first, so the bomb covers where it goes in
-    for (let x = x0 + 6; x < end - 2; x += 4) g.rect(x, cy, 1, 1, PAL.ink);   // a twist every few pixels
-    g.sprite('bomb', bx + 1, by - 3, { frame: hot ? 1 : 0 });   // art/bomb.png: its body centred on bx, by; red when hot
+    g.sprite('bomb', bx + 1, by - 3, { frame: hot ? 1 : 0 });   // art/bomb.png: its body centred on bx, by; red when hot; stub tip at (14, H - 29)
+    const P = [[14, H - 29], [25, H - 29], [25, cy], [W - 6, cy]];
+    let left = (11 + (cy - H + 29) + (W - 31)) * pct, ex = P[0][0], ey = P[0][1];
+    for (let i = 1; i < P.length && left > 0; i++) {
+      const [ax, ay] = P[i - 1], [qx, qy] = P[i], len = Math.abs(qx - ax) + Math.abs(qy - ay), d = Math.min(len, left);
+      ex = ax + Math.sign(qx - ax) * d; ey = ay + Math.sign(qy - ay) * d; left -= d;
+      g.rect(Math.min(ax, ex), Math.min(ay, ey), Math.abs(ex - ax) + 2, Math.abs(ey - ay) + 2, TEXT_MID);
+      if (ay === qy && ay === cy) for (let x = ax + 6; x < ex - 2; x += 4) g.rect(x, cy, 1, 1, PAL.ink);   // a twist every few pixels
+    }
     // the spark: a flickering star, with a few bits jumping up off it
     const f = Math.floor(t * 20) % 2, r = late ? 3 : 2;
-    g.rect(end - r, cy, r * 2 + 1, 2, PAL.accent); g.rect(end - 1, cy - r + 1, 2, r * 2, PAL.accent);
-    g.rect(end, cy, 1, 1, f ? PAL.ink : PAL.bad);
+    g.rect(ex - r, ey, r * 2 + 1, 2, PAL.accent); g.rect(ex - 1, ey - r + 1, 2, r * 2, PAL.accent);
+    g.rect(ex, ey, 1, 1, f ? PAL.ink : PAL.bad);
     for (let i = 0; i < (late ? 5 : 3); i++) {
       const k = ((t * 3 + i * 0.37) % 1), a = i * 2.1 + t;
-      g.rect(end + Math.cos(a) * 5 * k, cy - 7 * k, 1, 1, i % 2 ? PAL.accent : PAL.bad);
+      g.rect(ex + Math.cos(a) * 5 * k, ey - 7 * k, 1, 1, i % 2 ? PAL.accent : PAL.bad);
     }
   },
 
