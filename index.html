@@ -258,6 +258,9 @@ const Assets = {
     doghouse: { src: 'art/doghouse.png', fw: 24,  fh: 23,  frames: 1,  fps: 1  },
     car:      { src: 'art/car.png',      fw: 24,  fh: 12,  frames: 1,  fps: 1  },
     paw:      { src: 'art/paw.png',      fw: 24,  fh: 19,  frames: 2,  fps: 1  },
+    cactus:   { src: 'art/cactus.png',   fw: 22,  fh: 31,  frames: 1,  fps: 1  },
+    bomb:     { src: 'art/bomb.png',     fw: 22,  fh: 26,  frames: 2,  fps: 1  },
+    frisbee:  { src: 'art/frisbee.png',  fw: 28,  fh: 10,  frames: 1,  fps: 1  },
   },
   cache: {},
   load() {
@@ -2460,8 +2463,7 @@ class StopBar extends Microgame {
     // the frisbee: hanging in the air, or in the shiba's mouth once caught
     const held = this.caught && this.jump > 0.12;
     const dx = held ? sx + (this.dir > 0 ? 14 : -14) : fx, dy = held ? sy - 10 : fy;
-    g.rect(dx - 10, dy - 1, 20, 6, PAL.bg); g.rect(dx - 7, dy - 3, 14, 3, PAL.bg);   // dark rim
-    g.rect(dx - 9, dy, 18, 4, PAL.accent); g.rect(dx - 6, dy - 2, 12, 2, PAL.accent);
+    g.sprite('frisbee', dx, dy + 1);   // art/frisbee.png, 28x10
   }
 }
 
@@ -3339,17 +3341,31 @@ class DinoRun extends Microgame {
     }
     if (this.cleared >= this.need) this.succeed();
   }
+  // A cactus h px tall standing on the ground at x (art/cactus.png, 22x31, its
+  // dirt row 27 on the ground). Drawn 1:1 in pieces, its plain trunk rows
+  // repeated or dropped to fit the height: above the arms (row 7 stands in
+  // for rows 4-10) and below them (row 23 for rows 22-24). 17 px at the least.
+  static cactus(x, ground, h) {
+    const a = Assets.get('cactus');
+    if (!a) {
+      g.rect(x - 4, ground - h, 8, h, PAL.bad);
+      g.rect(x - 8, ground - h * 0.6, 4, 4, PAL.bad); g.rect(x + 4, ground - h * 0.75, 4, 4, PAL.bad);
+      return;
+    }
+    h = Math.max(17, Math.round(h));
+    const m = Math.min(3, h - 17), n = h - 17 - m, x0 = Math.round(x) - 11;
+    let y = ground - h;
+    const rows = (sy, k) => { ctx.drawImage(a.img, 0, sy, a.fw, k, x0, y, a.fw, k); y += k; };
+    rows(0, 4); for (let i = 0; i < n; i++) rows(7, 1);   // the tip, then the trunk
+    rows(11, 11); for (let i = 0; i < m; i++) rows(23, 1);   // the arms, then the trunk
+    rows(25, 6);                                          // its foot and the dirt
+  }
   draw(g) {
     g.clear();
     // ground line
     g.rect(0, this.ground, W, 2, PAL.mid);
     // cacti
-    for (const o of this.obs) {
-      if (o.x < -14) continue;
-      g.rect(o.x - 4, this.ground - o.h, 8, o.h, PAL.bad);
-      g.rect(o.x - 8, this.ground - o.h * 0.6, 4, 4, PAL.bad);
-      g.rect(o.x + 4, this.ground - o.h * 0.75, 4, 4, PAL.bad);
-    }
+    for (const o of this.obs) if (o.x >= -14) DinoRun.cactus(o.x, this.ground, o.h);
     // the shiba, drawn ~2x the hitbox so the padded 120px frame's dog matches
     // dogW/dogH. On the ground: the run gallop. Airborne: the dedicated jump
     // sprite keyed to the arc — launch while rising, tuck at the peak, reach
@@ -6877,8 +6893,7 @@ const Engine = {
     const t = this.time, hot = late && Math.floor(t * 8) % 2;
     g.rect(x0, cy, end - x0, 2, TEXT_MID); g.rect(x0, by + 5, 2, cy - by - 5, TEXT_MID);   // drawn first, so the bomb covers where it goes in
     for (let x = x0 + 6; x < end - 2; x += 4) g.rect(x, cy, 1, 1, PAL.ink);   // a twist every few pixels
-    g.circle(bx, by, 9, PAL.ink); g.circle(bx, by, 8, hot ? PAL.bad : PAL.mid);
-    g.circle(bx - 3, by - 3, 2, TEXT_MID);
+    g.sprite('bomb', bx + 1, by - 3, { frame: hot ? 1 : 0 });   // art/bomb.png: its body centred on bx, by; red when hot
     // the spark: a flickering star, with a few bits jumping up off it
     const f = Math.floor(t * 20) % 2, r = late ? 3 : 2;
     g.rect(end - r, cy, r * 2 + 1, 2, PAL.accent); g.rect(end - 1, cy - r + 1, 2, r * 2, PAL.accent);
