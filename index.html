@@ -261,6 +261,11 @@ const Assets = {
     cactus:   { src: 'art/cactus.png',   fw: 22,  fh: 31,  frames: 1,  fps: 1  },
     bomb:     { src: 'art/bomb.png',     fw: 22,  fh: 26,  frames: 2,  fps: 1  },
     frisbee:  { src: 'art/frisbee.png',  fw: 28,  fh: 10,  frames: 1,  fps: 1  },
+    rocker:   { src: 'art/rocker.png',   fw: 48,  fh: 64,  frames: 7,  fps: 1  },
+    yesno:    { src: 'art/yesno.png',    fw: 48,  fh: 64,  frames: 6,  fps: 1  },
+    wag:      { src: 'art/wag.png',      fw: 48,  fh: 64,  frames: 4,  fps: 1  },
+    feed:     { src: 'art/feed.png',     fw: 48,  fh: 64,  frames: 5,  fps: 1  },
+    lean:     { src: 'art/lean.png',     fw: 48,  fh: 64,  frames: 1,  fps: 1  },
     fullshiba:{ src: 'art/fullshiba.png', fw: 48, fh: 64,  frames: 11, fps: 1  },
     sleepdog: { src: 'art/sleepdog.png', fw: 64,  fh: 48,  frames: 5, fps: 1  },
     rubdog:   { src: 'art/rubdog.png',   fw: 48,  fh: 44,  frames: 13, fps: 1  },
@@ -2735,12 +2740,17 @@ class FeedDog extends Microgame {
       if (!this.held && Math.hypot(input.x - this.tx, input.y - this.ty) < 22) this.held = true;
       if (this.held) { this.tx = input.x; this.ty = input.y; }
     } else { this.held = false; }
-    if (Math.hypot(this.tx - this.dx, this.ty - (this.dy + 6)) < 16 && !this.finished) { Sfx.chomp(); this.succeed(); }
+    if (this.ateAt == null && Math.hypot(this.tx - this.dx, this.ty - (this.dy + 6)) < 16) { this.ateAt = this.t; Sfx.chomp(); }
+    // it chews for a moment (art/feed.png), then the round is won
+    this.playingOut = this.ateAt != null && !this.finished;
+    if (this.ateAt != null && (this.t - this.ateAt >= 0.4 || !Assets.get('feed')) && !this.finished) this.succeed();
   }
   draw(g) {
     g.clear();
-    g.sprite('face', this.dx, this.dy, { w: 36, h: 37, frame: Math.floor(this.t * 6) % 9 });
-    g.bone(this.tx, this.ty, 22);                             // the treat
+    // (art/feed.png, 1x: mouth open on dx, dy + 6, then 4 frames chewing)
+    if (Assets.get('feed')) g.sprite('feed', Math.round(this.dx) + 8, this.dy + 15, { frame: this.ateAt == null ? 0 : 1 + Math.min(3, Math.floor((this.t - this.ateAt) * 10)) });
+    else g.sprite('face', this.dx, this.dy, { w: 36, h: 37, frame: Math.floor(this.t * 6) % 9 });
+    if (this.ateAt == null) g.bone(this.tx, this.ty, 22);     // the treat
     if (!this.held) g.text('GRAB', this.tx, this.ty + 18, 7, PAL.mid);
   }
 }
@@ -2852,7 +2862,7 @@ class PumpBalloon extends Microgame {
     // the shiba pumping — frame follows fill (balloon inflates 0 -> 8)
     const fr = Math.max(0, Math.min(8, Math.round(this.f * 8)));
     const wob = (this.bounce || 0) * 2;
-    g.sprite('pumpdog', CX - 6, CY + 10 - wob, { w: 78, h: 78, frame: fr });
+    g.sprite('pumpdog', CX - 6, Math.round(CY + 10 - wob), { w: 70, h: 70, frame: fr });
     g.text(this.still > 0.12 ? 'HOLD!' : 'PUMP!', CX - 6, TOP + 18, 9, this.still > 0.12 ? PAL.accent : PAL.mid);
   }
 }
@@ -3785,7 +3795,7 @@ class DryShiba extends Microgame {
     const prog = Math.min(1, this.bursts / this.need);
     const fr = Math.max(0, Math.min(8, Math.floor(prog * 8.99)));
     const j = (Math.random() - 0.5) * (this.wob * 6 + this.pop * 30);
-    g.sprite('dryshake', CX + j, CY - 4, { w: 56, h: 45, frame: fr });
+    g.sprite('dryshake', Math.round(CX + j), CY - 4, { w: 76, h: 62, frame: fr });   // 2x, crisp
     BathTime.tub(162);   // shaking off in the bath, not floating on the tiles
     for (const d of this.drops) { const k = 1 - d.t / 0.6; ctx.globalAlpha = k; g.circle(d.x, d.y, 2, PAL.ink); ctx.globalAlpha = 1; }
     g.text(this.ready ? (Input.camReady ? 'SHAKE!' : 'TAP!') : 'NOW STOP…', CX, TOP + 26, 10, this.ready ? PAL.accent : PAL.mid);
@@ -3833,11 +3843,14 @@ class LeanDodge extends Microgame {
     // the shiba leans toward the side you must move: tilt + shift grow with progress
     const tilt = s * (0.35 + prog * 0.35);                  // radians
     const shift = s * (18 + prog * 22);
-    ctx.save();
-    ctx.translate(CX + shift, CY - 2);
-    ctx.rotate(tilt);
-    g.sprite('face', 0, 0, { w: 46, h: 46, frame: Math.floor(this.t * 8) % 3 });
-    ctx.restore();
+    if (Assets.get('lean')) g.sprite('lean', Math.round(CX + shift * 0.6), CY - 2, { w: 96, h: 128, flip: s > 0 });
+    else {
+      ctx.save();
+      ctx.translate(CX + shift, CY - 2);
+      ctx.rotate(tilt);
+      g.sprite('face', 0, 0, { w: 46, h: 46, frame: Math.floor(this.t * 8) % 3 });
+      ctx.restore();
+    }
     // motion streaks on the side you're leaning, brighter as you hold
     if (prog > 0.05) {
       ctx.globalAlpha = 0.4 + prog * 0.4;
@@ -3846,7 +3859,7 @@ class LeanDodge extends Microgame {
     }
     // arrow + label as the instruction
     const ax = this.dir === 'L' ? CX - 46 : CX + 46;
-    ctx.save(); ctx.translate(ax, CY - 2);
+    ctx.save(); ctx.translate(ax, Assets.get('lean') ? CY - 78 : CY - 2);   // over the whole shiba's head
     g.line(-10 * s, 0, 10 * s, 0, PAL.ink, 5);
     g.line(10 * s, 0, 3 * s, -8, PAL.ink, 5);
     g.line(10 * s, 0, 3 * s, 8, PAL.ink, 5);
@@ -4240,11 +4253,17 @@ class HeadBang extends Microgame {
       for (let v = 0; v < 8; v++) g.rect(sx + 2 + v * 3, BOT - 100, 2, 6, v < on ? (v >= 6 ? PAL.bad : PAL.accent) : PAL.mid);
     }
     // the rocker: the shiba headbanging as hard as you are
-    const nod = Math.abs(Math.sin(this.ph)), hy = CY - 18 + nod * 12 * m, rot = Math.sin(this.ph) * 0.25 * m;
-    ctx.save(); ctx.translate(CX, hy); ctx.rotate(rot);
-    g.sprite('face', 0, 0, { w: 48, h: 48, frame: m > 0.4 ? 1 : 0 });
-    ctx.restore();
-    if (!g.stretchV('micstand', CX - 14, CY + 4, BOT - 38 - CY - 4, 40, 50, 60)) {   // art/micstand.png, the mic in front of the rocker's chin
+    // (art/rocker.png, 2x: in a studded jacket and shades; frames 1-6 are one
+    // headbang, played once per nod of the rocking; still when you're still)
+    if (Assets.get('rocker')) g.sprite('rocker', CX, 236 - 64, { w: 96, h: 128, frame: m > 0.08 ? 1 + Math.floor((this.ph / Math.PI % 1) * 6) : 0 });
+    else {
+      const nod = Math.abs(Math.sin(this.ph)), hy = CY - 18 + nod * 12 * m, rot = Math.sin(this.ph) * 0.25 * m;
+      ctx.save(); ctx.translate(CX, hy); ctx.rotate(rot);
+      g.sprite('face', 0, 0, { w: 48, h: 48, frame: m > 0.4 ? 1 : 0 });
+      ctx.restore();
+    }
+    const micY = Assets.get('rocker') ? CY + 16 : CY + 4;   // the mic just under the rocker's chin
+    if (!g.stretchV('micstand', CX - 14, micY, BOT - 38 - micY, 40, 50, 60)) {   // art/micstand.png, in front of the rocker
       g.line(CX, CY + 18, CX, BOT - 40, PAL.mid, 2); g.cRect(CX, CY + 12, 8, 10, PAL.mid);
     }
     // the crowd's paws going up when you rock
@@ -4822,6 +4841,7 @@ class SortTreats extends Microgame {
       const side = this.dx < 0 ? 'left' : 'right';
       if (side === this.want()) {
         this.done++; buzz(12); FX.hit(side === 'left' ? 28 : W - 28, CY + 20, PAL.accent); this.pop = 0.15;
+        if (this.bone) this.fedAt = this.t;
         if (this.bone) Sfx.chomp(); else Sfx.thud();
         if (this.done >= this.need) { this.succeed(); return; }
         this.newTreat();
@@ -4832,7 +4852,10 @@ class SortTreats extends Microgame {
     g.clear();
     const dx = this.dogSide === 'left' ? 30 : W - 30, bx = W - dx;
     // the shiba behind its bowl
-    g.sprite('face', dx, CY + 4, { w: 44, h: 45, frame: Math.floor(this.t * 6) % 3 });
+    if (Assets.get('wag')) {   // the whole shiba, 1x (art/wag.png; cheering just after a bone)
+      if (this.t - (this.fedAt ?? -9) < 0.5) g.sprite('fullshiba', dx, CY + 8, { frame: Math.floor(this.t * 8) % 2 ? g.FULL.cheer : g.FULL.cheer2 });
+      else g.sprite('wag', dx, CY + 8, { frame: Math.floor(this.t * 6) % 4, flip: dx > CX });
+    } else g.sprite('face', dx, CY + 4, { w: 44, h: 45, frame: Math.floor(this.t * 6) % 3 });
     g.sprite('bowl', dx, CY + 36);   // art/bowl.png
     g.text('DOG', dx, CY - 26, 8, PAL.accent);
     // the bin
@@ -5065,7 +5088,9 @@ class BathTime extends Microgame {
     g.clear();
     const j = (Math.random() - 0.5) * Input.shake * 8, clean = this.done > 0;
     // the shiba sits in the tub, squinting under the suds; clean = all smiles
-    g.sprite('face', CX + j, 152, { w: 64, h: 66, frame: clean ? 0 : 1 });
+    // the shiba from RUB in the tub: sudsy and squirming, then happy once clean
+    if (Assets.get('rubdog')) g.sprite('rubdog', Math.round(CX + j), 138, { w: 96, h: 88, frame: clean ? 12 : Math.floor(this.t * 10) % RubClean.WIGGLE });
+    else g.sprite('face', CX + j, 152, { w: 64, h: 66, frame: clean ? 0 : 1 });
     BathTime.tub(178);
     // a rubber duck riding the bath
     const dx = 120 + Math.sin(this.t * 2) * 6;
@@ -5380,7 +5405,7 @@ class YesNo extends Microgame {
     this.sx = 0; this.sy = 0; this.px = null; this.cool = 0.35; this.said = null; this.sayT = 0;
   }
   answer(yes) {
-    this.said = yes; this.sayT = 0.5;
+    this.said = yes; this.sayT = 0.5; this.saidAt = this.t;
     if (yes !== this.q[1]) { Sfx.growl(); buzz(90); FX.shake(4); this.lose(); return; }
     this.done++; Sfx.bark(); buzz(20); FX.hit(CX, CY - 4, PAL.accent);
     if (this.done >= this.need && !this.finished) this.succeed();
@@ -5425,11 +5450,20 @@ class YesNo extends Microgame {
     g.text(this.q[0], CX + 14, by + 29, this.q[0].length > 9 ? 9 : 11, PAL.bg);
     // the shiba, head tilted, waiting; it beams or sulks at your answer
     const happy = this.said !== null && this.said === this.q[1];
-    const tilt = this.said === null ? Math.sin(this.t * 3) * 0.12 : 0;
-    ctx.save(); ctx.translate(CX, CY + 22); ctx.rotate(tilt);
-    g.sprite('face', 0, 0, { w: 70, h: 72, frame: this.said === null ? 2 : happy ? 0 : 5 });
-    ctx.restore();
-    if (this.said !== null) g.text(this.said ? 'YES!' : 'NO!', CX, CY + 76, 14, happy ? PAL.accent : PAL.bad);
+    if (Assets.get('yesno')) {
+      // (art/wag.png while it waits; art/yesno.png: 0-3 a nod, 4-5 a head shake; 2x, feet on the floor)
+      const since = this.t - (this.saidAt || 0), fy = 232 - 64;
+      if (this.said === null) g.sprite('wag', CX, fy, { w: 96, h: 128, frame: Math.floor(this.t * 6) % 4 });
+      else if (happy) g.sprite('yesno', CX, fy, { w: 96, h: 128, frame: [0, 1, 2, 3, 2, 1][Math.floor(since * 12) % 6] });
+      else if (since < 0.6) g.sprite('yesno', CX, fy, { w: 96, h: 128, frame: 4 + Math.floor(since * 10) % 2 });
+      else g.fullShiba(CX, 232, g.FULL.sad2);
+    } else {
+      const tilt = this.said === null ? Math.sin(this.t * 3) * 0.12 : 0;
+      ctx.save(); ctx.translate(CX, CY + 22); ctx.rotate(tilt);
+      g.sprite('face', 0, 0, { w: 70, h: 72, frame: this.said === null ? 2 : happy ? 0 : 5 });
+      ctx.restore();
+    }
+    if (this.said !== null) g.text(this.said ? 'YES!' : 'NO!', Assets.get('yesno') ? CX + 58 : CX, Assets.get('yesno') ? CY + 10 : CY + 76, 14, happy ? PAL.accent : PAL.bad);   // beside the whole shiba
     if (Input.camReady) {
       // which way you're moving: a nod fills YES, a head shake fills NO
       const k = Math.min(1, (this.sx + this.sy) / 0.55), yv = this.sy / (this.sx + this.sy + 1e-6);
