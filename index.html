@@ -261,6 +261,9 @@ const Assets = {
     cactus:   { src: 'art/cactus.png',   fw: 22,  fh: 31,  frames: 1,  fps: 1  },
     bomb:     { src: 'art/bomb.png',     fw: 22,  fh: 26,  frames: 2,  fps: 1  },
     frisbee:  { src: 'art/frisbee.png',  fw: 28,  fh: 10,  frames: 1,  fps: 1  },
+    sledder:  { src: 'art/sledder.png',  fw: 25,  fh: 35,  frames: 1,  fps: 1  },
+    nightfence:{ src: 'art/nightfence.png', fw: 21, fh: 12, frames: 1,  fps: 1  },
+    doll:     { src: 'art/doll.png',     fw: 48,  fh: 64,  frames: 3,  fps: 1  },
     menutile: { src: 'art/menutile.png', fw: 32,  fh: 32,  frames: 1,  fps: 1  },
     buttons:  { src: 'art/buttons.png',  fw: 104, fh: 24,  frames: 2,  fps: 1  },
     pauseicon:{ src: 'art/pauseicon.png', fw: 12, fh: 12, frames: 1, fps: 1 },
@@ -1953,8 +1956,12 @@ const Env = {
       R(hx + 27, hy + 10, 9, 9, SCENE.night1);
       }
       // a picket fence across the garden
-      for (let fx = 0; fx < W; fx += 8) { R(fx + 1, y - 18, 5, 18, SCENE.night1); R(fx + 2, y - 20, 3, 2, SCENE.night1); }
-      R(0, y - 14, W, 2, SCENE.night1); R(0, y - 6, W, 2, SCENE.night1);
+      const nf = Assets.get('nightfence');
+      if (nf) for (let fx = 0; fx < W; fx += nf.fw) x.drawImage(nf.img, fx, y - nf.fh + 1);
+      else {
+        for (let fx = 0; fx < W; fx += 8) { R(fx + 1, y - 18, 5, 18, SCENE.night1); R(fx + 2, y - 20, 3, 2, SCENE.night1); }
+        R(0, y - 14, W, 2, SCENE.night1); R(0, y - 6, W, 2, SCENE.night1);
+      }
       R(0, y, W, BOT - y, SCENE.nightGrass);
       R(0, y, W, 2, SCENE.nightGrassHi);
       if (tiles('scenetiles', 0, y + 2, W, BOT, () => 5 + Math.floor(rnd() * 3))) {} else
@@ -2128,7 +2135,8 @@ class CatchCoin extends Microgame {
       if (c.bounces) { ctx.globalAlpha = 0.4; g.rect(c.x - 4, this.floor + 4, 8, 2, PAL.bg); ctx.globalAlpha = 1; }   // its shadow, once it's bouncing
       ctx.save(); ctx.translate(c.x, c.y); ctx.rotate(c.rot); g.bone(0, 0, 13); ctx.restore();
     }
-    g.sprite('catcher', this.bx, this.dogY, { w: this.dogW, h: this.dogH, color: PAL.ink,
+    if (Assets.get('hero')) g.sprite('hero', this.bx, this.floor + 11, { w: 24, h: 30, frame: Math.floor(this.t * 14) % 9 });   // like SQUEEZE / DODGE
+    else g.sprite('catcher', this.bx, this.dogY, { w: this.dogW, h: this.dogH, color: PAL.ink,
              frame: Math.floor(this.t * 8) % 5 });
     for (let i = 0; i < this.need; i++) g.rect(CX - this.need * 4 + i * 8, TOP + 5, 5, 5, i < this.got ? PAL.accent : PAL.mid);
   }
@@ -4685,8 +4693,8 @@ class SteerRun extends Microgame {
     }
     for (const p of this.spray) { ctx.globalAlpha = 1 - p.t / 0.3; g.rect(p.x, p.y, 2, 2, PAL.ink); ctx.globalAlpha = 1; }
     // the sled under the shiba, leaning into the turn
-    g.sprite('sled', this.px, this.runY + 8);   // art/sled.png
-    g.sprite('hero', this.px, this.runY - 2, { w: 22, h: 27, frame: 0 });
+    if (Assets.get('sledder')) g.sprite('sledder', Math.round(this.px), this.runY - 4);   // art/sledder.png: the shiba from behind, sat in its sled
+    else { g.sprite('sled', this.px, this.runY + 8); g.sprite('hero', this.px, this.runY - 2, { w: 22, h: 27, frame: 0 }); }
     for (let i = 0; i < this.need; i++) g.rect(W - 8 - i * 8, TOP + 4, 5, 5, i < this.passed ? PAL.accent : PAL.mid);
     g.outline(Input.tiltReady ? 'TILT TO STEER' : 'DRAG TO STEER', CX, TOP + 22, 8, TEXT_MID);   // rimmed: the gates scroll right through this line
   }
@@ -5055,7 +5063,8 @@ class SquidDoll extends Microgame {
     g.circle(CX, TOP + 48, 6, lit);
     // the doll: back (turned away) -> profile (spinning) -> front (watching)
     const jx = (this.phase === 'red' && this.flash > 0) ? (Math.random() - 0.5) * 6 : 0;
-    g.sprite('facedir', CX + jx, CY + 6, { w: 100, h: 100, frame: this.face });
+    if (Assets.get('doll')) g.sprite('doll', Math.round(CX + jx), 214 - 64, { w: 96, h: 128, frame: this.face === 0 ? 0 : this.face === 2 ? 1 : 2 });   // feet on the grass (field@212)
+    else g.sprite('facedir', CX + jx, CY + 6, { w: 100, h: 100, frame: this.face });
     // instruction
     const label = this.phase === 'green' ? 'RUN! MOVE!' : this.phase === 'red' ? 'FREEZE!' : '…TURNING…';
     g.text(label, CX, BOT - 18, 11, this.phase === 'red' ? PAL.bad : this.phase === 'green' ? PAL.accent : PAL.mid);
