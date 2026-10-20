@@ -4929,11 +4929,20 @@ class SortTreats extends Microgame {
   // bones go to the dog; chocolate is bad for dogs, so it goes in the bin
   newTreat() { this.bone = Math.random() < 0.55; this.pop = 0; this.dx = 0; this.held = false; }
   want() { return this.bone ? this.dogSide : (this.dogSide === 'left' ? 'right' : 'left'); }
+  // where a treat lands on a side: the dog's bowl, or the bin's open top
+  target(side) { return { x: side === 'left' ? 30 : W - 30, y: side === this.dogSide ? 236 : 198 }; }
+  // the treat as you drag it: from the middle, along a curve down to the bowl or
+  // the bin on the side you're dragging toward, reaching it at the side
+  treatPos() {
+    const k = Math.min(1, Math.abs(this.dx) / (CX - 30)), t = this.target(this.dx < 0 ? 'left' : 'right');
+    return { x: CX + (t.x - CX) * k, y: CY - 40 + (t.y - (CY - 40)) * k * k };
+  }
   // The treat follows your finger and counts on the side you let it go, at any
   // speed (it used to need a swipe under half a second, so a careful drag to
   // the bin did nothing). A quick flick still works the same way.
   update(dt, input) {
     if (this.pop > 0) this.pop -= dt;
+    if (this.fly && (this.fly.t += dt) > 0.25) this.fly = null;
     if (input.justDown) { this.held = true; this.x0 = input.x - this.dx; }
     if (this.held && input.down) this.dx = Math.max(-CX + 20, Math.min(CX - 20, input.x - this.x0));
     if (this.held && !input.down) {
@@ -4946,6 +4955,8 @@ class SortTreats extends Microgame {
         this.done++; buzz(12); FX.hit(side === 'left' ? 28 : W - 28, CY + 20, PAL.accent); this.pop = 0.15;
         if (this.bone) this.fedAt = this.t;
         if (this.bone) Sfx.chomp(); else Sfx.thud();
+        const p = this.treatPos(), t = this.target(side);
+        this.fly = { x: p.x, y: p.y, tx: t.x, ty: t.y, bone: this.bone, t: 0 };
         if (this.done >= this.need) { this.succeed(); return; }
         this.newTreat();
       } else { buzz(90); FX.shake(4); if (this.bone) Sfx.growl(); else Sfx.fail(); this.lose(); return; }
@@ -4966,8 +4977,13 @@ class SortTreats extends Microgame {
     g.text('BIN', bx, 184, 8, PAL.ink);
     // the treat in the middle
     const s = 1 + this.pop * 1.5;
-    const tx = CX + this.dx, ty = CY - 40 + Math.abs(this.dx) * 0.35;   // dips toward the dog / bin as you drag
-    if (this.bone) g.bone(tx, ty, 30 * s); else g.choc(tx, ty, 26 * s);
+    // a treat just sorted, dropping into the bowl or the bin
+    if (this.fly) {
+      const f = this.fly, k = Math.min(1, f.t / 0.25), x = f.x + (f.tx - f.x) * k, y = f.y + (f.ty - f.y) * k;
+      ctx.globalAlpha = 1 - k * 0.6; if (f.bone) g.bone(x, y, 22); else g.choc(x, y, 23); ctx.globalAlpha = 1;
+    }
+    const { x: tx, y: ty } = this.treatPos();   // follows your drag down to the bowl / bin
+    if (!this.fly || this.held || this.dx) { if (this.bone) g.bone(tx, ty, 30 * s); else g.choc(tx, ty, 26 * s); }
     if (!this.held) g.text(this.bone ? 'BONE' : 'CHOCOLATE', CX, CY - 18, 7, this.bone ? PAL.accent : PAL.bad);
     g.text('DRAG IT!', CX, TOP + 22, 8, PAL.mid);
     for (let i = 0; i < this.need; i++) g.rect(CX - this.need * 4 + i * 8, BOT - 14, 5, 5, i < this.done ? PAL.accent : PAL.mid);
