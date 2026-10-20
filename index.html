@@ -2168,7 +2168,9 @@ class SwipeArrow extends Microgame {
     g.clear();
     const d = this.seq[this.i];
     const ang = { up: -Math.PI / 2, down: Math.PI / 2, left: Math.PI, right: 0 }[d];
-    const ux = Math.cos(ang), uy = Math.sin(ang), sy = 167;   // paws in the grass (horizon at 190), not up in the sky
+    const ux = Math.cos(ang), uy = Math.sin(ang);
+    const sy = d === 'down' ? 198 : 167;   // paws in the grass (horizon at 190); running at you, it stands well into it
+    const reach = d === 'down' ? 50 : 62;  // the arrow's distance from the dog (down: just under its paws)
     // the shiba faces the way it wants you to swipe, one dedicated high-res
     // sprite per direction (running left/right, jumping up, running down).
     if (d === 'left' || d === 'right') {
@@ -2180,12 +2182,12 @@ class SwipeArrow extends Microgame {
       g.sprite('swipedown', CX, sy, { w: 112, h: 112, frame: Math.floor(this.t * 14) % 9 });
     }
     // bold arrow pushed out past the dog so it stays visible
-    ctx.save(); ctx.translate(CX + ux * 62, sy + uy * 62); ctx.rotate(ang);
+    ctx.save(); ctx.translate(CX + ux * reach, sy + uy * reach); ctx.rotate(ang);
     g.line(-16, 0, 14, 0, PAL.ink, 7);
     g.line(14, 0, 2, -12, PAL.ink, 7);
     g.line(14, 0, 2, 12, PAL.ink, 7);
     ctx.restore();
-    for (let k = 0; k < this.seq.length; k++) g.circle(CX - (this.seq.length - 1) * 6 + k * 12, BOT - 20, 3, k < this.i ? PAL.accent : PAL.mid);
+    for (let k = 0; k < this.seq.length; k++) g.circle(CX - (this.seq.length - 1) * 6 + k * 12, BOT - 6, 3, k < this.i ? PAL.accent : PAL.mid);
   }
 }
 
@@ -4182,12 +4184,12 @@ class HeadBang extends Microgame {
     }
     // the rocker: the shiba headbanging as hard as you are
     const nod = Math.abs(Math.sin(this.ph)), hy = CY - 18 + nod * 12 * m, rot = Math.sin(this.ph) * 0.25 * m;
-    if (!g.stretchV('micstand', CX - 14, CY + 4, BOT - 38 - CY - 4, 40, 50, 60)) {   // art/micstand.png, the mic under the chin
-      g.line(CX, CY + 18, CX, BOT - 40, PAL.mid, 2); g.cRect(CX, CY + 12, 8, 10, PAL.mid);
-    }
     ctx.save(); ctx.translate(CX, hy); ctx.rotate(rot);
     g.sprite('face', 0, 0, { w: 48, h: 48, frame: m > 0.4 ? 1 : 0 });
     ctx.restore();
+    if (!g.stretchV('micstand', CX - 14, CY + 4, BOT - 38 - CY - 4, 40, 50, 60)) {   // art/micstand.png, the mic in front of the rocker's chin
+      g.line(CX, CY + 18, CX, BOT - 40, PAL.mid, 2); g.cRect(CX, CY + 12, 8, 10, PAL.mid);
+    }
     // the crowd's paws going up when you rock
     for (let k = 0; k < 7; k++) {
       const px = 18 + k * 24, up = Math.max(0, Math.sin(this.ph + k * 1.3)) * 10 * m;
