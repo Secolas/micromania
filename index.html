@@ -261,6 +261,12 @@ const Assets = {
     cactus:   { src: 'art/cactus.png',   fw: 22,  fh: 31,  frames: 1,  fps: 1  },
     bomb:     { src: 'art/bomb.png',     fw: 22,  fh: 26,  frames: 2,  fps: 1  },
     frisbee:  { src: 'art/frisbee.png',  fw: 28,  fh: 10,  frames: 1,  fps: 1  },
+    sun:      { src: 'art/sun.png',      fw: 48, fh: 48, frames: 4, fps: 4 },
+    moon:     { src: 'art/moon.png',     fw: 19,  fh: 20,  frames: 1,  fps: 1  },
+    clouds:   { src: 'art/clouds.png',   fw: 43,  fh: 22,  frames: 4,  fps: 1  },
+    roomtiles:{ src: 'art/roomtiles.png', fw: 32, fh: 32,  frames: 6,  fps: 1  },
+    button:   { src: 'art/button.png',   fw: 104, fh: 24,  frames: 1,  fps: 1  },
+    titlesign:{ src: 'art/titlesign.png', fw: 149, fh: 68, frames: 1,  fps: 1  },
     rocker:   { src: 'art/rocker.png',   fw: 48,  fh: 64,  frames: 7,  fps: 1  },
     yesno:    { src: 'art/yesno.png',    fw: 48,  fh: 64,  frames: 6,  fps: 1  },
     wag:      { src: 'art/wag.png',      fw: 48,  fh: 64,  frames: 4,  fps: 1  },
@@ -1633,7 +1639,10 @@ const Env = {
     ctx.fillStyle = PAL.bg; ctx.fillRect(0, 0, W, H);
     ctx.drawImage(c, 0, 0, W, H);
     if (spec === 'sky') this.clouds();
-    if (spec.startsWith('sunny') || spec.startsWith('park') || spec.startsWith('nature')) this.dayClouds();
+    if (spec.startsWith('sunny') || spec.startsWith('park') || spec.startsWith('nature')) {
+      if (Assets.get('sun')) g.sprite('sun', W - 30, TOP + 28);   // art/sun.png, rays twinkling
+      this.dayClouds();
+    }
     if (spec.startsWith('beach')) this.surf(+spec.split('@')[1]);
     if (spec.startsWith('disco')) this.discoLights(+spec.split('@')[1]);
     if (spec.startsWith('night')) this.stars(+spec.split('@')[1]);
@@ -1685,6 +1694,7 @@ const Env = {
     const t = Engine.time;
     for (let i = 0; i < 3; i++) {
       const x = ((i * 83 + t * (3 + i * 2)) % (W + 70)) - 35, y = TOP + 46 + i * 28;   // below the instruction line at TOP+26
+      if (Assets.get('clouds')) { g.sprite('clouds', Math.round(x), Math.round(y - 4), { frame: i % 2 ? 0 : 1 }); continue; }
       ctx.fillStyle = SCENE.dayCloud;
       ctx.fillRect(Math.round(x - 14), Math.round(y), 28, 6);
       ctx.fillRect(Math.round(x - 9), Math.round(y - 4), 14, 4);
@@ -1700,6 +1710,8 @@ const Env = {
     }
   },
   cloud(x, cx, cy, w) {
+    const a = Assets.get('clouds');   // the dusk-blue art clouds, small or big by w
+    if (a) { const f = w >= 22 ? 3 : 2; x.drawImage(a.img, f * a.fw, 0, a.fw, a.fh, Math.round(cx - a.fw / 2), Math.round(cy - a.fh + 5), a.fw, a.fh); return; }
     x.fillStyle = SCENE.cloud;
     x.fillRect(Math.round(cx - w / 2), Math.round(cy), Math.round(w), 4);
     x.fillRect(Math.round(cx - w / 3), Math.round(cy - 3), Math.round(w * 0.45), 3);
@@ -1757,12 +1769,24 @@ const Env = {
     } else if (kind === 'room' || kind === 'wall' || kind === 'bedroom') {
       // striped wallpaper, skirting, floorboards. (A little framed picture
       // used to hang here; at this size it read as a stray UI box.)
-      for (let i = 0; i < W; i += 12) R(i, TOP, 6, y - TOP, SCENE.wall), R(i + 6, TOP, 6, y - TOP, SCENE.wallHi);
-      R(0, y - 4, W, 4, SCENE.skirt);
-      R(0, y, W, BOT - y, SCENE.floor);
-      for (let fy = y + 7, row = 0; fy < BOT; fy += 7, row++) {
-        R(0, fy, W, 1, SCENE.floorLo);
-        for (let fx = (row % 2) * 22; fx < W; fx += 44) R(fx, fy - 7, 1, 7, SCENE.floorLo);
+      const rt = Assets.get('roomtiles');
+      if (rt) {
+        const tile = (f, tx, ty) => x.drawImage(rt.img, f * 32, 0, 32, 32, tx, ty, 32, 32);
+        x.save(); x.beginPath(); x.rect(0, TOP, W, y - TOP); x.clip();
+        for (let col = 0; col * 32 < W; col++) for (let ty = y - 32; ty > TOP - 32; ty -= 32) tile(col % 2, col * 32, ty);   // from the skirting up
+        x.restore();
+        x.save(); x.beginPath(); x.rect(0, y, W, BOT - y); x.clip();
+        for (let ty = y; ty < BOT; ty += 32) for (let col = 0; col * 32 < W; col++) tile(rnd() < 0.12 ? 5 : 3, col * 32, ty);   // one board tile, a knot now and then
+        x.restore();
+        R(0, y - 4, W, 4, SCENE.skirt);
+      } else {
+        for (let i = 0; i < W; i += 12) R(i, TOP, 6, y - TOP, SCENE.wall), R(i + 6, TOP, 6, y - TOP, SCENE.wallHi);
+        R(0, y - 4, W, 4, SCENE.skirt);
+        R(0, y, W, BOT - y, SCENE.floor);
+        for (let fy = y + 7, row = 0; fy < BOT; fy += 7, row++) {
+          R(0, fy, W, 1, SCENE.floorLo);
+          for (let fx = (row % 2) * 22; fx < W; fx += 44) R(fx, fy - 7, 1, 7, SCENE.floorLo);
+        }
       }
       if (kind === 'bedroom') {
         // lights out: dim the whole room, then a window onto the night
@@ -1780,8 +1804,9 @@ const Env = {
     } else if (kind === 'sunny' || kind === 'park' || kind === 'nature') {
       const bands = 8, h = (y - TOP) / bands;
       for (let i = 0; i < bands; i++) R(0, TOP + i * h, W, h + 1, mix(SCENE.day0, SCENE.day1, i / (bands - 1)));
-      // the sun, rays and all, in the top corner
+      // the sun, rays and all, in the top corner (drawn live in paint() when it has art)
       const sx = W - 30, sy = TOP + 28;
+      if (!Assets.get('sun')) {
       x.fillStyle = PAL.accent;
       for (let k = 0; k < 8; k++) {
         const a = k * Math.PI / 4;
@@ -1789,6 +1814,7 @@ const Env = {
         R(sx + Math.cos(a) * 21 - 1, sy + Math.sin(a) * 21 - 1, 2, 2, PAL.accent);
       }
       x.beginPath(); x.arc(sx, sy, 12, 0, 6.2832); x.fill();
+      }
       if (kind === 'nature') {
         // far mountains with snowy tips, then a pine forest along the horizon
         for (const [mx, mh, mw] of [[22, 58, 46], [78, 80, 58], [140, 64, 50], [190, 50, 40]]) {
@@ -1847,9 +1873,13 @@ const Env = {
       const bands = 6, h = (y - TOP) / bands;
       for (let i = 0; i < bands; i++) R(0, TOP + i * h, W, h + 1, mix(SCENE.night0, SCENE.night1, i / (bands - 1)));
       // a crescent moon
-      x.fillStyle = PAL.ink; x.beginPath(); x.arc(32, TOP + 56, 11, 0, 6.2832); x.fill();
-      x.fillStyle = mix(SCENE.night0, SCENE.night1, Math.floor(52 / h) / (bands - 1));   // the sky band it sits in
-      x.beginPath(); x.arc(37, TOP + 52, 10, 0, 6.2832); x.fill();
+      const mn = Assets.get('moon');   // art/moon.png
+      if (mn) x.drawImage(mn.img, 32 - 10, TOP + 56 - 10);
+      else {
+        x.fillStyle = PAL.ink; x.beginPath(); x.arc(32, TOP + 56, 11, 0, 6.2832); x.fill();
+        x.fillStyle = mix(SCENE.night0, SCENE.night1, Math.floor(52 / h) / (bands - 1));   // the sky band it sits in
+        x.beginPath(); x.arc(37, TOP + 52, 10, 0, 6.2832); x.fill();
+      }
       // a house over the fence, one window still lit
       const hx = W - 62, hy = y - 46;
       R(hx, hy, 44, 46, SCENE.house);
@@ -6544,6 +6574,7 @@ const Engine = {
         g.outline(ch, x0 + i * step, y + idle, size, col);
       });
     };
+    if (Assets.get('titlesign')) { ctx.globalAlpha = Math.min(1, t * 3); g.stretchV('titlesign', CX - 74, 44, 86, 30, 34, 38); ctx.globalAlpha = 1; }   // art/titlesign.png, its plain middle stretched to fit the logo
     word('SHIBA', 70, PAL.ink, 0.0);
     word('MANIA', 98, PAL.accent, 0.35);
     if (t > 1.0) { ctx.globalAlpha = Math.min(1, (t - 1.0) * 3); g.outline(POOL.length + BOSSES.length + ' MICROGAMES', CX, 118, 8, PAL.ink); ctx.globalAlpha = 1; }
@@ -6565,7 +6596,10 @@ const Engine = {
     const up = (i) => (1 - back((t - 1.3 - i * 0.08) / 0.45)) * 150;   // from below the bottom edge
     // the menu: white outlined words, all alike
     const opts = [[R, 'RUN'], [C, 'CLASSIC'], [A, 'ALBUM'], [this.BTN_SET, 'SETTINGS']];
-    opts.forEach(([b, label], i) => g.outline(label, CX, b.y + up(i) + b.h / 2 + 5, 14, PAL.ink));
+    opts.forEach(([b, label], i) => {
+      if (Assets.get('button')) g.sprite('button', CX, b.y + up(i) + b.h / 2);   // art/button.png
+      g.outline(label, CX, b.y + up(i) + b.h / 2 + 5, 14, PAL.ink);
+    });
     const best = [];
     if (Run.best) best.push('RUN ' + Run.label(Run.best));
     if (this.best) best.push('CLASSIC ' + this.best);
