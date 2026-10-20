@@ -286,7 +286,7 @@ const Assets = {
     bowl:     { src: 'art/bowl.png',     fw: 40,  fh: 24,  frames: 1,  fps: 1  },
     duck:     { src: 'art/duck.png',     fw: 25,  fh: 24,  frames: 1,  fps: 1  },
     suds:     { src: 'art/suds.png',     fw: 19,  fh: 17,  frames: 2,  fps: 1  },
-    mud:      { src: 'art/mud.png',      fw: 26,  fh: 20,  frames: 1,  fps: 1  },
+    mud:      { src: 'art/mud.png',      fw: 16,  fh: 12,  frames: 1,  fps: 1  },
     firstaid: { src: 'art/firstaid.png', fw: 24,  fh: 22,  frames: 1,  fps: 1  },
     speech:   { src: 'art/speech.png',   fw: 126, fh: 70,  frames: 1,  fps: 1  },
     beam:     { src: 'art/beam.png',     fw: 61,  fh: 5,   frames: 1,  fps: 1  },
@@ -2017,6 +2017,7 @@ class CatchCoin extends Microgame {
 
 // 3. RUB — scrub the mud off a muddy shiba
 class RubClean extends Microgame {
+  static SY = 170;   // the shiba's centre: drawn 2x (70x74), sat on the bath mat
   static meta = { id: 'rub', env: 'bath', prompt: 'RUB!', hint: 'rub', duration: 3.6,
     how: 'RUB OFF\nALL THE MUD' };
   init() {
@@ -2024,8 +2025,8 @@ class RubClean extends Microgame {
     this.mud = [];
     const n = this.byD(6, 8, 10);
     for (let i = 0; i < n; i++) {
-      const a = Math.random() * 6.2832, d = Math.sqrt(Math.random()) * 38;
-      this.mud.push({ x: CX + Math.cos(a) * d * 1.1, y: CY + 4 + Math.sin(a) * d, r: 8 + Math.random() * 5, dirt: 1 });
+      const a = Math.random() * 6.2832, d = Math.sqrt(Math.random()) * 24;
+      this.mud.push({ x: CX + Math.cos(a) * d, y: RubClean.SY + 4 + Math.sin(a) * d, r: 8 + Math.random() * 5, dirt: 1 });
     }
     this.rate = this.byD(0.05, 0.04, 0.034);
     this.bubbles = []; this.squeak = 0;
@@ -2050,7 +2051,7 @@ class RubClean extends Microgame {
     // a floor and a bath mat to sit on, so the flat-cut paws rest on something
     g.rect(0, 204, W, BOT - 204, SCENE.grout); g.rect(0, 204, W, 2, SCENE.tileHi);
     g.sprite('bathmat', CX, 213);   // art/bathmat.png
-    g.sprite('shiba', CX, CY + 4, { w: 110, h: 116, frame: left === 0 ? 1 : 0 });
+    g.sprite('shiba', CX, RubClean.SY, { w: 70, h: 74, frame: left === 0 ? 1 : 0 });
     for (const m of this.mud) {
       if (m.dirt <= 0) continue;
       ctx.globalAlpha = Math.min(1, m.dirt + 0.15);
