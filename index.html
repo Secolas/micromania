@@ -4194,8 +4194,9 @@ class DryShiba extends Microgame {
     const prog = Math.min(1, this.bursts / this.need);
     const fr = Math.max(0, Math.min(8, Math.floor(prog * 8.99)));
     const j = (Math.random() - 0.5) * (this.wob * 6 + this.pop * 30);
+    BathTime.tubBack(162);   // shaking off IN the bath: its back rim and water behind
     g.sprite('dryshake', Math.round(CX + j), CY - 4, { w: 76, h: 62, frame: fr });   // 2x, crisp
-    BathTime.tub(162);   // shaking off in the bath, not floating on the tiles
+    BathTime.tubFront(162);
     for (const d of this.drops) { const k = 1 - d.t / 0.6; ctx.globalAlpha = k; g.circle(d.x, d.y, 2, PAL.ink); ctx.globalAlpha = 1; }
     g.text(this.ready ? (Input.camReady ? 'SHAKE!' : 'TAP!') : 'NOW STOP…', CX, TOP + 26, 10, this.ready ? PAL.accent : PAL.mid);
     for (let i = 0; i < this.need; i++) g.rect(CX - this.need * 6 + i * 12, BOT - 20, 8, 8, i < this.bursts ? PAL.accent : PAL.mid);
