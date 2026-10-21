@@ -5013,7 +5013,7 @@ class SortTreats extends Microgame {
 // goal before the clock runs out to win. Uses the full portrait set for the spin.
 class SquidDoll extends Microgame {
   static meta = { id: 'squid', env: 'field@212', cam: true, prompt: 'RUN & FREEZE!', hint: 'move', duration: 7.0, minDuration: 6.0, photo: true, photoCap: 'YOU MADE IT!',
-    how: { cam: 'MOVE YOUR HEAD TO RUN\nFREEZE WHEN THE DOLL LOOKS', touch: 'HOLD ON GREEN\nLET GO ON RED' } };
+    how: { cam: 'MOVE YOUR HEAD TO RUN\nFREEZE WHEN THE DOG LOOKS', touch: 'HOLD ON GREEN\nLET GO ON RED' } };
   init() {
     Input.enableCam();
     this.paused = Input.camPending; this.wait = 0;
@@ -5036,7 +5036,7 @@ class SquidDoll extends Microgame {
     if (this.flash > 0) this.flash -= dt;
     this.pt -= dt;
     switch (this.phase) {
-      case 'green':                                   // doll turned away — RUN
+      case 'green':                                   // the dog turned away — RUN
         this.face = 4;                                // back of head
         if (moving > this.thr) this.prog = Math.min(1, this.prog + dt * this.speed * Math.min(1.4, moving / 0.2));
         if (this.prog >= 1) { this.succeed(); return; }
@@ -5046,7 +5046,7 @@ class SquidDoll extends Microgame {
         this.face = 2;                                // profile mid-spin
         if (this.pt <= 0) { this.phase = 'red'; this.pt = this.rT; this.caught = 0; }
         break;
-      case 'red':                                     // doll watching — FREEZE
+      case 'red':                                     // the dog watching — FREEZE
         this.face = 0;                                // facing you
         if (moving > this.thr) {
           this.caught += dt;
@@ -5070,7 +5070,7 @@ class SquidDoll extends Microgame {
     // status light: green = run, red = freeze, grey = turning
     const lit = this.phase === 'green' ? PAL.accent : this.phase === 'red' ? PAL.bad : PAL.mid;
     g.circle(CX, TOP + 48, 6, lit);
-    // the doll: back (turned away) -> profile (spinning) -> front (watching)
+    // the watching dog (art/doll.png): back (turned away) -> profile (spinning) -> front (watching)
     const jx = (this.phase === 'red' && this.flash > 0) ? (Math.random() - 0.5) * 6 : 0;
     if (Assets.get('doll')) g.sprite('doll', Math.round(CX + jx), 214 - 64, { w: 96, h: 128, frame: this.face === 0 ? 0 : this.face === 2 ? 1 : 2 });   // feet on the grass (field@212)
     else g.sprite('facedir', CX + jx, CY + 6, { w: 100, h: 100, frame: this.face });
