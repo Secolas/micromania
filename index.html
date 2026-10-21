@@ -1382,13 +1382,22 @@ const g = {
     };
     ctx.save(); ctx.translate(Math.round(x), Math.round(y)); ctx.scale(s, s);
     switch (kind) {
-      case 'tap': case 'mash': case 'count': case 'wait': case 'hold': {
-        const per = { tap: 1, mash: 0.32, count: 0.5, wait: 2, hold: 2 }[kind];
-        const k = (t % per) / per, down = kind === 'wait' ? k > 0.8 : kind === 'hold' ? k > 0.15 && k < 0.85 : k > 0.5 && k < 0.75;
+      // hands off (SHH!, the DON'T fake-outs, FREEZE on touch): the finger
+      // hovers over the phone but never lands, under a red no sign
+      case 'wait': {
         phone();
-        if (kind === 'wait' && !down) for (let i = 0; i < 3; i++) if (k * 4 > i) this.rect(-6 + i * 5, -12, 2, 2, mid);   // wait...
+        finger(0, 9 + Math.sin(t * 3) * 2);
+        const r = 12 + (Math.floor(t * 2) % 2);
+        ctx.strokeStyle = PAL.bad; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.arc(0, -3, r, 0, 6.2832); ctx.stroke();
+        this.line(-r * 0.7, -3 + r * 0.7, r * 0.7, -3 - r * 0.7, PAL.bad, 2.5);
+        break;
+      }
+      case 'tap': case 'mash': case 'count': case 'hold': {
+        const per = { tap: 1, mash: 0.32, count: 0.5, hold: 2 }[kind];
+        const k = (t % per) / per, down = kind === 'hold' ? k > 0.15 && k < 0.85 : k > 0.5 && k < 0.75;
+        phone();
         if (down) {
-          const r = kind === 'hold' ? 3 + (k - 0.15) * 14 : 4 + (k - (kind === 'wait' ? 0.8 : 0.5)) * 24;
+          const r = kind === 'hold' ? 3 + (k - 0.15) * 14 : 4 + (k - 0.5) * 24;
           ring(0, 0, r, acc); if (kind === 'hold') ring(0, 0, 10, mid);
         }
         finger(0, down ? 0 : 7);
@@ -2256,7 +2265,7 @@ class PullTissue extends Microgame {
 // 5. SHAKE — build up pressure (accelerometer or frantic wiggling)
 class SodaShake extends Microgame {
   static meta = { id: 'shake', env: 'room@196', prompt: 'SHAKE!', hint: 'shake', duration: 3.6,
-    how: { motion: 'SHAKE YOUR PHONE\nHARD!', touch: 'WIGGLE YOUR FINGER\nFAST' } };
+    how: { motion: 'SHAKE YOUR PHONE\nHARD!', touch: 'RUB THE SCREEN\nFAST' } };
   init() { this.fill = 0; this.need = this.byD(1.4, 1.8, 2.3); this.buzzT = 0; }
   update(dt, input) {
     this.fill += input.shake * dt * 2.2;
@@ -2409,7 +2418,7 @@ class PatShiba extends Microgame {
 // 8. CHARGE — hold to charge a jump, release at the couch's height
 class HoldRelease extends Microgame {
   static meta = { id: 'hold', env: 'room@217', prompt: 'CHARGE!', hint: 'hold', duration: 4.2,
-    how: 'HOLD TO CHARGE A JUMP\nLET GO AT THE COUCH' };
+    how: 'HOLD TO CHARGE A JUMP\nLET GO IN THE YELLOW' };
   init() {
     this.p = 0; this.dir = 1;
     this.speed = this.byD(0.55, 0.8, 1.1);
@@ -2537,7 +2546,7 @@ class HoldRelease extends Microgame {
       const rising = q.y < prev.y, landed = i >= P.length - 1;
       g.sprite('runjump', q.x, q.y - foot, { w: S, h: S, frame: landed ? 0 : rising ? 2 : 4 });
     }
-    g.text(this.jumpT >= 0 ? (this.ok ? 'UP ON THE COUCH!' : 'BONK!') : this.armed ? 'LET GO AT THE COUCH!' : 'HOLD TO CHARGE',
+    g.text(this.jumpT >= 0 ? (this.ok ? 'UP ON THE COUCH!' : 'BONK!') : this.armed ? 'LET GO IN THE YELLOW!' : 'HOLD TO CHARGE',
            CX, BOT - 6, 8, this.jumpT >= 0 ? (this.ok ? PAL.accent : PAL.bad) : this.armed ? PAL.accent : PAL.mid);
   }
 }
@@ -2613,7 +2622,7 @@ class Dodge extends Microgame {
 // 10. SHH — don't wake the sleeping shiba. The classic do-nothing trap.
 class DontTap extends Microgame {
   static meta = { id: 'dont', env: 'room@205', prompt: 'SHH!', hint: 'wait', duration: 3.0, winOnTimeout: true,
-    how: "IT'S SLEEPING.\nDON'T WAKE IT!" };
+    how: "IT'S ASLEEP.\nDON'T TOUCH ANYTHING!" };
   init() { this.woke = 0; sleepFace(); }
   update(dt, input) {
     if (input.justDown) { this.woke = 1; Sfx.bark(); buzz(60); FX.shake(3); this.lose(); }
@@ -2869,7 +2878,7 @@ class FeedDog extends Microgame {
 // 16. BOOP — boop each snoot before it ducks back down
 class WhackMole extends Microgame {
   static meta = { id: 'whack', env: 'lawn', prompt: 'BOOP!', hint: 'mash', duration: 4.4,
-    how: 'BOOP EACH SNOOT\nAS IT POPS UP' };
+    how: 'TAP EACH SHIBA\nAS IT POPS UP' };
   init() {
     this.need = this.byD(2, 3, 4); this.hit = 0; this.r = 18;
     this.sw = 46;                          // drawn sprite size
@@ -2940,7 +2949,7 @@ class WhackMole extends Microgame {
 // 17. RESTRAINT — pump into the band, then stop before it bursts
 class PumpBalloon extends Microgame {
   static meta = { id: 'pump', env: 'room@196', prompt: 'PUMP!', hint: 'mash', duration: 4.2,
-    how: 'TAP TO PUMP\nSTOP IN THE BAND' };
+    how: 'TAP TO PUMP THE BALLOON\nSTOP IN THE YELLOW' };
   init() {
     this.f = 0; this.still = 0; this.bounce = 0;
     this.band = this.byD(0.26, 0.19, 0.13);
@@ -2974,7 +2983,7 @@ class PumpBalloon extends Microgame {
     const fr = Math.max(0, Math.min(8, Math.round(this.f * 8)));
     const wob = (this.bounce || 0) * 2;
     g.sprite('pumpdog', CX - 6, Math.round(198 - 33 - wob), { w: 70, h: 70, frame: fr });
-    g.text(this.still > 0.12 ? 'HOLD!' : 'PUMP!', CX - 6, TOP + 18, 9, this.still > 0.12 ? PAL.accent : PAL.mid);
+    g.text(this.still > 0.12 ? 'NOW WAIT!' : 'PUMP!', CX - 6, TOP + 18, 9, this.still > 0.12 ? PAL.accent : PAL.mid);
   }
 }
 
@@ -2982,7 +2991,7 @@ class PumpBalloon extends Microgame {
 // moment so it flies into the shiba's mouth. Never the chocolate.
 class CutRope extends Microgame {
   static meta = { id: 'cut', env: 'wall@262', prompt: 'CUT!', hint: 'swipe', duration: 4.6, minDuration: 4.0,
-    how: 'SWIPE THE ROPE WHEN THE\nBONE WILL FALL TO THE DOG' };
+    how: 'SWIPE THE ROPE WHEN\nTHE BONE IS OVER THE DOG' };
   init() {
     this.G = 900;                              // gravity, px/s² (the swing and the fall share it)
     this.y0 = TOP + 30;                        // the beam
@@ -3237,7 +3246,7 @@ class TracePath extends Microgame {
 // 22. COUNT — tap exactly the number asked for, no more
 class GrabCount extends Microgame {
   static meta = { id: 'count', env: 'lawn', prompt: 'GRAB 3!', hint: 'count', duration: 4.2,
-    how: 'TAP EXACTLY\nTHAT MANY TREATS' };
+    how: 'TAP EXACTLY THAT MANY\nTREATS, NOT ONE MORE' };
   init() {
     const total = this.byD(5, 7, 9);
     this.need = 2 + Math.floor(Math.random() * (this.byD(2, 3, 4)));
@@ -3447,7 +3456,7 @@ class Crossy extends Microgame {
 // 26. DOODLE — auto-bounce; steer to land on each rising platform
 class Doodle extends Microgame {
   static meta = { id: 'doodle', env: 'sky', prompt: 'HOP!', hint: 'drag', duration: 5.0, winOnTimeout: true,
-    how: 'DRAG LEFT/RIGHT\nTO LAND ON STEPS' };
+    how: 'DRAG LEFT AND RIGHT\nTO LAND ON THE STEPS' };
   init() {
     this.x = CX; this.vy = 0;
     this.grav = 240; this.bounce = -210;
@@ -3626,7 +3635,7 @@ class DinoRun extends Microgame {
 // 29. KNOCK — Angry-Birds style: sling the shiba to topple the block stack
 class KnockStack extends Microgame {
   static meta = { id: 'knock', env: 'sunny@262', prompt: 'KNOCK IT!', hint: 'flick', duration: 5.0, minDuration: 3.2,
-    how: 'PULL BACK, LET GO\nKNOCK THE BONE DOWN' };
+    how: 'DRAG BACK AND LET GO\nTO KNOCK THE BONE DOWN' };
   init() {
     this.K = 8.5;                             // pull -> velocity: the pull is shorter in the smaller scene, the shot as strong
     this.maxPull = 50;
@@ -3873,7 +3882,7 @@ class MoveCam extends Microgame {
 // 31. DRY OFF — big separate shakes at the camera, like a wet dog (Snapped! homage)
 class DryShiba extends Microgame {
   static meta = { id: 'dry', env: 'bath', cam: true, prompt: 'DRY OFF!', hint: 'move', duration: 5.0, minDuration: 4.0, photo: true, photoCap: 'ALL FLUFFY!',
-    how: { cam: 'SHAKE HARD, STOP,\nSHAKE AGAIN!', touch: 'TAP, TAP, TAP\nTO SHAKE IT OFF' } };
+    how: { cam: 'SHAKE YOUR BODY HARD,\nSTOP, THEN SHAKE AGAIN', touch: 'TAP, TAP, TAP\nTO SHAKE IT OFF' } };
   init() {
     // Not MOVE's steady wiggle: a wet dog shakes in big bursts. Each burst is a
     // spike of motion that has to settle back down before the next one counts.
@@ -4403,7 +4412,7 @@ class HeadBang extends Microgame {
 // FREEZE in one, switching between them while you play.
 class RedLight extends Microgame {
   static meta = { id: 'redlight', env: 'field@222', prompt: 'RED LIGHT!', hint: 'mash', duration: 5.6, minDuration: 5.0,
-    how: 'TAP ON GREEN\nSTOP ON RED' };
+    how: 'TAP FAST ON GREEN\nSTOP ON RED' };
   init() {
     // tap-based boss (no camera) — mash on green, stop on red. SQUID is the
     // camera version; this one is the touch twin.
@@ -5004,7 +5013,7 @@ class SortTreats extends Microgame {
 // goal before the clock runs out to win. Uses the full portrait set for the spin.
 class SquidDoll extends Microgame {
   static meta = { id: 'squid', env: 'field@212', cam: true, prompt: 'RUN & FREEZE!', hint: 'move', duration: 7.0, minDuration: 6.0, photo: true, photoCap: 'YOU MADE IT!',
-    how: { cam: 'MOVE YOUR HEAD TO RUN\nFREEZE WHEN IT LOOKS', touch: 'HOLD ON GREEN\nLET GO ON RED' } };
+    how: { cam: 'MOVE YOUR HEAD TO RUN\nFREEZE WHEN THE DOG LOOKS', touch: 'HOLD ON GREEN\nLET GO ON RED' } };
   init() {
     Input.enableCam();
     this.paused = Input.camPending; this.wait = 0;
@@ -5027,7 +5036,7 @@ class SquidDoll extends Microgame {
     if (this.flash > 0) this.flash -= dt;
     this.pt -= dt;
     switch (this.phase) {
-      case 'green':                                   // doll turned away — RUN
+      case 'green':                                   // the dog turned away — RUN
         this.face = 4;                                // back of head
         if (moving > this.thr) this.prog = Math.min(1, this.prog + dt * this.speed * Math.min(1.4, moving / 0.2));
         if (this.prog >= 1) { this.succeed(); return; }
@@ -5037,7 +5046,7 @@ class SquidDoll extends Microgame {
         this.face = 2;                                // profile mid-spin
         if (this.pt <= 0) { this.phase = 'red'; this.pt = this.rT; this.caught = 0; }
         break;
-      case 'red':                                     // doll watching — FREEZE
+      case 'red':                                     // the dog watching — FREEZE
         this.face = 0;                                // facing you
         if (moving > this.thr) {
           this.caught += dt;
@@ -5061,7 +5070,7 @@ class SquidDoll extends Microgame {
     // status light: green = run, red = freeze, grey = turning
     const lit = this.phase === 'green' ? PAL.accent : this.phase === 'red' ? PAL.bad : PAL.mid;
     g.circle(CX, TOP + 48, 6, lit);
-    // the doll: back (turned away) -> profile (spinning) -> front (watching)
+    // the watching dog (art/doll.png): back (turned away) -> profile (spinning) -> front (watching)
     const jx = (this.phase === 'red' && this.flash > 0) ? (Math.random() - 0.5) * 6 : 0;
     if (Assets.get('doll')) g.sprite('doll', Math.round(CX + jx), 214 - 64, { w: 96, h: 128, frame: this.face === 0 ? 0 : this.face === 2 ? 1 : 2 });   // feet on the grass (field@212)
     else g.sprite('facedir', CX + jx, CY + 6, { w: 100, h: 100, frame: this.face });
@@ -5180,7 +5189,7 @@ class WakeUp extends Microgame {
 // 49. BOSS — bath time: shake the phone to fling the suds off a soapy shiba
 class BathTime extends Microgame {
   static meta = { id: 'bath', env: 'bath', prompt: 'BATH TIME!', hint: 'shake', duration: 4.4,
-    how: { motion: 'SHAKE YOUR PHONE\nSHAKE OFF ALL THE SUDS', touch: 'WIGGLE YOUR FINGER FAST\nSHAKE OFF ALL THE SUDS' } };
+    how: { motion: 'SHAKE YOUR PHONE\nSHAKE OFF ALL THE SUDS', touch: 'RUB THE SCREEN FAST\nSHAKE OFF ALL THE SUDS' } };
   init() {
     this.n = this.byD(12, 16, 20);
     this.suds = []; for (let i = 0; i < this.n; i++) this.suds.push(this.newSud());
@@ -5234,7 +5243,7 @@ class BathTime extends Microgame {
 // (a pocket-sized take on the classic one-line path puzzle); the shiba walks it
 class Walkies extends Microgame {
   static meta = { id: 'walkies', env: 'lawn', prompt: 'WALKIES!', hint: 'trace', duration: 7.0,
-    how: 'DRAG FROM 1 THROUGH EVERY\nSQUARE, NUMBERS IN ORDER' };
+    how: 'DRAW ONE PATH FROM 1\nOVER EVERY SQUARE,\nNUMBERS IN ORDER' };
   init() {
     const n = this.n = this.byD(3, 4, 4), N = n * n;
     this.cs = Math.floor(150 / n);
@@ -6328,7 +6337,7 @@ const Engine = {
   demoKind(m) {
     const h = m.how, how = this.howTo(m);
     if (!h || typeof h === 'string' || how !== h.touch || !['move', 'cover', 'still', 'blow', 'shout', 'shake'].includes(m.hint)) return m.hint;
-    return /WIGGLE/.test(how) ? 'rub' : /^HOLD/.test(how) ? 'hold' : /FAST|TAP, TAP/.test(how) ? 'mash' : 'tap';
+    return /DON'T TOUCH/.test(how) ? 'wait' : /^RUB/.test(how) ? 'rub' : /^HOLD/.test(how) ? 'hold' : /FAST|TAP, TAP/.test(how) ? 'mash' : 'tap';
   },
   howTo(m) {
     const h = m.how;
