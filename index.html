@@ -273,6 +273,7 @@ const Assets = {
     crown:    { src: 'art/crown.png',    fw: 27,  fh: 24,  frames: 1,  fps: 1  },
     demo:     { src: 'art/demo.png',     fw: 32,  fh: 40,  frames: 7,  fps: 1  },
     highfive: { src: 'art/highfive.png', fw: 64,  fh: 64,  frames: 14, fps: 1  },
+    breakjump:{ src: 'art/breakjump.png', fw: 64, fh: 96,  frames: 8,  fps: 1  },
     walkstone:{ src: 'art/walkstone.png', fw: 36, fh: 36,  frames: 1,  fps: 1  },
     fullidle: { src: 'art/fullidle.png', fw: 64,  fh: 64,  frames: 22, fps: 1  },
     leanmove: { src: 'art/leanmove.png', fw: 64,  fh: 64,  frames: 7,  fps: 1  },
@@ -6947,8 +6948,9 @@ const Engine = {
 
     if (s === 'BREAK') {
       this.breakT += dt;
-      // the beat: a tick each half second the shiba bounces on
-      if (Math.floor(this.breakT * 2) !== Math.floor((this.breakT - dt) * 2) && this.breakT > 0.05) Sfx.tick();
+      // the beat: a tick each time the shiba lands a jump (BREAK_JUMP apart), or each half second
+      const beat = this.breakWon ? 1 / this.BREAK_JUMP : 2;
+      if (Math.floor(this.breakT * beat) !== Math.floor((this.breakT - dt) * beat) && this.breakT > 0.05) Sfx.tick();
       if (this.breakT > 0.2 && this.breakT - dt <= 0.2 && !this.breakWon) { FX.shake(4); buzz(60); }   // the lost life pops off
       if (this.timer <= 0 && !Wipe.busy) {
         if (this.breakNext === 'over') { this.state = 'GAMEOVER'; this.timer = 0.8; Sfx.gameover(); }
@@ -7568,6 +7570,7 @@ const Engine = {
   // shiba on a little wooden stage reacting to how that went, bouncing on the
   // beat; your lives big across the top (a lost one pops off and falls); the
   // score; and what's coming: SPEED UP!, BOSS NEXT!, or the end.
+  BREAK_JUMP: 0.7,   // seconds per happy jump on the break
   drawBreak() {
     const t = this.breakT, won = this.breakWon, over = this.breakNext === 'over';
     this.menuBg();
@@ -7587,14 +7590,16 @@ const Engine = {
         else if (y + up < H) { ctx.save(); ctx.translate(x + k * 30, y + up); ctx.rotate(k * 7); ctx.globalAlpha = Math.max(0, 1 - k * 1.2); g.sprite('shiba', 0, 0, { frame: 10 }); ctx.restore(); }   // the shocked face
       } else { ctx.globalAlpha = 0.35; g.sprite('face', x, y, { frame: 4 }); ctx.globalAlpha = 1; }
     }
-    // the shiba on the stage: cheering and bouncing on the beat, or teary
-    const fy = sy + sh - 18, hop = won ? Math.round(Math.abs(Math.sin(t * 2 * Math.PI)) * 10) : 0;
-    if (won) g.fullShiba(CX, fy - hop, Math.floor(t * 8) % 2 ? g.FULL.cheer : g.FULL.cheer2);
+    // the shiba on the stage: a real happy jump (art/breakjump.png: crouch,
+    // spring up legs out, tuck, land; 64x96 drawn 2x, feet on the floor), or teary
+    const fy = sy + sh - 18;
+    if (won && Assets.get('breakjump')) g.sprite('breakjump', CX, fy - 96, { w: 128, h: 192, frame: Math.floor(t / this.BREAK_JUMP * 8) % 8 });
+    else if (won) g.fullShiba(CX, fy, Math.floor(t * 8) % 2 ? g.FULL.cheer : g.FULL.cheer2);
     else g.fullIdle(CX, fy, 'teary', t);
-    // the score, with the point you just earned popping in
-    const pop = won ? Math.max(0, 1 - t * 4) : 0;
-    g.outline(String(this.score), CX, sy + 34 + Math.round(pop * -4), 22 + Math.round(pop * 10), won ? PAL.accent : PAL.ink);
-    if (won && t < 0.6) { ctx.globalAlpha = 1 - t / 0.6; g.outline('+1', CX + 30, sy + 26 - t * 30, 10, PAL.accent); ctx.globalAlpha = 1; }
+    // the score in the stage's corner (clear of the jump), the point you just earned popping in
+    const pop = won ? Math.max(0, 1 - t * 4) : 0, scx = sx + 26;
+    g.outline(String(this.score), scx, sy + 30 + Math.round(pop * -4), 18 + Math.round(pop * 8), won ? PAL.accent : PAL.ink);
+    if (won && t < 0.6) { ctx.globalAlpha = 1 - t / 0.6; g.outline('+1', scx + 24, sy + 24 - t * 30, 10, PAL.accent); ctx.globalAlpha = 1; }
     // what's next, on a plaque below the stage
     const msg = over ? ['GAME OVER', PAL.bad] : this.breakNext === 'speedup' ? ['SPEED UP!', PAL.accent] : this.breakBoss ? ['BOSS NEXT!', PAL.bad] : null;
     if (msg && Math.floor(t * 6) % 3 !== 2) {
