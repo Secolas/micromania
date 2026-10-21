@@ -33,3 +33,14 @@ then `alert-turn-end`, `alert-scan` and `tail-wag`.
 The game's `art/sledmove.png` is `art/sledder.png` padded to 40×40 with only
 the tail swapped in from `sled-bounce` (lined up on the head and back), so the
 dog and sled never move.
+
+## stickers/ (selfie stickers and RUN treat icons, 2026-10-21)
+
+| File | Size | What it is |
+| --- | --- | --- |
+| `bubble-solid.png` | 32×32 | First bubble: a solid blue marble, would hide your face. |
+| `bubble-filled.png` | 32×32 | Second bubble, filled pale. `art/photobubble.png` is this with its middle made see-through. |
+| `zzz-first.png` | 48×40 | First Zzz; the first letter came out as a hook. |
+| `treat-paws-first.png` | 32×32 | First QUICK PAWS icon, read as a brown claw. |
+| `treat-lungs-face.png` | 32×32 | First BIG LUNGS: a happy shiba face, no blowing. |
+| `treat-lungs-side.png` | 32×32 | Second BIG LUNGS, side view. The one in `art/treats.png` is this moved 3px left with pixel gust lines added. |

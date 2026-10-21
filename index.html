@@ -265,6 +265,10 @@ const Assets = {
     nightfence:{ src: 'art/nightfence.png', fw: 21, fh: 12, frames: 1,  fps: 1  },
     doll:     { src: 'art/doll.png',     fw: 48,  fh: 64,  frames: 3,  fps: 1  },
     watcher:  { src: 'art/watcher.png',  fw: 64,  fh: 64,  frames: 22, fps: 1  },
+    glove:    { src: 'art/glove.png',    fw: 42,  fh: 25,  frames: 1,  fps: 1  },
+    treats:   { src: 'art/treats.png',   fw: 32,  fh: 32,  frames: 10, fps: 1  },
+    photobubble:{ src: 'art/photobubble.png', fw: 26, fh: 26, frames: 1, fps: 1 },
+    zzz:      { src: 'art/zzz.png',      fw: 32,  fh: 15,  frames: 1,  fps: 1  },
     fullidle: { src: 'art/fullidle.png', fw: 64,  fh: 64,  frames: 22, fps: 1  },
     leanmove: { src: 'art/leanmove.png', fw: 64,  fh: 64,  frames: 7,  fps: 1  },
     sledmove: { src: 'art/sledmove.png', fw: 40,  fh: 40,  frames: 4,  fps: 1  },
@@ -1519,10 +1523,34 @@ const g = {
    so they read as pixel art sitting on a real photograph.
 ─────────────────────────────────────────────────────────────────────────────── */
 const PhotoFX = {
-  // A birthday cake with candles you have just blown out, for BLOW. Sized off
-  // the canvas rather than in fixed pixels, so a bigger still still works.
+  // Draws one frame of a game sprite onto the photo at a whole-number scale k
+  // (crisp pixels), its top-left at dx, dy. False if the art isn't loaded.
+  spr(c, name, frame, dx, dy, k, flip) {
+    const a = Assets.get(name); if (!a) return false;
+    const x = c.getContext('2d'); x.imageSmoothingEnabled = false;
+    x.save(); x.translate(Math.round(dx) + (flip ? a.fw * k : 0), Math.round(dy)); if (flip) x.scale(-1, 1);
+    x.drawImage(a.img, frame * a.fw, 0, a.fw, a.fh, 0, 0, a.fw * k, a.fh * k);
+    x.restore(); return true;
+  },
+  // the sprites' scale on a still: 1 at the usual 120px, a whole multiple on a bigger one
+  k(c) { return Math.max(1, Math.round(Math.max(c.width, c.height) / 120)); },
+
+  // A birthday cake with candles you have just blown out, for CANDLES: the
+  // game's own cake and candles (art/cake.png, art/candle.png, out) with smoke
+  // curling off them. Sized off the canvas, so a bigger still still works.
   cake(c) {
     const x = c.getContext('2d'), w = c.width, h = c.height;
+    if (Assets.get('cake') && Assets.get('candle')) {
+      const k = this.k(c), cw = 58 * k, cx0 = Math.round((w - cw) / 2), ctop = h - 32 * k;
+      for (let i = 0; i < 3; i++) {
+        const px = Math.round(cx0 + cw * (i + 1) / 4 - 2 * k), top = ctop - 18 * k;
+        this.spr(c, 'candle', 1, px, top, k);
+        x.fillStyle = PAL.mid;   // a curl of smoke: the flame went out a moment ago
+        for (let j = 0; j < 4; j++) x.fillRect(px + (1 + Math.round(Math.sin(j * 1.6 + i) * 2)) * k, top + (4 - j * 3) * k, k, 2 * k);
+      }
+      this.spr(c, 'cake', 0, cx0, ctop, k);
+      return;
+    }
     const box = (a, b, ww, hh, col) => { x.fillStyle = col; x.fillRect(Math.round(a), Math.round(b), Math.round(ww), Math.round(hh)); };
     const cw = Math.round(w * 0.46), cx0 = Math.round((w - cw) / 2);
     const ch = Math.round(h * 0.20), cy0 = h - ch - Math.round(h * 0.04);
@@ -1547,6 +1575,14 @@ const PhotoFX = {
   // `from` is the side it flies in from: 'L' or 'R'.
   dodge(c, from) {
     const x = c.getContext('2d'), w = c.width, h = c.height;
+    // a boxing glove (art/glove.png, punching right, its speed lines behind it)
+    // swinging in past your ear and just missing
+    if (Assets.get('glove')) {
+      const k = this.k(c), gw = 42 * k, gy = Math.round(h * 0.34 - 12 * k);
+      const gx = from === 'L' ? Math.max(1, Math.round(w * 0.3) - gw) : Math.min(w - gw - 1, Math.round(w * 0.7));   // all of it, speed lines too, inside the shot
+      this.spr(c, 'glove', 0, gx, gy, k, from !== 'L');
+      return;
+    }
     const box = (a, b, ww, hh, col) => { x.fillStyle = col; x.fillRect(Math.round(a), Math.round(b), Math.round(ww), Math.round(hh)); };
     const dir = from === 'L' ? 1 : -1;                       // travel direction
     const bx = from === 'L' ? Math.round(w * 0.26) : Math.round(w * 0.74);
@@ -1572,6 +1608,13 @@ const PhotoFX = {
   // Soap bubbles drifting across the shot, for BLOW.
   bubbles(c) {
     const x = c.getContext('2d'), w = c.width, h = c.height;
+    // pixel bubbles (art/photobubble.png, see-through but for the rim and shine)
+    if (Assets.get('photobubble')) {
+      const k = this.k(c), B = 26;
+      [[0.2, 0.22, 1], [0.82, 0.28, 1], [0.72, 0.74, 2], [0.13, 0.74, 1], [0.5, 0.08, 1]]   // one big one, low, clear of your face
+        .forEach(([bx, by, s]) => this.spr(c, 'photobubble', 0, w * bx - B * s * k / 2, h * by - B * s * k / 2, s * k));
+      return;
+    }
     const ring = (bx, by, r) => {
       x.strokeStyle = PAL.ink; x.lineWidth = Math.max(1, r / 6);
       x.beginPath(); x.arc(bx, by, r, 0, 6.2832); x.stroke();
@@ -1585,6 +1628,13 @@ const PhotoFX = {
   // the shiba slept right through it.
   sleepy(c) {
     const x = c.getContext('2d'), w = c.width, h = c.height;
+    // the game's moon (art/moon.png) and a pixel Zzz (art/zzz.png) off your head
+    if (Assets.get('zzz') && Assets.get('moon')) {
+      const k = this.k(c);
+      this.spr(c, 'moon', 0, Math.round(w * 0.06), Math.round(h * 0.05), k);
+      this.spr(c, 'zzz', 0, Math.round(w * 0.94) - 32 * k, Math.round(h * 0.1), k);
+      return;
+    }
     const box = (a, b, ww, hh, col) => { x.fillStyle = col; x.fillRect(Math.round(a), Math.round(b), Math.round(ww), Math.round(hh)); };
     // Zzz in a bold face with a dark rim, so it reads on any photo
     const z = (zx, zy, sz) => {
@@ -6095,6 +6145,9 @@ const Run = {
 
   // a treat's picture centred on x, y at about size s
   drawArt(t, x, y, s) {
+    // art/treats.png: one 32x32 icon per treat, in TREATS order, at a whole-number scale
+    const ti = this.TREATS.indexOf(t);
+    if (Assets.get('treats') && ti >= 0) { const k = Math.max(1, Math.round(s / 32)); g.sprite('treats', Math.round(x), Math.round(y), { w: 32 * k, h: 32 * k, frame: ti }); return; }
     if (!t.art) { const k = Math.max(2, Math.round(s / 13)); this.bone(x - 3 * k, y - 2 * k, PAL.accent, k); return; }
     const sz = s * (t.art[2] || 1);
     if (t.id === 'zoom') for (let i = 0; i < 3; i++)   // speed lines trailing the runner
@@ -6170,8 +6223,8 @@ const Run = {
     t.lines.forEach((l, i) => g.text(l, CX, P.y + 96 + i * 11, 8, PAL.ink));
     if (Engine.state === 'SHOP') {
       const S = this.SELL;
-      g.rect(S.x, S.y, S.w, S.h, PAL.bad);
-      g.text('SELL  +' + this.sellPrice(t), CX, S.y + 15, 9, PAL.ink);
+      g.button(S, true);
+      g.text('SELL  +' + this.sellPrice(t), CX, S.y + 15, 9, PAL.bg);
     }
     g.text('TAP ELSEWHERE TO CLOSE', CX, P.y + P.h - 5, 6, PAL.mid);
   },
@@ -6189,9 +6242,10 @@ const Run = {
     });
     if (L.won) {
       const y = TOP + 140;
-      g.rect(22, y, 60, 18, PAL.ink); g.text(String(L.chips), 52, y + 13, 11, PAL.bg);
+      // chips on a dark wooden plaque, mult on a gold one (art/buttons.png)
+      g.button({ x: 22, y, w: 60, h: 18 }, false); g.text(String(L.chips), 52, y + 13, 11, PAL.ink);
       g.text('x', CX, y + 13, 11, PAL.ink);
-      g.rect(W - 82, y, 60, 18, PAL.bad); g.text(String(L.mult), W - 52, y + 13, 11, PAL.ink);
+      g.button({ x: W - 82, y, w: 60, h: 18 }, true); g.text(String(L.mult), W - 52, y + 13, 11, PAL.bg);
       g.text('= ' + L.points, CX, y + 42, 16, PAL.accent);
     }
     // the stage bar fills from where it was to where it is now
@@ -6228,7 +6282,10 @@ const Run = {
     this.drawOwned(TOP + 44);
     for (let i = 0; i < 3; i++) {
       const c = this.CARD(i), id = this.shop[i];
-      if (!id) { g.box(c.x, c.y, c.w, c.h, PAL.mid); g.text(this.shop.length ? 'SOLD' : 'EMPTY', c.x + c.w / 2, c.y + c.h / 2, 8, PAL.mid); continue; }
+      if (!id) {   // sold: a dimmed wooden card, like an empty slot
+        if (Assets.get('buttons')) { ctx.globalAlpha = 0.45; g.nine('buttons', 0, c.x, c.y, c.w, c.h, 6); ctx.globalAlpha = 1; } else g.box(c.x, c.y, c.w, c.h, PAL.mid);
+        g.text(this.shop.length ? 'SOLD' : 'EMPTY', c.x + c.w / 2, c.y + c.h / 2, 8, PAL.mid); continue;
+      }
       const t = this.treat(id), ok = this.canBuy(t);
       this.drawTreat(t, c.x, c.y, c.w, c.h, false);
       this.bone(c.x + c.w / 2 - 10, c.y + c.h - 11, ok ? PAL.accent : PAL.mid);
