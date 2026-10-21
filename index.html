@@ -2428,7 +2428,7 @@ class CatchCoin extends Microgame {
 
 // 3. RUB — scrub the mud off a muddy shiba
 class RubClean extends Microgame {
-  static SY = 145;   // the shiba's centre: drawn 2x, sat in the tub like BATH TIME's (its front hides the cut)
+  static SY = 151;   // the shiba's centre: drawn 2x, sat down in the tub like BATH TIME's (its front hides the cut)
   // art/rubdog.png, the same shiba in 48x44 frames (drawn 2x): 0-4 squirming
   // with its eyes shut while you scrub, then its wet-dog shake once it's clean
   static WIGGLE = 5; static SHAKE = 8; static SHAKE_FPS = 14;
@@ -4195,7 +4195,7 @@ class DryShiba extends Microgame {
     const fr = Math.max(0, Math.min(8, Math.floor(prog * 8.99)));
     const j = (Math.random() - 0.5) * (this.wob * 6 + this.pop * 30);
     BathTime.tubBack(162);   // shaking off IN the bath: its back rim and water behind
-    g.sprite('dryshake', Math.round(CX + j), CY - 4, { w: 76, h: 62, frame: fr });   // 2x, crisp
+    g.sprite('dryshake', Math.round(CX + j), CY + 2, { w: 76, h: 62, frame: fr });   // 2x, crisp; sat down in the water
     BathTime.tubFront(162);
     for (const d of this.drops) { const k = 1 - d.t / 0.6; ctx.globalAlpha = k; g.circle(d.x, d.y, 2, PAL.ink); ctx.globalAlpha = 1; }
     g.text(this.ready ? (Input.camReady ? 'SHAKE!' : 'TAP!') : 'NOW STOP…', CX, TOP + 26, 10, this.ready ? PAL.accent : PAL.mid);
@@ -5636,6 +5636,8 @@ class BathTime extends Microgame {
   static tubBack(y) { const a = Assets.get('tub'); if (!a) return; ctx.drawImage(a.img, 0, 0, a.fw, BathTime.TUB_RIM, CX - a.fw / 2, y - 4, a.fw, BathTime.TUB_RIM); }
   static tubFront(y) {
     const a = Assets.get('tub'), r = BathTime.TUB_RIM; if (!a) { BathTime.tub(y); return; }
+    // the water's surface over the bather first (rows 4-7, see-through), so they sit in it
+    ctx.globalAlpha = 0.65; ctx.drawImage(a.img, 4, 4, a.fw - 8, r - 4, CX - a.fw / 2 + 4, y, a.fw - 8, r - 4); ctx.globalAlpha = 1;
     ctx.drawImage(a.img, 0, r, a.fw, a.fh - r, CX - a.fw / 2, y - 4 + r, a.fw, a.fh - r);
   }
   bubble(x, y, r) { g.sprite('suds', x, y, { frame: r < 8 ? 0 : 1 }); }   // art/suds.png: small, big
@@ -5645,7 +5647,7 @@ class BathTime extends Microgame {
     // the shiba sits in the tub, squinting under the suds; clean = all smiles
     // the shiba from RUB in the tub: sudsy and squirming, then happy once clean
     BathTime.tubBack(178);
-    if (Assets.get('rubdog')) g.sprite('rubdog', Math.round(CX + j), 138, { w: 96, h: 88, frame: clean ? 12 : Math.floor(this.t * 10) % RubClean.WIGGLE });
+    if (Assets.get('rubdog')) g.sprite('rubdog', Math.round(CX + j), 144, { w: 96, h: 88, frame: clean ? 12 : Math.floor(this.t * 10) % RubClean.WIGGLE });   // sat down in the water
     else g.sprite('face', CX + j, 152, { w: 64, h: 66, frame: clean ? 0 : 1 });
     BathTime.tubFront(178);
     // a rubber duck riding the bath
