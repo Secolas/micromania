@@ -264,6 +264,7 @@ const Assets = {
     sledder:  { src: 'art/sledder.png',  fw: 25,  fh: 35,  frames: 1,  fps: 1  },
     nightfence:{ src: 'art/nightfence.png', fw: 21, fh: 12, frames: 1,  fps: 1  },
     doll:     { src: 'art/doll.png',     fw: 48,  fh: 64,  frames: 3,  fps: 1  },
+    watcher:  { src: 'art/watcher.png',  fw: 64,  fh: 64,  frames: 22, fps: 1  },
     menutile: { src: 'art/menutile.png', fw: 32,  fh: 32,  frames: 1,  fps: 1  },
     buttons:  { src: 'art/buttons.png',  fw: 104, fh: 24,  frames: 2,  fps: 1  },
     pauseicon:{ src: 'art/pauseicon.png', fw: 12, fh: 12, frames: 1, fps: 1 },
@@ -5070,9 +5071,15 @@ class SquidDoll extends Microgame {
     // status light: green = run, red = freeze, grey = turning
     const lit = this.phase === 'green' ? PAL.accent : this.phase === 'red' ? PAL.bad : PAL.mid;
     g.circle(CX, TOP + 48, 6, lit);
-    // the watching dog (art/doll.png): back (turned away) -> profile (spinning) -> front (watching)
+    // the watching dog (art/watcher.png): 0-8 turns from its back to you, 9-16 on
+    // alert, eyes scanning for movement (loops), 17-21 its tail wagging, back turned
     const jx = (this.phase === 'red' && this.flash > 0) ? (Math.random() - 0.5) * 6 : 0;
-    if (Assets.get('doll')) g.sprite('doll', Math.round(CX + jx), 214 - 64, { w: 96, h: 128, frame: this.face === 0 ? 0 : this.face === 2 ? 1 : 2 });   // feet on the grass (field@212)
+    const k = Math.max(0, Math.min(1, 1 - this.pt / this.turn));   // how far through the spin
+    const wf = [17, 18, 19, 20, 21, 20, 19, 18][Math.floor(this.t * 8) % 8];
+    const tf = this.phase === 'green' ? wf : this.phase === 'red' ? 9 + Math.floor(this.t * 8) % 8
+      : Math.round((this.phase === 'toRed' ? k : 1 - k) * 8);
+    if (Assets.get('watcher')) g.sprite('watcher', Math.round(CX + jx), 214 - 64, { w: 128, h: 128, frame: tf });   // feet on the grass (field@212)
+    else if (Assets.get('doll')) g.sprite('doll', Math.round(CX + jx), 214 - 64, { w: 96, h: 128, frame: this.face === 0 ? 0 : this.face === 2 ? 1 : 2 });   // feet on the grass (field@212)
     else g.sprite('facedir', CX + jx, CY + 6, { w: 100, h: 100, frame: this.face });
     // instruction
     const label = this.phase === 'green' ? 'RUN! MOVE!' : this.phase === 'red' ? 'FREEZE!' : '…TURNING…';
