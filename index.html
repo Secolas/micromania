@@ -273,6 +273,7 @@ const Assets = {
     crown:    { src: 'art/crown.png',    fw: 27,  fh: 24,  frames: 1,  fps: 1  },
     demo:     { src: 'art/demo.png',     fw: 32,  fh: 40,  frames: 7,  fps: 1  },
     highfive: { src: 'art/highfive.png', fw: 64,  fh: 64,  frames: 14, fps: 1  },
+    breakjump:{ src: 'art/breakjump.png', fw: 64, fh: 96,  frames: 8,  fps: 1  },
     walkstone:{ src: 'art/walkstone.png', fw: 36, fh: 36,  frames: 1,  fps: 1  },
     fullidle: { src: 'art/fullidle.png', fw: 64,  fh: 64,  frames: 22, fps: 1  },
     leanmove: { src: 'art/leanmove.png', fw: 64,  fh: 64,  frames: 7,  fps: 1  },
@@ -2427,7 +2428,7 @@ class CatchCoin extends Microgame {
 
 // 3. RUB — scrub the mud off a muddy shiba
 class RubClean extends Microgame {
-  static SY = 170;   // the shiba's centre: drawn 2x (70x74), sat on the bath mat
+  static SY = 151;   // the shiba's centre: drawn 2x, sat down in the tub like BATH TIME's (its front hides the cut)
   // art/rubdog.png, the same shiba in 48x44 frames (drawn 2x): 0-4 squirming
   // with its eyes shut while you scrub, then its wet-dog shake once it's clean
   static WIGGLE = 5; static SHAKE = 8; static SHAKE_FPS = 14;
@@ -2439,7 +2440,7 @@ class RubClean extends Microgame {
     const n = this.byD(6, 8, 10);
     for (let i = 0; i < n; i++) {
       const a = Math.random() * 6.2832, d = Math.sqrt(Math.random()) * 24;
-      this.mud.push({ x: CX + Math.cos(a) * d, y: RubClean.SY + 4 + Math.sin(a) * d, r: 8 + Math.random() * 5, dirt: 1 });
+      this.mud.push({ x: CX + Math.cos(a) * d, y: RubClean.SY - 3 + Math.sin(a) * d * 0.8, r: 8 + Math.random() * 5, dirt: 1 });   // all above the tub's rim
     }
     this.rate = this.byD(0.05, 0.04, 0.034);
     this.bubbles = []; this.squeak = 0;
@@ -2469,9 +2470,7 @@ class RubClean extends Microgame {
   draw(g) {
     g.clear();
     const left = this.mud.filter(m => m.dirt > 0).length;
-    // a floor and a bath mat to sit on, so the flat-cut paws rest on something
-    g.rect(0, 204, W, BOT - 204, SCENE.grout); g.rect(0, 204, W, 2, SCENE.tileHi);
-    g.sprite('bathmat', CX, 213);   // art/bathmat.png
+    BathTime.tubBack(178);   // the tub's back rim and water, behind the shiba
     // the shiba: shaking itself dry, squirming while you scrub, else sat waiting
     // (rubdog frames hold the 35x37 shiba at 6, 7: drawn 2x, centred 1 right, 7 up)
     const scrubbing = this.t - this.scrubT < 0.2;
@@ -2486,6 +2485,8 @@ class RubClean extends Microgame {
       g.sprite('mud', m.x, m.y, { flip: this.mud.indexOf(m) % 2 === 1 });   // art/mud.png
       ctx.globalAlpha = 1;
     }
+    // it sits IN the tub, as in BATH TIME: the front rim and wall hide where the sprite is cut
+    BathTime.tubFront(178);
     for (const b of this.bubbles) {
       ctx.globalAlpha = 1 - b.t / 0.6; ctx.strokeStyle = PAL.ink; ctx.lineWidth = 1;
       ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, 6.2832); ctx.stroke(); ctx.globalAlpha = 1;
@@ -4193,8 +4194,9 @@ class DryShiba extends Microgame {
     const prog = Math.min(1, this.bursts / this.need);
     const fr = Math.max(0, Math.min(8, Math.floor(prog * 8.99)));
     const j = (Math.random() - 0.5) * (this.wob * 6 + this.pop * 30);
-    g.sprite('dryshake', Math.round(CX + j), CY - 4, { w: 76, h: 62, frame: fr });   // 2x, crisp
-    BathTime.tub(162);   // shaking off in the bath, not floating on the tiles
+    BathTime.tubBack(162);   // shaking off IN the bath: its back rim and water behind
+    g.sprite('dryshake', Math.round(CX + j), CY + 2, { w: 76, h: 62, frame: fr });   // 2x, crisp; sat down in the water
+    BathTime.tubFront(162);
     for (const d of this.drops) { const k = 1 - d.t / 0.6; ctx.globalAlpha = k; g.circle(d.x, d.y, 2, PAL.ink); ctx.globalAlpha = 1; }
     g.text(this.ready ? (Input.camReady ? 'SHAKE!' : 'TAP!') : 'NOW STOP…', CX, TOP + 26, 10, this.ready ? PAL.accent : PAL.mid);
     for (let i = 0; i < this.need; i++) g.rect(CX - this.need * 6 + i * 12, BOT - 20, 8, 8, i < this.bursts ? PAL.accent : PAL.mid);
@@ -5627,15 +5629,27 @@ class BathTime extends Microgame {
   // the tub (art/tub.png): white enamel, a rim with the water in it, little
   // feet; its rim's top at y - 4, x 24..156 (DRY OFF sits in it too)
   static tub(y) { g.sprite('tub', CX, y + 28); }
+  // the tub in two layers, so whoever's in it sits IN it: its back rim and the
+  // water (art/tub.png rows 0-7) go behind them, the front rim and wall (8 down)
+  // in front. tubBack(y), the bather, then tubFront(y).
+  static TUB_RIM = 8;
+  static tubBack(y) { const a = Assets.get('tub'); if (!a) return; ctx.drawImage(a.img, 0, 0, a.fw, BathTime.TUB_RIM, CX - a.fw / 2, y - 4, a.fw, BathTime.TUB_RIM); }
+  static tubFront(y) {
+    const a = Assets.get('tub'), r = BathTime.TUB_RIM; if (!a) { BathTime.tub(y); return; }
+    // the water's surface over the bather first (rows 4-7, see-through), so they sit in it
+    ctx.globalAlpha = 0.65; ctx.drawImage(a.img, 4, 4, a.fw - 8, r - 4, CX - a.fw / 2 + 4, y, a.fw - 8, r - 4); ctx.globalAlpha = 1;
+    ctx.drawImage(a.img, 0, r, a.fw, a.fh - r, CX - a.fw / 2, y - 4 + r, a.fw, a.fh - r);
+  }
   bubble(x, y, r) { g.sprite('suds', x, y, { frame: r < 8 ? 0 : 1 }); }   // art/suds.png: small, big
   draw(g) {
     g.clear();
     const j = (Math.random() - 0.5) * Input.shake * 8, clean = this.done > 0;
     // the shiba sits in the tub, squinting under the suds; clean = all smiles
     // the shiba from RUB in the tub: sudsy and squirming, then happy once clean
-    if (Assets.get('rubdog')) g.sprite('rubdog', Math.round(CX + j), 138, { w: 96, h: 88, frame: clean ? 12 : Math.floor(this.t * 10) % RubClean.WIGGLE });
+    BathTime.tubBack(178);
+    if (Assets.get('rubdog')) g.sprite('rubdog', Math.round(CX + j), 144, { w: 96, h: 88, frame: clean ? 12 : Math.floor(this.t * 10) % RubClean.WIGGLE });   // sat down in the water
     else g.sprite('face', CX + j, 152, { w: 64, h: 66, frame: clean ? 0 : 1 });
-    BathTime.tub(178);
+    BathTime.tubFront(178);
     // a rubber duck riding the bath
     const dx = 120 + Math.sin(this.t * 2) * 6;
     g.sprite('duck', dx + 3, 172);   // art/duck.png
@@ -6141,12 +6155,13 @@ const Juice = {
    the engine stands still until then so nothing advances twice. */
 const Wipe = {
   CLOSE: 0.42, HOLD: 0.1, OPEN: 0.42, BIG: 680,
-  t: -1, cb: null, fired: false,
-  run(cb) { this.t = 0; this.cb = cb; this.fired = false; },
+  t: -1, cb: null, fired: false, k: 1,
+  // k < 1 runs it faster (the break's quick wipe into the next prompt)
+  run(cb, k = 1) { this.t = 0; this.cb = cb; this.fired = false; this.k = k; },
   get busy() { return this.t >= 0 && !this.fired; },   // still closing or shut
   update(dt) {
     if (this.t < 0) return;
-    this.t += dt;
+    this.t += dt / this.k;
     if (!this.fired && this.t >= this.CLOSE) { this.fired = true; Sfx.boop(); const cb = this.cb; this.cb = null; cb(); }
     if (this.t >= this.CLOSE + this.HOLD + this.OPEN) this.t = -1;
   },
@@ -6945,6 +6960,18 @@ const Engine = {
       if (this.timer <= 0) this.startRound();
     }
 
+    if (s === 'BREAK') {
+      this.breakT += dt;
+      // the beat: a tick each time the shiba lands a jump (BREAK_JUMP apart), or each half second
+      const beat = this.breakWon ? 1 / this.BREAK_JUMP : 2;
+      if (Math.floor(this.breakT * beat) !== Math.floor((this.breakT - dt) * beat) && this.breakT > 0.05) Sfx.tick();
+      if (this.breakT > 0.2 && this.breakT - dt <= 0.2 && !this.breakWon) { FX.shake(4); buzz(60); }   // the lost life pops off
+      if (this.timer <= 0 && !Wipe.busy) {
+        if (this.breakNext === 'over') { this.state = 'GAMEOVER'; this.timer = 0.8; Sfx.gameover(); }
+        else { this.startRound(); FX.flash(PAL.ink, 0.15); }   // a flash cut straight to the next prompt
+      }
+    }
+
     if (s === 'PHOTO') {
       this.photoReveal = Math.min(1, (this.photoReveal || 0) + dt * 4);   // a quick camera flash, gone in a quarter second
       if (this.timer <= 0 || Input.justDown) {
@@ -6963,7 +6990,7 @@ const Engine = {
     const s = this.state;
     if (['TITLE', 'SETTINGS', 'ALBUM', 'PERMS', 'REPLAY', 'RUNWIN'].includes(s)) return 'menu';
     if (s === 'SHOP') return 'shop';
-    if (!['STAGE', 'PROMPT', 'PLAYING', 'RESULT', 'PHOTO'].includes(s)) return null;
+    if (!['STAGE', 'PROMPT', 'PLAYING', 'RESULT', 'PHOTO', 'BREAK'].includes(s)) return null;
     const how = this.game && this.game.meta.how;
     if ((s === 'PROMPT' || s === 'PLAYING') && how && how.mic && (Input.micReady || Input.micPending)) return null;
     if (s === 'PLAYING' && this.game.meta.ownBeat) return null;   // DANCE keeps its own time
@@ -7553,27 +7580,73 @@ const Engine = {
     this.readyLast = 4;
   },
 
+  // THE BREAK between Classic games (WarioWare's stage between microgames): the
+  // shiba on a little wooden stage reacting to how that went, bouncing on the
+  // beat; your lives big across the top (a lost one pops off and falls); the
+  // score; and what's coming: SPEED UP!, BOSS NEXT!, or the end.
+  BREAK_JUMP: 0.7,   // seconds per happy jump on the break
+  drawBreak() {
+    const t = this.breakT, won = this.breakWon, over = this.breakNext === 'over';
+    this.menuBg();
+    // the stage: a wooden frame, a curtain-red floor the shiba stands on
+    const sx = 14, sy = TOP + 44, sw = W - 28, sh = 198;
+    g.rect(sx, sy, sw, sh, MENU_PANEL);
+    g.rect(sx + 4, sy + sh - 30, sw - 8, 26, '#8f2f3a'); g.rect(sx + 4, sy + sh - 30, sw - 8, 3, '#c24b4b');
+    g.nine('titlesign', 0, sx - 4, sy - 4, sw + 8, sh + 8, 22);
+    // lives: four big faces on a dark plaque; the one just lost pops up, spins and drops
+    g.nine('buttons', 0, CX - 72, TOP + 4, 144, 38, 6);
+    for (let i = 0; i < 4; i++) {   // art 1:1 (31x32), so it stays crisp
+      const x = CX - 50 + i * 33, y = TOP + 23;
+      if (i < this.lives) { g.sprite('face', x, y + (won ? -Math.round(Math.abs(Math.sin((t * 2 + i * 0.15) * Math.PI)) * 3) : 0), { frame: 0 }); continue; }
+      if (!won && i === this.lives) {       // the life you just lost
+        const k = Math.max(0, t - 0.2), up = k < 0.12 ? -k * 120 : -14.4 + (k - 0.12) * (k - 0.12) * 900;
+        if (k === 0) g.sprite('face', x, y, { frame: 0 });
+        else if (y + up < H) { ctx.save(); ctx.translate(x + k * 30, y + up); ctx.rotate(k * 7); ctx.globalAlpha = Math.max(0, 1 - k * 1.2); g.sprite('shiba', 0, 0, { frame: 10 }); ctx.restore(); }   // the shocked face
+      } else { ctx.globalAlpha = 0.35; g.sprite('face', x, y, { frame: 4 }); ctx.globalAlpha = 1; }
+    }
+    // the shiba on the stage: a real happy jump (art/breakjump.png: crouch,
+    // spring up legs out, tuck, land; 64x96 drawn 2x, feet on the floor), or teary
+    const fy = sy + sh - 18;
+    if (won && Assets.get('breakjump')) g.sprite('breakjump', CX, fy - 96, { w: 128, h: 192, frame: Math.floor(t / this.BREAK_JUMP * 8) % 8 });
+    else if (won) g.fullShiba(CX, fy, Math.floor(t * 8) % 2 ? g.FULL.cheer : g.FULL.cheer2);
+    else g.fullIdle(CX, fy, 'teary', t);
+    // the score in the stage's corner (clear of the jump), the point you just earned popping in
+    const pop = won ? Math.max(0, 1 - t * 4) : 0, scx = sx + 26;
+    g.outline(String(this.score), scx, sy + 30 + Math.round(pop * -4), 18 + Math.round(pop * 8), won ? PAL.accent : PAL.ink);
+    if (won && t < 0.6) { ctx.globalAlpha = 1 - t / 0.6; g.outline('+1', scx + 24, sy + 24 - t * 30, 10, PAL.accent); ctx.globalAlpha = 1; }
+    // what's next, on a plaque below the stage
+    const msg = over ? ['GAME OVER', PAL.bad] : this.breakNext === 'speedup' ? ['SPEED UP!', PAL.accent] : this.breakBoss ? ['BOSS NEXT!', PAL.bad] : null;
+    if (msg && Math.floor(t * 6) % 3 !== 2) {
+      g.nine('buttons', msg[1] === PAL.accent ? 1 : 0, CX - 56, BOT - 22, 112, 24, 6);
+      g.text(msg[0], CX, BOT - 5, 12, msg[1] === PAL.accent ? PAL.bg : msg[1]);
+    }
+  },
+
   // After a round's result (and its photo, if any): game over, a speed-up, or
   // straight on. Shared so a photo win can't skip the speed-up — SQUID is a
   // boss on a multiple of SPEEDUP_EVERY, so that used to happen every run.
-  advance() { Wipe.run(() => this.advanceNow()); },
+  advance() { Wipe.run(() => this.advanceNow(), this.mode === 'classic' && !this.tut && !this.testClass ? 0.7 : 1); },   // into Classic's break a little quicker
   advanceNow() {
     if (this.tut) { this.tutAdvance(); return; }
     // test mode: replay the same game forever, never lose lives or advance
     if (this.testClass) { this.lives = 4; this.startRound(this.testClass, this.testDiff); return; }
     if (this.mode === 'run') { Run.after(); return; }
-    if (this.lives <= 0) { this.state = 'GAMEOVER'; this.timer = 0.8; Sfx.gameover(); return; }
-    if (this.round % this.SPEEDUP_EVERY === 0) {
-      this.speed = Math.min(2.6, this.speed + 0.12);
-      this.state = 'SPEEDUP'; this.timer = 0.9; Sfx.speedup();
-    } else { this.startRound(); }
+    // Classic: the break between games (see drawBreak), then game over, or the
+    // next prompt; a speed-up is announced on the break instead of a stop of its own
+    const next = this.lives <= 0 ? 'over' : this.round % this.SPEEDUP_EVERY === 0 ? 'speedup' : 'round';
+    if (next === 'speedup') { this.speed = Math.min(2.6, this.speed + 0.12); Sfx.speedup(); }
+    this.breakNext = next; this.breakWon = this.result === 'WIN'; this.breakT = 0;
+    this.breakBoss = next !== 'over' && (this.round + 1) % this.BOSS_EVERY === 0;
+    // a beat to take it in, shorter as the game speeds up (the tempo builds)
+    this.state = 'BREAK'; this.timer = (next === 'over' ? 1.8 : 1.4) / Math.sqrt(this.speed);
+    if (this.breakWon) Juice.confetti(30);   // a second burst over the stage
   },
 
   // ── DRAW ───────────────────────────────────────────────────────────────────
   draw() {
     FX.pre();
     this.drawScene();
-    if (this.state !== 'TITLE' && !this.MENU_SCREENS.includes(this.state)) Mascot.draw(g);   // the title has its own shiba; menu screens have none
+    if (this.state !== 'TITLE' && this.state !== 'BREAK' && !this.MENU_SCREENS.includes(this.state)) Mascot.draw(g);   // the title has its own shiba; menu screens have none
     Juice.drawConfetti();
     if (this.state === 'PLAYING') {
       this.drawFuse(Math.max(0, this.timer / this.duration));
@@ -7603,7 +7676,7 @@ const Engine = {
   // ── PAUSE ──────────────────────────────────────────────────────────────────
   // Leaving the app pauses any screen with a clock running, and so does the
   // pause button in the top bar. Back in a game, a 3-2-1 before it carries on.
-  PAUSABLE: ['READY', 'STAGE', 'PROMPT', 'PLAYING', 'RESULT', 'PHOTO', 'SPEEDUP', 'CLEAR'],
+  PAUSABLE: ['READY', 'STAGE', 'PROMPT', 'PLAYING', 'RESULT', 'PHOTO', 'SPEEDUP', 'CLEAR', 'BREAK'],
   PAUSE_BTN: { x: CX - 12, y: 0, w: 24, h: TOP },
   PAUSE_RESUME: { x: CX - 50, y: CY - 4, w: 100, h: 24 },
   PAUSE_QUIT: { x: CX - 50, y: CY + 28, w: 100, h: 20 },
@@ -7897,6 +7970,7 @@ const Engine = {
       return;
     }
 
+    if (s === 'BREAK') { this.drawBreak(); return; }
     if (s === 'SPEEDUP') {
       g.text('SPEED', CX, CY - 12, 22, PAL.accent);
       g.text('UP!', CX, CY + 14, 22, PAL.accent);
