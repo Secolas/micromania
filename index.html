@@ -269,6 +269,10 @@ const Assets = {
     treats:   { src: 'art/treats.png',   fw: 32,  fh: 32,  frames: 10, fps: 1  },
     photobubble:{ src: 'art/photobubble.png', fw: 26, fh: 26, frames: 1, fps: 1 },
     zzz:      { src: 'art/zzz.png',      fw: 32,  fh: 15,  frames: 1,  fps: 1  },
+    zletter:  { src: 'art/zletter.png',  fw: 12,  fh: 15,  frames: 3,  fps: 1  },
+    crown:    { src: 'art/crown.png',    fw: 27,  fh: 24,  frames: 1,  fps: 1  },
+    demo:     { src: 'art/demo.png',     fw: 32,  fh: 40,  frames: 7,  fps: 1  },
+    walkstone:{ src: 'art/walkstone.png', fw: 36, fh: 36,  frames: 1,  fps: 1  },
     fullidle: { src: 'art/fullidle.png', fw: 64,  fh: 64,  frames: 22, fps: 1  },
     leanmove: { src: 'art/leanmove.png', fw: 64,  fh: 64,  frames: 7,  fps: 1  },
     sledmove: { src: 'art/sledmove.png', fw: 40,  fh: 40,  frames: 4,  fps: 1  },
@@ -1294,6 +1298,12 @@ const g = {
   // breathing (SLEEP_BREATHE frames), then one eye open, stirring.
   FULL: { happy: 0, cheer: 1, cheer2: 2, shut: 3, sad: 4, sad2: 5, grumpy: 6, teary: 7, pat: 8 },
   SLEEP_BREATHE: 4, SLEEP_STIR: 4,
+  // one sleepy Z (art/zletter.png: frames small, medium, big) with its baseline at
+  // y, like the text it replaces; i picks the size, 0 smallest. sz: the text size it stands in for
+  zed(x, y, i, sz) {
+    if (!Assets.get('zletter')) { this.text('Z', x, y, sz, PAL.ink); return; }
+    this.sprite('zletter', Math.round(x), Math.round(y) - 7, { frame: 2 - Math.min(2, i) });
+  },
   fullShiba(x, y, frame) { this.sprite('fullshiba', x, y - 64, { w: 96, h: 128, frame }); },
   // art/fullidle.png, 64x64: the same shiba moving in a mood, 4-frame loops for
   // happy, sad, sad2 and teary (IDLE below), then 6 frames of it woken up and
@@ -1369,6 +1379,7 @@ const g = {
   DEMOS: ['tap', 'mash', 'hold', 'count', 'wait', 'drag', 'swipe', 'rub', 'trace', 'flick', 'move', 'cover', 'still', 'blow', 'shout', 'shake'],
   demo(kind, x, y, t, s = 1) {
     if (!this.DEMOS.includes(kind)) { this.hint(kind, x, y); return; }
+    if (Assets.get('demo')) { this.demoArt(kind, x, y, t, s >= 1 ? 2 : 1); return; }
     const ink = PAL.ink, mid = PAL.mid, bg = PAL.bg, acc = PAL.accent;
     const ring = (cx, cy, r, c) => { ctx.strokeStyle = c; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(cx, cy, r, 0, 6.2832); ctx.stroke(); };
     const ease = k => k < 0.5 ? 2 * k * k : 1 - 2 * (1 - k) * (1 - k);
@@ -1486,6 +1497,107 @@ const g = {
         ctx.restore();
         if (!tilt) for (let i = 0; i < 2; i++) { this.line(-22 - i * 4, -6, -22 - i * 4, 6, mid, 2); this.line(22 + i * 4, -6, 22 + i * 4, 6, mid, 2); }
         else this.text(a > 0 ? '>' : '<', a > 0 ? 24 : -24, 4, 10, mid);
+        break;
+      }
+    }
+    ctx.restore();
+  },
+  // The same how-to loops, shown by the shiba, drawn with art/demo.png (32x40
+  // cells, each sprite at its cell's top-left: 0 phone 20x40, 1 tapping paw
+  // 16x26 (toe tip at 5,1), 2 open paw 16x16, 3 shiba head blowing, 4 barking,
+  // 5 a paw gripping a right-hand edge (mirrored for the left), 6 shiba face),
+  // in pixels at a whole-number scale k so the art stays crisp. The phone sits
+  // centred on 0,0; its screen spans x -8..8, y -14..15, its lens is at -3,-17.
+  demoArt(kind, x, y, t, k) {
+    const a = Assets.get('demo'), mid = PAL.mid, bg = PAL.bg, acc = PAL.accent;
+    const P = (f, px, py) => ctx.drawImage(a.img, f * 32, 0, 32, 40, Math.round(px), Math.round(py), 32, 40);
+    const PF = (f, px, py) => { ctx.save(); ctx.translate(Math.round(px) + 32, Math.round(py)); ctx.scale(-1, 1); ctx.drawImage(a.img, f * 32, 0, 32, 40, 0, 0, 32, 40); ctx.restore(); };   // mirrored
+    const ring = (cx, cy, r, c) => { ctx.strokeStyle = c; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(cx, cy, r, 0, 6.2832); ctx.stroke(); };
+    const ease = q => q < 0.5 ? 2 * q * q : 1 - 2 * (1 - q) * (1 - q);
+    const phone = () => P(0, -10, -20);
+    // the paw reaches in from below the phone: cut off a little under it
+    const finger = (fx, fy) => { ctx.save(); ctx.beginPath(); ctx.rect(-40, -60, 80, 82); ctx.clip(); P(1, fx - 5, fy - 1); ctx.restore(); };
+    const palm = (px, py) => P(2, px - 8, py - 8);
+    ctx.save(); ctx.translate(Math.round(x), Math.round(y)); ctx.scale(k, k); ctx.imageSmoothingEnabled = false;
+    switch (kind) {
+      case 'wait': {   // paws off: it hovers but never lands, under a red no sign
+        phone();
+        finger(0, 6 + Math.round(Math.sin(t * 3) * 2));
+        const r = 9 + (Math.floor(t * 2) % 2);
+        ctx.strokeStyle = PAL.bad; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(0, -3, r, 0, 6.2832); ctx.stroke();
+        this.line(-r * 0.7, -3 + r * 0.7, r * 0.7, -3 - r * 0.7, PAL.bad, 2);
+        break;
+      }
+      case 'tap': case 'mash': case 'count': case 'hold': {
+        const per = { tap: 1, mash: 0.32, count: 0.5, hold: 2 }[kind];
+        const q = (t % per) / per, down = kind === 'hold' ? q > 0.15 && q < 0.85 : q > 0.5 && q < 0.75;
+        phone();
+        if (down) { ring(0, 0, kind === 'hold' ? 2 + (q - 0.15) * 10 : 3 + (q - 0.5) * 17, acc); if (kind === 'hold') ring(0, 0, 7, mid); }
+        finger(0, down ? 0 : 5);
+        break;
+      }
+      case 'drag': case 'swipe': case 'rub': case 'trace': case 'flick': {
+        phone();
+        const per = { drag: 1.8, swipe: 1, rub: 0.5, trace: 1.6, flick: 1.2 }[kind], q = (t % per) / per;
+        let fx = 0, fy = 0, pts = [];
+        if (kind === 'drag') { const e = ease(q < 0.5 ? q * 2 : 2 - q * 2); fx = -6 + e * 12; fy = 3 - e * 8; pts = [[-6, 3], [fx, fy]]; }
+        if (kind === 'swipe') { const e = ease(Math.min(1, q * 1.6)); fy = 10 - e * 20; pts = [[0, 10], [0, fy]]; }
+        if (kind === 'rub') { fx = Math.sin(q * 6.2832) * 6; fy = 2; pts = [[-6, 2], [6, 2]]; }
+        if (kind === 'trace') {
+          const Q = [[-6, 7], [-3, -7], [1, 7], [5, -7]], u = Math.min(0.999, q * 1.25) * 3, i = Math.floor(u), f = u - i;
+          fx = Q[i][0] + (Q[i + 1][0] - Q[i][0]) * f; fy = Q[i][1] + (Q[i + 1][1] - Q[i][1]) * f; pts = Q.slice(0, i + 1).concat([[fx, fy]]);
+        }
+        for (let i = 1; i < pts.length; i++) this.line(pts[i - 1][0], pts[i - 1][1], pts[i][0], pts[i][1], mid, 2);
+        if (kind === 'flick') {
+          const e = Math.min(1, q * 3); fx = -4 + e * 4; fy = 7 - e * 5;
+          const b = Math.max(0, q * 3 - 1);    // the thing flies on after the paw stops
+          this.circle(fx + b * 10, fy - b * 12, 2, acc);
+        } else this.circle(fx, fy, 2, acc);
+        finger(fx, fy + 1);
+        break;
+      }
+      case 'move': case 'cover': case 'still': {
+        ctx.translate(kind === 'cover' ? 0 : 14, 4); phone();                     // set right when the shiba stands beside it
+        this.circle(-3, -17, 2, acc); this.circle(-3, -17, 1, bg);                 // the lens, lit
+        // the camera's view on the screen: a small copy of what it sees
+        this.rect(-7, -11, 14, 11, mid);
+        if (kind !== 'cover' || Math.floor(t * 3) % 2) this.rect(-2 + (kind === 'move' ? Math.round(Math.sin(t * 6) * -4) : 0), -9, 4, 7, bg);
+        if (kind === 'move') {   // the shiba beside it swaying its head side to side, the camera's view following it
+          const sw = Math.sin(t * 6), fx = -46 + Math.round(sw * 5);
+          P(6, fx, -20);
+          for (let i = 0; i < 2; i++) { const lx = sw > 0 ? fx - 3 - i * 4 : fx + 33 + i * 4; this.line(lx, -10 + i * 3, lx, -2 + i * 3, mid, 2); }
+        } else if (kind === 'cover') {
+          const q = (t % 2) / 2, d = q < 0.35 ? ease(q / 0.35) : q < 0.75 ? 1 : 1 - ease((q - 0.75) / 0.25);
+          palm(0, Math.round(-24 + d * 14));                                         // down over the lens
+        } else {
+          P(6, -46, -20);                                                         // the shiba beside it, holding still
+          if (Math.floor(t * 2) % 2) ring(-3, -17, 4, acc);
+        }
+        break;
+      }
+      case 'blow': case 'shout': {
+        ctx.translate(12, 0); phone();                                            // the phone, set right
+        this.circle(0, 17, 2, acc);                                               // the mic, lit
+        P(kind === 'blow' ? 3 : 4, -44, -4);                                      // the shiba in profile, facing it
+        if (kind === 'blow') for (let i = 0; i < 3; i++) {                         // puffs of air flowing to the mic
+          const q = (t * 1.6 + i / 3) % 1, ax = -16 + q * 12, ay = 10 + (i - 1) * 3 + q * 3;
+          this.line(ax, ay, ax + 4, ay + 1, q > 0.8 ? mid : PAL.ink, 2);
+        } else for (let i = 1; i <= 3; i++) {                                      // sound waves
+          const r = ((t * 2 + i / 3) % 1) * 10 + 3;
+          ctx.strokeStyle = i % 2 ? PAL.ink : mid; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(-18, 10, r, -0.6, 0.6); ctx.stroke();
+        }
+        break;
+      }
+      case 'shake': {
+        // half the loop a slow tilt, half a fast shake
+        const q = t % 3, tilt = q < 1.5, ang = tilt ? Math.sin(q / 1.5 * 6.2832) * 0.45 : Math.sin(q * 45) * 0.12, dx = tilt ? 0 : Math.round(Math.sin(q * 45) * 3);
+        ctx.save(); ctx.translate(dx, 8); ctx.rotate(ang); ctx.translate(0, -8);
+        phone();
+        this.circle(tilt ? Math.max(-6, Math.min(6, ang * 15)) : Math.sin(q * 45) * 3, 4, 2, acc);   // a ball rolling to the low side
+        P(5, 5, -5); PF(5, -37, -5);                                              // a paw gripping each side
+        ctx.restore();
+        if (!tilt) for (let i = 0; i < 2; i++) { this.line(-17 - i * 4, -6, -17 - i * 4, 6, mid, 2); this.line(17 + i * 4, -6, 17 + i * 4, 6, mid, 2); }
+        else this.text(ang > 0 ? '>' : '<', ang > 0 ? 19 : -19, 4, 10, mid);
         break;
       }
     }
@@ -2712,7 +2824,7 @@ class DontTap extends Microgame {
     for (let i = 0; i < 3; i++) {
       const k = (this.t * 0.6 + i / 3) % 1;
       ctx.globalAlpha = 1 - k;
-      g.text('Z', CX + 30 + k * 26 + i * 4, CY - 30 - k * 46, 9 + i * 3, PAL.ink);
+      g.zed(CX + 30 + k * 26 + i * 4, CY - 30 - k * 46, i, 9 + i * 3);
       ctx.globalAlpha = 1;
     }
     g.text('shhh…', CX, BOT - 8, 8, PAL.mid);
@@ -4188,7 +4300,7 @@ class FreezeStatue extends Microgame {
     else for (let i = 0; i < 3; i++) {            // Zzz drifting up while it sleeps
       const k = (this.t * 0.6 + i / 3) % 1;
       ctx.globalAlpha = 1 - k;
-      g.text('Z', CX + 8 + k * 14 + i * 4, 160 - k * 48, 9 + i * 3, PAL.ink);   // left of the window, not over it
+      g.zed(CX + 8 + k * 14 + i * 4, 160 - k * 48, i, 9 + i * 3);   // left of the window, not over it
       ctx.globalAlpha = 1;
     }
     if (this.grace > 0) g.text('GET READY…', CX, TOP + 26, 9, PAL.mid);
@@ -5274,7 +5386,7 @@ class WakeUp extends Microgame {
     else if (stir) g.text('?', CX + 54, 122, 14, PAL.bad);
     else for (let i = 0; i < 3; i++) {
       const z = (this.t * 0.5 + i / 3) % 1;
-      ctx.globalAlpha = 1 - z; g.text('Z', CX - 44 - z * 22 - i * 4, 120 - z * 52, 12 + i * 4, PAL.ink); ctx.globalAlpha = 1;   // away from the window
+      ctx.globalAlpha = 1 - z; g.zed(CX - 44 - z * 22 - i * 4, 120 - z * 52, i, 12 + i * 4); ctx.globalAlpha = 1;   // away from the window
     }
     // the wake-up meter: how loud you've been, draining while you're quiet
     g.text(Input.micReady ? 'SHOUT!' : 'TAP TAP TAP!', CX, TOP + 26, 11, PAL.accent);
@@ -5439,10 +5551,32 @@ class Walkies extends Microgame {
   draw(g) {
     g.clear();
     const n = this.n, cs = this.cs, bx = this.bx, by = this.by, W2 = cs * n;
+    const vis = new Set(this.path), stone = Assets.get('walkstone');
+    if (stone) {
+      // the board: a dark wooden tray of stepping stones (art/walkstone.png, 1:1
+      // in the middle of each square), the walked ones lit up gold
+      if (!g.nine('buttons', 0, bx - 5, by - 5, W2 + 10, W2 + 10, 6)) g.rect(bx - 4, by - 4, W2 + 8, W2 + 8, PAL.bg);
+      for (let c = 0; c < n * n; c++) {
+        const [x, y] = this.centre(c), sx = Math.round(x - 18), sy = Math.round(y - 18);
+        ctx.drawImage(stone.img, sx, sy);
+        if (vis.has(c)) { ctx.globalAlpha = 0.45; g.rect(sx + 2, sy + 2, 32, 32, PAL.accent); ctx.globalAlpha = 1; }
+      }
+      // the trail so far: a dotted line of pixel steps, like TRACE's
+      for (let i = 1; i < this.path.length; i++) {
+        const [x0, y0] = this.centre(this.path[i - 1]), [x1, y1] = this.centre(this.path[i]), d = Math.hypot(x1 - x0, y1 - y0);
+        for (let u = 0; u <= d; u += 5) g.rect(Math.round(x0 + (x1 - x0) * u / d) - 2, Math.round(y0 + (y1 - y0) * u / d) - 2, 4, 4, PAL.bad);
+      }
+      // walls: a stretch of fence between two squares side by side across, a
+      // row of gateposts between two above and below each other (art/fence.png, gatepost.png)
+      for (const w of this.walls) {
+        const [a, b] = w.split('-').map(Number), [ax, ay] = this.centre(a);
+        if (b - a === 1) for (let y = ay - cs / 2; y < ay + cs / 2 - 4; y += 9) g.sprite('gatepost', Math.round(ax + cs / 2), Math.round(y + 7));
+        else g.fence(ax - cs / 2, ax + cs / 2, ay + cs / 2);
+      }
+    } else {
     // the board: a pale card on the lawn, with grid lines
     g.rect(bx - 4, by - 4, W2 + 8, W2 + 8, PAL.bg);
     g.rect(bx, by, W2, W2, SCENE.dayCloud);
-    const vis = new Set(this.path);
     ctx.globalAlpha = 0.35; for (const c of vis) { const [x, y] = this.centre(c); g.rect(x - cs / 2, y - cs / 2, cs, cs, PAL.accent); } ctx.globalAlpha = 1;
     for (let i = 1; i < n; i++) { g.rect(bx + i * cs, by, 1, W2, PAL.mid); g.rect(bx, by + i * cs, W2, 1, PAL.mid); }
     // the trail so far
@@ -5455,6 +5589,7 @@ class Walkies extends Microgame {
       const [a, b] = w.split('-').map(Number), [ax, ay] = this.centre(a);
       if (b - a === 1) g.rect(ax + cs / 2 - 2, ay - cs / 2 - 1, 5, cs + 2, PAL.bg);
       else g.rect(ax - cs / 2 - 1, ay + cs / 2 - 2, cs + 2, 5, PAL.bg);
+    }
     }
     // the numbers are the game's treat bone: the next one to fetch wiggles,
     // and they go grey once the shiba has walked over and picked them up
@@ -5712,8 +5847,8 @@ class YesNo extends Microgame {
       g.text('NO', W - 26, BOT - 2, 7, PAL.bad);
       g.bar(46, BOT - 26, 36, 5, k * yv, PAL.accent); g.bar(W - 82, BOT - 26, 36, 5, k * (1 - yv), PAL.bad);
     } else {
-      g.rect(CX - 70, BOT - 38, 64, 26, PAL.accent); g.text('YES', CX - 38, BOT - 20, 11, PAL.bg);
-      g.rect(CX + 6, BOT - 38, 64, 26, PAL.bad); g.text('NO', CX + 38, BOT - 20, 11, PAL.ink);
+      g.button({ x: CX - 70, y: BOT - 38, w: 64, h: 26 }, true); g.text('YES', CX - 38, BOT - 20, 11, PAL.bg);
+      g.button({ x: CX + 6, y: BOT - 38, w: 64, h: 26 }, false); g.text('NO', CX + 38, BOT - 20, 11, PAL.bad);
     }
     for (let i = 0; i < this.need; i++) g.rect(W - 10 - i * 9, TOP + 6, 6, 6, i < this.done ? PAL.accent : PAL.mid);
   }
@@ -7353,18 +7488,18 @@ const Engine = {
       const c = this.tut.cat, n = this.tut.step + 1;
       g.text(n + ' / 5', 22, K.y + 11, 8, PAL.ink, 'left');
       g.outline(c.label, CX, TOP + 58, 20, PAL.accent);
-      g.demo(c.hint, CX, CY - 18, this.time, 1.15);
-      c.lines.forEach((l, i) => g.text(l, CX, CY + 32 + i * 13, 10, PAL.ink));
+      g.demo(c.hint, CX, CY - 12, this.time, 1.15);   // drawn 2x (see demoArt)
+      c.lines.forEach((l, i) => g.text(l, CX, CY + 48 + i * 13, 10, PAL.ink));
       if (c.ok) {
         // the tag they'll meet before these games, just as the prompt shows it
-        g.text('BEFORE THESE GAMES YOU SEE', CX, CY + 72, 8, PAL.ink);
-        g.rect(CX - 50, CY + 78, 100, 16, PAL.bg); g.box(CX - 50, CY + 78, 100, 16, PAL.accent);
-        g.text(c.label + ' GAME', CX, CY + 90, 8, PAL.accent);
+        g.text('BEFORE THESE GAMES YOU SEE', CX, CY + 78, 8, PAL.ink);
+        if (!g.nine('buttons', 0, CX - 50, CY + 84, 100, 16, 6)) { g.rect(CX - 50, CY + 84, 100, 16, PAL.bg); g.box(CX - 50, CY + 84, 100, 16, PAL.accent); }
+        g.text(c.label + ' GAME', CX, CY + 96, 8, PAL.accent);
         if (this.timer < 1.6 && Math.floor(this.time * 2) % 2) g.text("TAP TO TRY ONE", CX, BOT - 6, 10, PAL.accent);
       } else {
-        g.text('YOUR ' + c.off + ' IS OFF,', CX, CY + 72, 8, PAL.bad);
-        g.text('SO THESE GAMES ARE SKIPPED.', CX, CY + 83, 8, PAL.bad);
-        g.text('TURN IT ON IN SETTINGS.', CX, CY + 94, 8, PAL.ink);
+        g.text('YOUR ' + c.off + ' IS OFF,', CX, CY + 78, 8, PAL.bad);
+        g.text('SO THESE GAMES ARE SKIPPED.', CX, CY + 89, 8, PAL.bad);
+        g.text('TURN IT ON IN SETTINGS.', CX, CY + 100, 8, PAL.ink);
       }
       return;
     }
@@ -7438,9 +7573,9 @@ const Engine = {
       g.text('PHOTOS STAY ON THIS PHONE', CX, CY - 12, 7, PAL.mid);
       if (this.permWait) { g.text('TAP ALLOW IN THE POPUP', CX, CY + 38, 8, PAL.ink); return; }
       const A = this.PERM_ALLOW, S = this.PERM_SKIP;
-      g.rect(A.x, A.y, A.w, A.h, PAL.accent);
+      g.button(A, true);
       g.text('ALLOW', CX, A.y + 16, 10, PAL.bg);
-      g.box(S.x, S.y, S.w, S.h, PAL.mid);
+      g.button(S, false);
       g.text('TOUCH ONLY', CX, S.y + 16, 9, PAL.ink);
       return;
     }
@@ -7476,8 +7611,8 @@ const Engine = {
         g.outline('GET READY', CX, TOP + 40, 11, PAL.ink);
       } else {
         const p = Math.min(1, (-this.timer + 0.2) * 6);
-        g.rect(0, CY - 30, W, 60, PAL.accent);
-        g.text('GO!', CX, CY + 12, 34 + p * 6, PAL.bg);
+        if (g.nine('buttons', 0, 12, CY - 30, W - 24, 60, 6)) g.outline('GO!', CX, CY + 12, 34 + p * 6, PAL.accent);   // gold on a dark wooden plaque
+        else { g.rect(0, CY - 30, W, 60, PAL.accent); g.text('GO!', CX, CY + 12, 34 + p * 6, PAL.bg); }
       }
       return;
     }
@@ -7489,18 +7624,24 @@ const Engine = {
       // a boss looks like any other prompt, plus its crest: a crown over BOSS
       if (this.isBoss) {
         const by = CY - 92, bob = Math.round(Math.sin(this.time * 6) * 1.5);
-        g.rect(CX - 12, by + 8 + bob, 24, 5, PAL.accent);
-        [-12, -3, 7].forEach(dx => g.rect(CX + dx, by + bob, 5, 8, PAL.accent));
-        [-10, 0, 10].forEach(dx => g.circle(CX + dx, by + 10 + bob, 1.3, PAL.bad));
+        if (Assets.get('crown')) g.sprite('crown', CX, by + 6 + bob);   // art/crown.png
+        else {
+          g.rect(CX - 12, by + 8 + bob, 24, 5, PAL.accent);
+          [-12, -3, 7].forEach(dx => g.rect(CX + dx, by + bob, 5, 8, PAL.accent));
+          [-10, 0, 10].forEach(dx => g.circle(CX + dx, by + 10 + bob, 1.3, PAL.bad));
+        }
         g.outline('BOSS', CX, CY - 58, 20, PAL.bad);
       }
-      g.rect(0, CY - 34, W, 44, PAL.accent);
+      if (!g.nine('buttons', 1, 6, CY - 34, W - 12, 44, 6)) g.rect(0, CY - 34, W, 44, PAL.accent);   // a gold plaque (art/buttons.png)
       g.text(m.prompt, CX, CY - 4, m.prompt.length > 9 ? 13 : m.prompt.length > 6 ? 18 : 22, PAL.bg);
       g.demo(this.demoKind(m), CX, CY + 41, this.time, 0.72);
       // the kind of game it is (TAP, DRAG, CAMERA, SOUND, TILT/SHAKE), the same
       // tag the tutorial teaches, plus any RUN treats it boosts
       const b = this.mode === 'run' ? Run.boosts(m) : [], ty = this.isBoss ? CY - 42 : CY - 46;
-      g.text(this.groupLabel(Run.group(m)) + ' GAME' + (b.length ? '  ·  ' + b.map(t => t.name).join(' + ') + '!' : ''), CX, ty, 8, b.length ? PAL.accent : PAL.ink);
+      // a camera / sound / tilt game playing its touch backup (no sensor here)
+      // is labelled by what you'll actually do
+      const gr = Run.group(m), backup = m.how && typeof m.how === 'object' && !['TAP', 'DRAG'].includes(gr) && this.howTo(m) === m.how.touch;
+      g.text((backup ? (this.demoKind(m) === 'rub' ? 'DRAG' : 'TAP') : this.groupLabel(gr)) + ' GAME' + (b.length ? '  ·  ' + b.map(t => t.name).join(' + ') + '!' : ''), CX, ty, 8, b.length ? PAL.accent : PAL.ink);
       // A surprise: the prompt starts out normal, then a stamp slams down on
       // the game's title a moment later (see REVEAL_AT)
       const sp = this.promptT >= this.REVEAL_AT ? this.surprise : null, rev = sp === 'reverse';
