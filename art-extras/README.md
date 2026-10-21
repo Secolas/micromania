@@ -44,3 +44,17 @@ dog and sled never move.
 | `treat-paws-first.png` | 32×32 | First QUICK PAWS icon, read as a brown claw. |
 | `treat-lungs-face.png` | 32×32 | First BIG LUNGS: a happy shiba face, no blowing. |
 | `treat-lungs-side.png` | 32×32 | Second BIG LUNGS, side view. The one in `art/treats.png` is this moved 3px left with pixel gust lines added. |
+
+## ui/ (menus, prompt and how-to art, 2026-10-21)
+
+| File | Size | What it is |
+| --- | --- | --- |
+| `walkstone-single.png` | 36×36 | A one-slab stepping stone; flat, missing its top and left outline. WALKIES uses the paving patch in `art/walkstone.png` instead. |
+| `demo-blowface-fire.png` | 32×32 | The blowing face as generated, puffing an orange flame; `art/demo.png` has it recoloured to white air. |
+
+| `demo-gloves.png` | 32×40 cells | The first how-to set: phone, white WarioWare gloves (pointing, open palm, fist) and a kid's face blowing and shouting. Swapped for the shiba: the pointing glove showed every finger instead of touching the screen, and the fist under the phone read as a punch. |
+| `paw-tap-whole-dog.png`, `paw-grip-whole-dog.png` | 32×32 | PixelLab asked for a lone paw and drew a whole shiba. The demo paws in `art/demo.png` are hand-pixelled instead. |
+
+`art/demo.png` (32×40 cells): phone, tapping paw, open paw, shiba head blowing
+(the BIG LUNGS icon), barking (the same head with its jaw opened by hand),
+gripping paw, and the game's calm shiba face; each at its cell's top-left (see `g.demoArt`).
