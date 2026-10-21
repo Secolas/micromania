@@ -2470,6 +2470,7 @@ class RubClean extends Microgame {
   draw(g) {
     g.clear();
     const left = this.mud.filter(m => m.dirt > 0).length;
+    BathTime.tubBack(178);   // the tub's back rim and water, behind the shiba
     // the shiba: shaking itself dry, squirming while you scrub, else sat waiting
     // (rubdog frames hold the 35x37 shiba at 6, 7: drawn 2x, centred 1 right, 7 up)
     const scrubbing = this.t - this.scrubT < 0.2;
@@ -2484,8 +2485,8 @@ class RubClean extends Microgame {
       g.sprite('mud', m.x, m.y, { flip: this.mud.indexOf(m) % 2 === 1 });   // art/mud.png
       ctx.globalAlpha = 1;
     }
-    // it sits in the tub (art/tub.png, as in BATH TIME): the front hides where the sprite is cut
-    BathTime.tub(178);
+    // it sits IN the tub, as in BATH TIME: the front rim and wall hide where the sprite is cut
+    BathTime.tubFront(178);
     for (const b of this.bubbles) {
       ctx.globalAlpha = 1 - b.t / 0.6; ctx.strokeStyle = PAL.ink; ctx.lineWidth = 1;
       ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, 6.2832); ctx.stroke(); ctx.globalAlpha = 1;
@@ -5627,15 +5628,25 @@ class BathTime extends Microgame {
   // the tub (art/tub.png): white enamel, a rim with the water in it, little
   // feet; its rim's top at y - 4, x 24..156 (DRY OFF sits in it too)
   static tub(y) { g.sprite('tub', CX, y + 28); }
+  // the tub in two layers, so whoever's in it sits IN it: its back rim and the
+  // water (art/tub.png rows 0-7) go behind them, the front rim and wall (8 down)
+  // in front. tubBack(y), the bather, then tubFront(y).
+  static TUB_RIM = 8;
+  static tubBack(y) { const a = Assets.get('tub'); if (!a) return; ctx.drawImage(a.img, 0, 0, a.fw, BathTime.TUB_RIM, CX - a.fw / 2, y - 4, a.fw, BathTime.TUB_RIM); }
+  static tubFront(y) {
+    const a = Assets.get('tub'), r = BathTime.TUB_RIM; if (!a) { BathTime.tub(y); return; }
+    ctx.drawImage(a.img, 0, r, a.fw, a.fh - r, CX - a.fw / 2, y - 4 + r, a.fw, a.fh - r);
+  }
   bubble(x, y, r) { g.sprite('suds', x, y, { frame: r < 8 ? 0 : 1 }); }   // art/suds.png: small, big
   draw(g) {
     g.clear();
     const j = (Math.random() - 0.5) * Input.shake * 8, clean = this.done > 0;
     // the shiba sits in the tub, squinting under the suds; clean = all smiles
     // the shiba from RUB in the tub: sudsy and squirming, then happy once clean
+    BathTime.tubBack(178);
     if (Assets.get('rubdog')) g.sprite('rubdog', Math.round(CX + j), 138, { w: 96, h: 88, frame: clean ? 12 : Math.floor(this.t * 10) % RubClean.WIGGLE });
     else g.sprite('face', CX + j, 152, { w: 64, h: 66, frame: clean ? 0 : 1 });
-    BathTime.tub(178);
+    BathTime.tubFront(178);
     // a rubber duck riding the bath
     const dx = 120 + Math.sin(this.t * 2) * 6;
     g.sprite('duck', dx + 3, 172);   // art/duck.png
