@@ -265,6 +265,10 @@ const Assets = {
     nightfence:{ src: 'art/nightfence.png', fw: 21, fh: 12, frames: 1,  fps: 1  },
     doll:     { src: 'art/doll.png',     fw: 48,  fh: 64,  frames: 3,  fps: 1  },
     watcher:  { src: 'art/watcher.png',  fw: 64,  fh: 64,  frames: 22, fps: 1  },
+    fullidle: { src: 'art/fullidle.png', fw: 64,  fh: 64,  frames: 22, fps: 1  },
+    leanmove: { src: 'art/leanmove.png', fw: 64,  fh: 64,  frames: 7,  fps: 1  },
+    sledmove: { src: 'art/sledmove.png', fw: 40,  fh: 40,  frames: 4,  fps: 1  },
+    digmove:  { src: 'art/digmove.png',  fw: 80,  fh: 96,  frames: 4,  fps: 1  },
     menutile: { src: 'art/menutile.png', fw: 32,  fh: 32,  frames: 1,  fps: 1  },
     buttons:  { src: 'art/buttons.png',  fw: 104, fh: 24,  frames: 2,  fps: 1  },
     pauseicon:{ src: 'art/pauseicon.png', fw: 12, fh: 12, frames: 1, fps: 1 },
@@ -1287,6 +1291,15 @@ const g = {
   FULL: { happy: 0, cheer: 1, cheer2: 2, shut: 3, sad: 4, sad2: 5, grumpy: 6, teary: 7, pat: 8 },
   SLEEP_BREATHE: 4, SLEEP_STIR: 4,
   fullShiba(x, y, frame) { this.sprite('fullshiba', x, y - 64, { w: 96, h: 128, frame }); },
+  // art/fullidle.png, 64x64: the same shiba moving in a mood, 4-frame loops for
+  // happy, sad, sad2 and teary (IDLE below), then 6 frames of it woken up and
+  // annoyed. Falls back to the still fullshiba frame.
+  IDLE: { happy: 0, sad: 4, sad2: 8, teary: 12, grumpy: 16 },
+  fullIdle(x, y, mood, t) {
+    if (!Assets.get('fullidle')) { this.fullShiba(x, y, this.FULL[mood]); return; }
+    const n = mood === 'grumpy' ? 6 : 4, f = this.IDLE[mood] + Math.floor(t * (n === 6 ? 10 : 5)) % n;
+    this.sprite('fullidle', x, y - 64, { w: 128, h: 128, frame: f });
+  },
   sleepDog(x, y, frame) { this.sprite('sleepdog', x, y - 48, { w: 128, h: 96, frame }); },
   // Nine-slice: a framed sprite drawn to any w x h at x, y. Its b-px corners
   // stay 1:1; its edges and middle are stretched from a 1-px slice through
@@ -2402,7 +2415,11 @@ class PatShiba extends Microgame {
   draw(g) {
     g.clear();
     const sq = this.squish > 0 ? 1 : 0;
-    if (Assets.get('fullshiba')) g.fullShiba(CX, 212, this.fullFrame());   // feet on the floor (room at 206)
+    if (Assets.get('fullshiba')) {   // feet on the floor (room at 206)
+      const p = this.count / this.need, idle = !this.won && !(this.squish > 0) && p < 0.85;
+      if (idle) g.fullIdle(CX, 212, this.fake ? 'grumpy' : p < 0.2 ? 'teary' : p < 0.4 ? 'sad2' : p < 0.6 ? 'sad' : 'happy', this.t);
+      else g.fullShiba(CX, 212, this.fullFrame());
+    }
     else g.sprite('shiba', CX, CY + 4 + sq * 5, { w: 105 + sq * 8, h: 111 - sq * 10, frame: this.frame() });
     for (const p of this.pops) {
       ctx.globalAlpha = 1 - p.t / 0.7;
@@ -2634,7 +2651,7 @@ class DontTap extends Microgame {
     g.sprite('cushion', CX, CY + 49);   // art/cushion.png
     // the calm eyes-shut face, head tipped onto the cushion, breathing slowly
     if (Assets.get('sleepdog')) {
-      if (this.woke) g.fullShiba(CX, CY + 46, g.FULL.grumpy);
+      if (this.woke) g.fullIdle(CX, CY + 46, 'grumpy', Engine.time);   // huffs and stamps a paw
       else g.sleepDog(CX, CY + 46, Math.floor(this.t * 4) % g.SLEEP_BREATHE);
     } else {
       const breath = Math.sin(this.t * 3) * 2;
@@ -3964,7 +3981,10 @@ class LeanDodge extends Microgame {
     // the shiba leans toward the side you must move: tilt + shift grow with progress
     const tilt = s * (0.35 + prog * 0.35);                  // radians
     const shift = s * (18 + prog * 22);
-    if (Assets.get('lean')) g.sprite('lean', Math.round(CX + shift * 0.6), CY - 2, { w: 96, h: 128, flip: s > 0 });
+    // (art/leanmove.png: sat up straight -> leant right over; it starts part-way so
+    // the way to lean shows before you move)
+    if (Assets.get('leanmove')) g.sprite('leanmove', Math.round(CX + shift * 0.6), CY - 2, { w: 128, h: 128, flip: s > 0, frame: 2 + Math.round(Math.min(1, prog) * 4) });
+    else if (Assets.get('lean')) g.sprite('lean', Math.round(CX + shift * 0.6), CY - 2, { w: 96, h: 128, flip: s > 0 });
     else {
       ctx.save();
       ctx.translate(CX + shift, CY - 2);
@@ -3980,7 +4000,7 @@ class LeanDodge extends Microgame {
     }
     // arrow + label as the instruction
     const ax = this.dir === 'L' ? CX - 46 : CX + 46;
-    ctx.save(); ctx.translate(ax, Assets.get('lean') ? CY - 78 : CY - 2);   // over the whole shiba's head
+    ctx.save(); ctx.translate(ax, Assets.get('leanmove') || Assets.get('lean') ? CY - 78 : CY - 2);   // over the whole shiba's head
     g.line(-10 * s, 0, 10 * s, 0, PAL.ink, 5);
     g.line(10 * s, 0, 3 * s, -8, PAL.ink, 5);
     g.line(10 * s, 0, 3 * s, 8, PAL.ink, 5);
@@ -4104,7 +4124,7 @@ class FreezeStatue extends Microgame {
     const stirring = this.wob > 0.15 || this.hp < 0.35;
     if (Assets.get('sleepdog')) {
       const sx = Math.round(CX + this.ox * 0.25 + j), sy = Math.round(224 + this.oy * 0.15);
-      if (this.woke) g.fullShiba(sx, sy, g.FULL.grumpy);
+      if (this.woke) g.fullIdle(sx, sy, 'grumpy', Engine.time);   // huffs and stamps a paw
       else g.sleepDog(sx, sy, stirring ? g.SLEEP_STIR : Math.floor(this.t * 4) % g.SLEEP_BREATHE);
     } else {
       ctx.save();
@@ -4651,7 +4671,14 @@ class PourCup extends Microgame {
     ctx.globalAlpha = 0.85; g.rect(cx0, cy0 + ch - this.fill * ch, cw, this.fill * ch, inBand ? PAL.accent : '#4f9fe0'); ctx.globalAlpha = 1;
     g.line(cx0 - 6, cy0 + ch - this.lo * ch, cx0 + cw + 6, cy0 + ch - this.lo * ch, PAL.accent, 1);
     g.line(cx0 - 6, cy0 + ch - this.hi * ch, cx0 + cw + 6, cy0 + ch - this.hi * ch, PAL.accent, 1);
-    g.sprite('shiba', CX - 52, BOT - 20, { w: 36, h: 38, frame: inBand ? 1 : 0 });   // sat on the floor by its bowl, clear of the mascot's corner
+    // the whole shiba sat on the floor by its bowl: tail wagging while it waits,
+    // cheering once the water's in the band, sad if it spills over
+    if (Assets.get('wag')) {
+      const F = g.FULL, dx = CX - 52, fy = 268 - 32;   // feet on the floor (room@268)
+      if (this.finished && !this.won) g.sprite('fullshiba', dx, fy, { frame: F.sad2 });
+      else if (inBand || this.won) g.sprite('fullshiba', dx, fy, { frame: Math.floor(this.t * 8) % 2 ? F.cheer : F.cheer2 });
+      else g.sprite('wag', dx, fy, { frame: Math.floor(this.t * 6) % 4 });
+    } else g.sprite('shiba', CX - 52, BOT - 20, { w: 36, h: 38, frame: inBand ? 1 : 0 });   // sat on the floor by its bowl, clear of the mascot's corner
     const msg = this.fill > 0.92 ? 'STOP!'
               : (inBand && !this.pouring) ? 'HOLD STEADY!'
               : inBand ? 'LEVEL OFF!'
@@ -4714,7 +4741,8 @@ class SteerRun extends Microgame {
     }
     for (const p of this.spray) { ctx.globalAlpha = 1 - p.t / 0.3; g.rect(p.x, p.y, 2, 2, PAL.ink); ctx.globalAlpha = 1; }
     // the sled under the shiba, leaning into the turn
-    if (Assets.get('sledder')) g.sprite('sledder', Math.round(this.px), this.runY - 4);   // art/sledder.png: the shiba from behind, sat in its sled
+    if (Assets.get('sledmove')) g.sprite('sledmove', Math.round(this.px), this.runY - 7, { frame: Math.floor(this.t * 8) % 4 });   // art/sledmove.png: sledder.png padded to 40x40, only its tail wagging
+    else if (Assets.get('sledder')) g.sprite('sledder', Math.round(this.px), this.runY - 4);   // art/sledder.png: the shiba from behind, sat in its sled
     else { g.sprite('sled', this.px, this.runY + 8); g.sprite('hero', this.px, this.runY - 2, { w: 22, h: 27, frame: 0 }); }
     for (let i = 0; i < this.need; i++) g.rect(W - 8 - i * 8, TOP + 4, 5, 5, i < this.passed ? PAL.accent : PAL.mid);
     g.outline(Input.tiltReady ? 'TILT TO STEER' : 'DRAG TO STEER', CX, TOP + 22, 8, TEXT_MID);   // rimmed: the gates scroll right through this line
@@ -5136,7 +5164,9 @@ class BeachDig extends Microgame {
     }
     // the shiba from behind, paws going, bobbing on each scoop
     const bob = this.pop > 0 ? -3 : 0;
-    g.sprite('hero', this.hx, this.hy + 34 + bob, { w: 34, h: 42, frame: this.pop > 0 ? Math.floor(this.t * 30) % 9 : 0 });
+    // between scoops it sniffs at the hole, tail going (art/digmove.png)
+    if (this.pop <= 0 && Assets.get('digmove')) g.sprite('digmove', this.hx, this.hy + 34 + bob, { w: 35, h: 42, frame: Math.floor(this.t * 6) % 4 });
+    else g.sprite('hero', this.hx, this.hy + 34 + bob, { w: 34, h: 42, frame: this.pop > 0 ? Math.floor(this.t * 30) % 9 : 0 });
     for (const p of this.sand) { ctx.globalAlpha = 1 - p.t / 0.6; g.rect(p.x, p.y, 3, 3, SCENE.sandLo); ctx.globalAlpha = 1; }
     for (let i = 0; i < this.need; i++) g.rect(CX - this.need * 5 + i * 10, BOT - 14, 7, 7, i < this.dug ? PAL.accent : PAL.bg);
     g.text(this.found > 0 ? 'FOUND IT!' : 'SWIPE TO DIG!', CX, TOP + 26, 9, PAL.ink);
