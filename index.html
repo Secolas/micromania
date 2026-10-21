@@ -946,6 +946,18 @@ const Input = {
     for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) { sum += this.motionGrid[r * GW + c]; k++; }
     return k ? sum / k : 0;
   },
+  // Where in a box the most moved: the centre of its busiest cell, 0..1 as you see it.
+  motionPeakAt(x0, y0, x1, y1) {
+    const GW = this.GRID_W, GH = this.GRID_H;
+    const c0 = Math.max(0, Math.floor(x0 * GW)), c1 = Math.min(GW - 1, Math.ceil(x1 * GW) - 1);
+    const r0 = Math.max(0, Math.floor(y0 * GH)), r1 = Math.min(GH - 1, Math.ceil(y1 * GH) - 1);
+    let best = -1, bx = (x0 + x1) / 2, by = (y0 + y1) / 2;
+    for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) {
+      const v = this.motionGrid[r * GW + c];
+      if (v > best) { best = v; bx = (c + 0.5) / GW; by = (r + 0.5) / GH; }
+    }
+    return { x: bx, y: by };
+  },
   // The same box, scored by its busiest few cells instead of all of them: a
   // hand fills only a corner of a big box, and the average would drown it.
   motionPeak(x0, y0, x1, y1, top = 3) {
@@ -1333,6 +1345,19 @@ const g = {
   zed(x, y, i, sz) {
     if (!Assets.get('zletter')) { this.text('Z', x, y, sz, PAL.ink); return; }
     this.sprite('zletter', Math.round(x), Math.round(y) - 7, { frame: 2 - Math.min(2, i) });
+  },
+  // The live camera as the play field's backdrop (WarioWare: Snapped): drawn at
+  // a quarter size and stretched with smoothing, so it's a soft blur you can see
+  // your shape and hands in, then tinted warm so the pixel art sits on it.
+  // False with no camera picture (the game keeps its own scene).
+  camBackdrop() {
+    const c = this._camBlur || (this._camBlur = Object.assign(document.createElement('canvas'), { width: 45, height: 64 }));
+    if (!Input.drawLive(c.getContext('2d'), 0, 0, c.width, c.height)) return false;
+    const sm = ctx.imageSmoothingEnabled; ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(c, 0, TOP, W, BOT - TOP);
+    ctx.imageSmoothingEnabled = sm;
+    ctx.globalAlpha = 0.34; this.rect(0, TOP, W, BOT - TOP, '#f2a65a'); ctx.globalAlpha = 1;
+    return true;
   },
   fullShiba(x, y, frame) { this.sprite('fullshiba', x, y - 64, { w: 96, h: 128, frame }); },
   // art/fullidle.png, 64x64: the same shiba moving in a mood, 4-frame loops for
@@ -1767,16 +1792,21 @@ const PhotoFX = {
   },
 
   // A high five for HIGH FIVE: the shiba's paw (the QUICK PAWS icon, art/treats.png)
-  // up in the top corner, with a burst of pixel rays round it.
-  highFive(c) {
-    const x = c.getContext('2d'), w = c.width, h = c.height, k = this.k(c);
-    const px = Math.round(w - 40 * k), py = Math.round(h * 0.06) + 4 * k;   // the rays fit inside the shot
-    x.fillStyle = PAL.accent;
-    for (let i = 0; i < 8; i++) {
-      const a = i * Math.PI / 4, r0 = 19 * k, r1 = 26 * k, cx = px + 16 * k, cy = py + 16 * k;
-      for (let r = r0; r < r1; r += k) x.fillRect(Math.round(cx + Math.cos(a) * r), Math.round(cy + Math.sin(a) * r), 2 * k, 2 * k);
+  // pressed on each hand that landed it (hands: 0..1 spots as the photo shows
+  // them), with a burst of pixel rays; with none known, up in the top corner.
+  highFive(c, hands) {
+    const x = c.getContext('2d'), w = c.width, h = c.height, k = this.k(c), S = 32 * k;
+    const spots = hands && hands.length ? hands : [{ x: 1 - 24 * k / w, y: (h * 0.06 + 20 * k) / h }];
+    for (const hd of spots) {
+      // centred on the hand, kept whole inside the shot
+      const px = Math.round(Math.max(2, Math.min(w - S - 2, hd.x * w - S / 2))), py = Math.round(Math.max(2, Math.min(h - S - 2, hd.y * h - S / 2)));
+      x.fillStyle = PAL.accent;
+      for (let i = 0; i < 8; i++) {
+        const a = i * Math.PI / 4, cx = px + S / 2, cy = py + S / 2;
+        for (let r = 19 * k; r < 26 * k; r += k) x.fillRect(Math.round(cx + Math.cos(a) * r), Math.round(cy + Math.sin(a) * r), 2 * k, 2 * k);
+      }
+      this.spr(c, 'treats', 0, px, py, k);
     }
-    this.spr(c, 'treats', 0, px, py, k);
   },
 
   // Zzz rising off you and a crescent moon, for FREEZE — you held so still
@@ -4148,7 +4178,7 @@ class DryShiba extends Microgame {
 
 // 32. LEAN — move to the side the arrow points (motion on that half of frame)
 class LeanDodge extends Microgame {
-  static meta = { id: 'lean', env: 'lawn', cam: true, prompt: 'LEAN!', hint: 'move', duration: 5.0, minDuration: 4.0, photo: true, photoCap: 'DODGED IT!',
+  static meta = { id: 'lean', env: 'lawn', cam: true, camBg: true, prompt: 'LEAN!', hint: 'move', duration: 5.0, minDuration: 4.0, photo: true, photoCap: 'DODGED IT!',
     how: { cam: 'LEAN YOUR HEAD\nWHERE THE ARROW POINTS', touch: 'TAP THE SIDE\nTHE ARROW POINTS' } };
   init() {
     this.need = this.byD(2, 2, 3); this.hit = 0;
@@ -4181,6 +4211,7 @@ class LeanDodge extends Microgame {
   draw(g) {
     g.clear();
     if (this.paused) { g.text('ALLOW CAMERA…', CX, CY - 6, 11, PAL.ink); g.text('(then lean side to side)', CX, CY + 12, 7, PAL.mid); return; }
+    if (Input.camReady) g.camBackdrop();   // you, blurred, behind the shiba, leaning with it
     const s = this.dir === 'L' ? -1 : 1;
     const prog = this.hold / this.holdNeed;                 // 0..1 how far you've held it
     // the shiba leans toward the side you must move: tilt + shift grow with progress
@@ -4361,7 +4392,7 @@ class FreezeStatue extends Microgame {
 
 // 34. SWAT — put your hand where the fly is; the camera tracks where you moved
 class SwatFly extends Microgame {
-  static meta = { id: 'swat', env: 'nature@242', cam: true, photo: true, photoCap: 'GOT IT!', prompt: 'SWAT!', hint: 'move', duration: 5.0, minDuration: 4.2,
+  static meta = { id: 'swat', env: 'nature@242', cam: true, camBg: true, photo: true, photoCap: 'GOT IT!', prompt: 'SWAT!', hint: 'move', duration: 5.0, minDuration: 4.2,
     how: { tilt: 'TILT THE PHONE\nTO AIM AT THE FLY', cam: 'WAVE YOUR HAND\nAT THE FLY', touch: 'TAP THE FLY' } };
   init() {
     Input.enableCam();
@@ -4433,6 +4464,7 @@ class SwatFly extends Microgame {
   draw(g) {
     g.clear();
     if (this.paused) { g.text('ALLOW CAMERA…', CX, CY - 6, 11, PAL.bg); g.text('(then reach for the fly)', CX, CY + 12, 7, PAL.bg); return; }
+    const cam = this.usesCam && Input.camReady && g.camBackdrop();   // aiming with your hand: see it behind the fly
     // the "fly": a little winged shiba that buzzes around. Uses the flydog
     // sprite once its art lands; until then it falls back to the drawn fly, so
     // this is safe to ship before the PNG is embedded.
@@ -4471,7 +4503,7 @@ class SwatFly extends Microgame {
       ctx.strokeStyle = PAL.bad; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.arc(this.hx, this.hy, r + 7 - k * 6, 0, 6.2832); ctx.stroke();
     }
-    g.text(Input.tiltReady ? 'TILT TO AIM!' : Input.camReady ? 'REACH FOR IT!' : 'TAP IT!', CX, TOP + 26, 9, PAL.bg);
+    g.text(Input.tiltReady ? 'TILT TO AIM!' : Input.camReady ? 'REACH FOR IT!' : 'TAP IT!', CX, TOP + 26, 9, cam ? PAL.ink : PAL.bg);   // light, rimmed, on the camera
     for (let i = 0; i < this.need; i++) { g.rect(W - 9 - i * 8, TOP + 3, 7, 7, PAL.bg); g.rect(W - 8 - i * 8, TOP + 4, 5, 5, i < this.hit ? PAL.accent : PAL.mid); }
   }
 }
@@ -5335,7 +5367,7 @@ class SquidDoll extends Microgame {
 // shape behind the shiba (WarioWare: Snapped). It raises a paw; reach up and
 // move your hand where that paw is to high-five it. Later, both paws at once.
 class HighFive extends Microgame {
-  static meta = { id: 'highfive', env: 'room@268', cam: true, prompt: 'HIGH FIVE!', hint: 'move', duration: 6.0, minDuration: 5.0, photo: true, photoCap: 'HIGH FIVE!',
+  static meta = { id: 'highfive', env: 'room@268', cam: true, camBg: true, prompt: 'HIGH FIVE!', hint: 'move', duration: 6.0, minDuration: 5.0, photo: true, photoCap: 'HIGH FIVE!',
     how: { cam: 'RAISE YOUR HAND TO\nHIGH-FIVE THE PAW', touch: 'TAP THE PAW\nTHE SHIBA RAISES' } };
   // where each raised paw is on screen (the touch target, and where the ring is)
   static PAW = { L: { x: CX - 37, y: 166 }, R: { x: CX + 37, y: 166 } };
@@ -5346,7 +5378,7 @@ class HighFive extends Microgame {
     this.both = this.byD(0, 0.25, 0.4);              // chance a raise asks for both paws
     this.base = this.byD(0.16, 0.14, 0.12);          // movement in the paw's box that counts
     this.thr = this.base; this.noise = 1; this.settle = 0.5;
-    this.held = 0; this.pop = 0; this.cheer = 0; this.raiseT = 0;
+    this.held = 0; this.pop = 0; this.cheer = 0; this.raiseT = 0; this.hands = [];
     this.last = Math.random() < 0.5 ? 'L' : 'R';
     this.next();
   }
@@ -5388,27 +5420,18 @@ class HighFive extends Microgame {
              : this.side === 'L' ? L > thr && L > R * 1.25 && L > C : R > thr && R > L * 1.25 && R > C;
     this.held = ok ? this.held + dt : Math.max(0, this.held - dt * 2);
     if (this.held >= (Input.camReady ? 0.1 : 0) && ok) {
+      // where your hand(s) were, for the photo's paw: the busiest spot of each raised paw's side
+      this.hands = (this.side === 'B' ? ['L', 'R'] : [this.side]).map(k => Input.camReady ? Input.motionPeakAt(...this.zone(k)) : null).filter(Boolean);
       this.done++; this.pop = 0.3; this.cheer = 0.35;
       Sfx.tick(); buzz(25); FX.shake(2);
       for (const k of this.side === 'B' ? ['L', 'R'] : [this.side]) FX.hit(HighFive.PAW[k].x, HighFive.PAW[k].y, PAL.accent);
       if (this.done >= this.need) { this.cheer = 0; this.succeed(); }
     }
   }
-  // the camera behind everything: drawn tiny then stretched with smoothing, so
-  // it's a soft blur where you can make out your shape, then tinted warm
-  drawFeed() {
-    const c = this._blur || (this._blur = Object.assign(document.createElement('canvas'), { width: 30, height: 43 }));
-    if (!Input.drawLive(c.getContext('2d'), 0, 0, c.width, c.height)) return false;
-    const sm = ctx.imageSmoothingEnabled; ctx.imageSmoothingEnabled = true;
-    ctx.drawImage(c, 0, TOP, W, BOT - TOP);
-    ctx.imageSmoothingEnabled = sm;
-    ctx.globalAlpha = 0.38; g.rect(0, TOP, W, BOT - TOP, '#f2a65a'); ctx.globalAlpha = 1;
-    return true;
-  }
   draw(g) {
     g.clear();
     if (this.paused) { g.text('ALLOW CAMERA…', CX, CY - 6, 11, PAL.ink); g.text('(then high-five!)', CX, CY + 12, 7, PAL.mid); return; }
-    if (Input.camReady) this.drawFeed();
+    if (Input.camReady) g.camBackdrop();   // you, blurred, behind the shiba
     // the shiba (art/highfive.png, 64x64 drawn 2x): 0-6 raises the paw on your
     // left, flipped for your right; 7-13 raises both. Between raises it cheers.
     const up = Math.min(6, Math.floor(this.raiseT / 0.25 * 6));
@@ -5425,7 +5448,10 @@ class HighFive extends Microgame {
     g.text(Input.camReady ? (this.settle > 0 ? 'GET READY…' : this.side === 'B' ? 'BOTH HANDS!' : 'HIGH FIVE!') : 'TAP THE PAW!', CX, TOP + 26, 9, PAL.ink);
     for (let i = 0; i < this.need; i++) g.rect(W - 10 - i * 9, TOP + 6, 6, 6, i < this.done ? PAL.accent : PAL.mid);
   }
-  stampPhoto(c) { PhotoFX.highFive(c); }
+  // the picture is the instant a high five lands (the later, the better), not just the biggest wave
+  shotScore() { return this.pop > 0.25 ? 1 + this.done : 0; }
+  onShot(shot) { shot.hands = this.hands || []; }
+  stampPhoto(c) { PhotoFX.highFive(c, c.hands); }
 }
 
 // ── REGISTRY ─────────────────────────────────────────────────────────────────
@@ -6943,12 +6969,13 @@ const Engine = {
   },
   trackShot() {
     const gm = this.game, m = gm.meta;
-    if (!m.photo || !this.shootsNow() || gm.t < 0.25 || gm.finished) return;
+    if (!m.photo || !this.shootsNow() || gm.t < 0.25 || (gm.finished && !gm.shotScore)) return;   // a game's own best moment can be its winning one
     const by = m.hint === 'blow' ? 'blow' : m.hint === 'shout' ? 'loud' : m.hint === 'still' ? 'still' : 'motion';
-    const v = by === 'blow' ? Input.blow : by === 'loud' ? Input.loud : by === 'still' ? 1 - Input.motion : Input.motion;
+    // a game can name its own best moment (shotScore) and note things on the shot it gets (onShot)
+    const v = gm.shotScore ? gm.shotScore() : by === 'blow' ? Input.blow : by === 'loud' ? Input.loud : by === 'still' ? 1 - Input.motion : Input.motion;
     if (v > this.shotBest + 0.03 && this.time - this.shotAt > 0.15) {
       const shot = Input.snapPhoto();
-      if (shot) { this.shot = shot; this.shotBest = v; this.shotAt = this.time; this.shotFlash = 0.12; }
+      if (shot) { this.shot = shot; this.shotBest = v; this.shotAt = this.time; this.shotFlash = 0.12; if (gm.onShot) gm.onShot(shot); }
     }
   },
 
@@ -7683,7 +7710,7 @@ const Engine = {
     if (this.state !== 'PROMPT' && this.state !== 'PLAYING') return;
     const gm = this.game; if (!gm || !Input.camReady) return;
     const on = 'usesCam' in gm ? gm.usesCam : (gm.meta.cam || gm.meta.photo);
-    if (!on) return;
+    if (!on || gm.meta.camBg) return;   // camBg: the game shows the camera itself, full size
     const a = Input.camAspect(), h = 32, w = Math.round(h * a), x = 28, y = BOT + 3;   // right of the bomb
     g.rect(x - 1, y - 1, w + 2, h + 2, PAL.ink);
     if (!Input.drawLive(ctx, x, y, w, h)) g.rect(x, y, w, h, PAL.mid);
