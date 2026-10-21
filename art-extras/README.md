@@ -22,3 +22,14 @@ Every sheet is a row of 64×64 frames on transparency, from PixelLab.
 
 The sheet the game uses is `art/watcher.png`: frames 0-4 from `turn-grumpy`,
 then `alert-turn-end`, `alert-scan` and `tail-wag`.
+
+## sled/ (SLED!'s rider, 2026-10-21)
+
+| File | Frames | What it is |
+| --- | --- | --- |
+| `sled-bounce.png` | 4 | 40×40. The whole sled hops over bumps. Not used: PixelLab redrew the dog and sled a little differently each frame, so it wobbled sideways. |
+| `sled-still-try.png` | 4 | 40×40. A second try asking for only the tail and ears to move; the body still drifted. |
+
+The game's `art/sledmove.png` is `art/sledder.png` padded to 40×40 with only
+the tail swapped in from `sled-bounce` (lined up on the head and back), so the
+dog and sled never move.
