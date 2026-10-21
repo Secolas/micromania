@@ -58,3 +58,13 @@ dog and sled never move.
 `art/demo.png` (32×40 cells): phone, tapping paw, open paw, shiba head blowing
 (the BIG LUNGS icon), barking (the same head with its jaw opened by hand),
 gripping paw, and the game's calm shiba face; each at its cell's top-left (see `g.demoArt`).
+
+## closet/ (the toy room's things to wear, 2026-10-21)
+
+| File | Size | What it is |
+| --- | --- | --- |
+| `halo-ring.png` | 32×32 | PixelLab's halo, a ring seen face-on; it looked like a hoop on a head. The halo in `art/hats.png` is a flat ellipse pixelled by hand. |
+
+`art/hats.png` (32×32 cells, each hat on its cell's bottom middle): party hat,
+bow, beanie, cowboy hat, chef hat, wizard hat, viking helmet, halo, propeller
+cap, headphones, flower. The crown reuses `art/crown.png`. See `Closet.ITEMS`.
