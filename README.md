@@ -285,6 +285,7 @@ Chromium against the real page (served over http by `tests/run.mjs`).
 |---|---|
 | `games` | every game at every difficulty ends without throwing; a scripted player can win the skill games; fake-outs behave |
 | `text` | no text under 8px, none grey, none off the screen or out of a menu frame, on every screen and in every game |
+| `runwin` | the stage targets; beating the world-3 boss wins the run; KEEP GOING goes ENDLESS through the shop to world 4; DONE; wins counted |
 | `classic`, `run` | both modes from the title through GAME OVER (RUN: stage card, clear, shop, next stage) |
 | `title` | the intro skip and the four menu options with real clicks; the GOOD!/FAIL! juice |
 | `album`, `settings` | saving, paging, opening, sharing and deleting photos; every switch, saved across a reload |
@@ -318,9 +319,14 @@ no signal. Camera and mic still need the permission to have been granted.
 The title offers **RUN** (the roguelike) and **CLASSIC** (the original endless
 lives run). RUN is Balatro-style scoring over the same microgames:
 
-- A run is worlds of three stages. Each stage gives you **5 games** to reach a
-  **score target** (150 / 220 / 320 in world 1, x1.6 per world). Miss it and
-  the run is over. The third stage opens on a boss.
+- A run is **3 worlds** of three stages. Each stage gives you **5 games** to
+  reach a **score target** (120 / 190 / 280 in world 1, x1.4 per world, so 550
+  for the last boss). Miss it and the run is over. The third stage opens on a boss.
+- Beat the world-3 boss and the run is **won**: RUN COMPLETE! with your time,
+  your best time and how many runs you've won (kept on the phone), plus
+  WATCH REPLAY and SHARE. **KEEP GOING** carries on in **ENDLESS** from the
+  shop with your bones and treats, the targets still climbing, until a stage
+  beats you; DONE goes back to the title.
 - A win scores **chips x mult**: 30 chips (80 for a boss) plus a speed bonus
   for finishing early, times a mult that grows with your streak. A fail scores
   nothing and breaks the streak.

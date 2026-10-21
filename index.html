@@ -5778,6 +5778,7 @@ const Mascot = {
 ─────────────────────────────────────────────────────────────────────────────── */
 const Run = {
   GAMES: 5,          // games per stage — CHONK adds one
+  WORLDS: 3,         // beat the boss of world 3 and the run is won (then ENDLESS, if you like)
   SLOTS: 5,          // treat slots — CHONK takes one
   // art is [sprite, frame, scale?] — scale for sheets with roomy frames, like
   // the 120px runners; GOLDEN BONE draws its own bone
@@ -5824,11 +5825,17 @@ const Run = {
   games() { return this.GAMES + (this.has('chonk') ? 1 : 0); },
   slots() { return this.SLOTS - (this.has('chonk') ? 1 : 0); },
   bossStage() { return this.stage === 2; },
-  target() { return Math.round([150, 220, 320][this.stage] * Math.pow(1.6, this.world - 1) / 10) * 10; },
+  // a 5-game stage with a few misses still makes it; the bosses ask for a streak
+  target() { return Math.round([120, 190, 280][this.stage] * Math.pow(1.4, this.world - 1) / 10) * 10; },
   reached() { return (this.world - 1) * 3 + this.stage; },
   label(i = this.reached()) { return (Math.floor(i / 3) + 1) + '-' + (i % 3 + 1); },
 
-  start() { this.world = 1; this.stage = 0; this.bones = 4; this.treats = []; },
+  start() { this.world = 1; this.stage = 0; this.bones = 4; this.treats = []; this.endless = false; this.won = false; this.startT = Engine.time; },
+  endless: false, won: false, startT: 0, winTime: 0,
+  // runs won, and the fastest, kept on the phone
+  wins: (() => { try { return +localStorage.getItem('micromania.runWins') || 0; } catch (e) { return 0; } })(),
+  bestTime: (() => { try { return +localStorage.getItem('micromania.bestRunTime') || 0; } catch (e) { return 0; } })(),
+  clock(sec) { sec = Math.round(sec); return Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0'); },
 
   beginStage() {
     this.score = 0; this.left = this.games(); this.played = 0; this.streak = 0;
@@ -5897,8 +5904,46 @@ const Run = {
     this.payout = rows;
     this.bones += rows.reduce((n, r) => n + r[1], 0);
     this.saveBest(this.reached() + 1);
+    if (this.bossStage() && this.world === this.WORLDS && !this.endless) { this.win(); return; }
     Engine.state = 'CLEAR'; Engine.timer = 2.4;
     Sfx.clear(); FX.flash(PAL.accent, 0.4); Juice.confetti(60);
+  },
+  // the last boss beaten: the run is won. KEEP GOING carries on, ENDLESS, from
+  // the shop with the bones just paid out.
+  win() {
+    this.won = true; this.winTime = Engine.time - this.startT;
+    this.wins++;
+    if (!this.bestTime || this.winTime < this.bestTime) { this.bestTime = this.winTime; this.newBestTime = true; } else this.newBestTime = false;
+    try { localStorage.setItem('micromania.runWins', String(this.wins)); localStorage.setItem('micromania.bestRunTime', String(Math.round(this.bestTime))); } catch (e) {}
+    Engine.state = 'RUNWIN'; Engine.timer = 1.0; this.confT = 0;
+    Sfx.clear(); setTimeout(() => Sfx.clear(), 450); FX.flash(PAL.accent, 0.6); Juice.confetti(120); buzz(60);
+  },
+  BTN_KEEP: { x: CX - 50, y: CY + 22, w: 100, h: 22 },
+  BTN_WSHARE: { x: CX - 50, y: CY + 74, w: 100, h: 22 },
+  BTN_DONE: { x: CX - 50, y: CY + 100, w: 100, h: 22 },
+  winUpdate(dt) {
+    Mascot.set('cheer');
+    if ((this.confT -= dt) <= 0) { this.confT = 1.2; Juice.confetti(30); }
+  },
+  winRelease(p) {
+    if (Engine.timer > 0) return;
+    if (Engine.hit(this.BTN_KEEP, p)) { Sfx.tap(); this.endless = true; this.openShop(); return; }
+    if (Engine.replay.length && Engine.hit(Engine.BTN_REPLAY_WIN, p)) { Sfx.tap(); Engine.openReplay(); return; }
+    if (Engine.hit(this.BTN_WSHARE, p)) { Sfx.tap(); Engine.share(null, 'I beat SHIBA MANIA RUN mode in ' + this.clock(this.winTime) + '!'); return; }
+    if (Engine.hit(this.BTN_DONE, p)) { Sfx.tap(); Engine.state = 'TITLE'; Engine.timer = 0.2; }
+  },
+  drawWin() {
+    Engine.drawAlbum(TOP + 44);
+    g.outline('RUN', CX, CY - 44, 20, PAL.accent);
+    g.outline('COMPLETE!', CX, CY - 22, 20, PAL.accent);
+    g.text('TIME ' + this.clock(this.winTime) + (this.newBestTime && this.wins > 1 ? '  NEW BEST!' : ''), CX, CY - 4, 9, PAL.ink);
+    g.text('BEST ' + this.clock(this.bestTime) + '  ·  RUNS WON ' + this.wins, CX, CY + 10, 8, PAL.mid);
+    const K = this.BTN_KEEP; g.button(K, true); g.text('KEEP GOING', CX, K.y + 15, 10, PAL.bg);
+    const R = Engine.BTN_REPLAY_WIN;
+    if (Engine.replay.length) { g.box(R.x, R.y, R.w, R.h, PAL.accent); g.text('WATCH REPLAY', CX, R.y + 15, 10, PAL.accent); }
+    const S = this.BTN_WSHARE; g.button(S, false); g.text('SHARE', CX, S.y + 15, 10, PAL.ink);
+    const D = this.BTN_DONE; g.button(D, false); g.text('DONE', CX, D.y + 15, 10, PAL.ink);
+    if (Math.floor(Engine.time * 2) % 2) g.text('KEEP GOING = ENDLESS MODE', CX, CY + 136, 8, PAL.mid);
   },
 
   over() {
@@ -6041,7 +6086,7 @@ const Run = {
 
   drawStage() {
     const boss = this.bossStage();
-    g.text('WORLD ' + this.world, CX, CY - 56, 11, PAL.mid);
+    g.text((this.endless ? 'ENDLESS · ' : '') + 'WORLD ' + this.world + (this.endless ? '' : ' / ' + this.WORLDS), CX, CY - 56, 11, PAL.mid);
     g.text(boss ? 'BOSS STAGE' : 'STAGE ' + (this.stage + 1) + ' / 3', CX, CY - 32, 16, boss ? PAL.bad : PAL.ink);
     g.text('TARGET', CX, CY - 4, 9, PAL.mid);
     g.text(String(this.target()), CX, CY + 24, 26, PAL.accent);
@@ -6142,7 +6187,7 @@ const Run = {
     Engine.drawAlbum(TOP + 44);
     g.text('RUN', CX, CY - 30, 24, PAL.bad);
     g.text('OVER', CX, CY - 4, 24, PAL.bad);
-    g.text('REACHED ' + this.label(), CX, CY + 26, 10, PAL.ink);
+    g.text((this.endless ? 'ENDLESS · ' : '') + 'REACHED ' + this.label(), CX, CY + 26, 10, PAL.ink);
     g.text(this.score + ' / ' + this.target(), CX, CY + 42, 8, PAL.mid);
     g.text('BEST ' + this.label(this.best), CX, CY + 56, 8, PAL.mid);
     Engine.drawShareButton();
@@ -6360,6 +6405,7 @@ const Engine = {
       if (this.timer <= 0) Run.nextGame();
       return;
     }
+    if (s === 'RUNWIN') { Run.winUpdate(dt); return; }
     if (s === 'CLEAR') {
       Mascot.set('cheer');
       if (this.timer <= 0 || (Input.justDown && this.timer < 1.9)) Run.openShop();
@@ -6467,7 +6513,7 @@ const Engine = {
   // The countdown, SPEED UP, STAGE CLEAR and GAME OVER have their own stings.
   musicTrack() {
     const s = this.state;
-    if (['TITLE', 'SETTINGS', 'ALBUM', 'PERMS', 'REPLAY'].includes(s)) return 'menu';
+    if (['TITLE', 'SETTINGS', 'ALBUM', 'PERMS', 'REPLAY', 'RUNWIN'].includes(s)) return 'menu';
     if (s === 'SHOP') return 'shop';
     if (!['STAGE', 'PROMPT', 'PLAYING', 'RESULT', 'PHOTO'].includes(s)) return null;
     const how = this.game && this.game.meta.how;
@@ -6546,7 +6592,7 @@ const Engine = {
   ALB_NEXT:    { x: W - 46, y: BOT - 26, w: 30, h: 20 },
   // the menu-style screens: black with drifting paw prints and a pixel frame,
   // and no mascot on the shelf
-  MENU_SCREENS: ['SETTINGS', 'ALBUM', 'PERMS', 'GAMEOVER', 'TUTORIAL', 'TUTCAT', 'TUTDONE', 'REPLAY'],
+  MENU_SCREENS: ['SETTINGS', 'ALBUM', 'PERMS', 'GAMEOVER', 'TUTORIAL', 'TUTCAT', 'TUTDONE', 'REPLAY', 'RUNWIN'],
   groupLabel(gr) { return { TAP: 'TAP', DRAG: 'DRAG', CAMERA: 'CAMERA', BLOW: 'SOUND', SHAKE: 'TILT/SHAKE' }[gr] || gr; },
   menuBg() {
     const mt = Assets.get('menutile');
@@ -6575,6 +6621,9 @@ const Engine = {
   ALB_DEL:     { x: CX - 30, y: BOT - 21, w: 60, h: 16 },
   BTN_SHARE:   { x: CX - 50, y: CY + 66, w: 100, h: 22 },
   BTN_REPLAY:  { x: CX - 50, y: CY + 92, w: 100, h: 22 },
+  BTN_REPLAY_WIN: { x: CX - 50, y: CY + 48, w: 100, h: 22 },
+  // the replay goes back to the screen it was opened from
+  openReplay() { this.replayFrom = this.state; this.state = 'REPLAY'; this.rp = { i: 0, t: 0, paused: false }; },
   hit(b, p) { return p.x >= b.x && p.x < b.x + b.w && p.y >= b.y && p.y < b.y + b.h; },
 
   press(p) {
@@ -6612,9 +6661,10 @@ const Engine = {
     } else if (s === 'GAMEOVER' && this.timer <= 0) {
       // share runs inside this tap: the share sheet only opens from a gesture
       if (this.hit(this.BTN_SHARE, p)) { Sfx.tap(); this.share(); return; }
-      if (this.replay.length && this.hit(this.BTN_REPLAY, p)) { Sfx.tap(); this.state = 'REPLAY'; this.rp = { i: 0, t: 0, paused: false }; return; }
+      if (this.replay.length && this.hit(this.BTN_REPLAY, p)) { Sfx.tap(); this.openReplay(); return; }
       this.state = 'TITLE'; this.timer = 0.2;   // back to pick a mode
     } else if (s === 'REPLAY') this.replayRelease(p);
+    else if (s === 'RUNWIN') Run.winRelease(p);
   },
 
   // ── TITLE ──
@@ -6749,7 +6799,7 @@ const Engine = {
     } else {
       this.album.forEach((img, i) => polaroid(img, 205 + (i % 2) * 310, 375 + Math.floor(i / 2) * 240, 190, i % 2 ? 0.06 : -0.06));
     }
-    const result = this.mode === 'run' ? 'REACHED ' + Run.label() : 'SCORE ' + this.score;
+    const result = this.mode !== 'run' ? 'SCORE ' + this.score : Run.won && !Run.endless || this.state === 'RUNWIN' ? 'RUN WON ' + Run.clock(Run.winTime) : 'REACHED ' + Run.label();
     text(result, 360, 860, 60, PAL.ink);
     text(location.host || 'SHIBA MANIA', 360, 920, 26, TEXT_MID);
     return c;
@@ -6795,7 +6845,7 @@ const Engine = {
   rpDot(k) { const n = this.replay.length; return CX + (k - (n - 1) / 2) * 26; },
   replayUpdate(dt) {
     const R = this.rp, n = this.replay.length;
-    if (!R || !n) { this.state = 'GAMEOVER'; return; }
+    if (!R || !n) { this.state = this.replayFrom || 'GAMEOVER'; return; }
     if (R.paused) return;
     R.t += dt;
     if (R.t * this.REC_FPS >= this.replay[R.i].frames.length + 4) { R.i = (R.i + 1) % n; R.t = 0; }   // a short hold on the last frame
@@ -6803,7 +6853,7 @@ const Engine = {
   replayGo(i) { const n = this.replay.length; this.rp.i = (i + n) % n; this.rp.t = 0; },
   replayRelease(p) {
     const R = this.rp, n = this.replay.length;
-    if (this.hit(this.RP_DONE, p)) { Sfx.tap(); this.state = 'GAMEOVER'; this.timer = 0; return; }
+    if (this.hit(this.RP_DONE, p)) { Sfx.tap(); this.state = this.replayFrom || 'GAMEOVER'; this.timer = 0; return; }
     for (const b of this.RP_BTNS) if (this.hit(b, p)) {
       Sfx.tap();
       if (b.id === 'pause') R.paused = !R.paused;
@@ -7282,6 +7332,7 @@ const Engine = {
     if (s === 'GAMEOVER' && this.mode === 'run') { Run.drawOver(); return; }
     if (s === 'STAGE') { this.drawHud(); Run.drawStage(); return; }
     if (s === 'CLEAR') { this.drawHud(); Run.drawClear(); return; }
+    if (s === 'RUNWIN') { Run.drawWin(); return; }
     if (s === 'SHOP')  { this.drawHud(); Run.drawShop(); return; }
 
     if (s === 'REPLAY') { this.drawReplay(); return; }
