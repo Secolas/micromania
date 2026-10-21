@@ -6141,12 +6141,13 @@ const Juice = {
    the engine stands still until then so nothing advances twice. */
 const Wipe = {
   CLOSE: 0.42, HOLD: 0.1, OPEN: 0.42, BIG: 680,
-  t: -1, cb: null, fired: false,
-  run(cb) { this.t = 0; this.cb = cb; this.fired = false; },
+  t: -1, cb: null, fired: false, k: 1,
+  // k < 1 runs it faster (the break's quick wipe into the next prompt)
+  run(cb, k = 1) { this.t = 0; this.cb = cb; this.fired = false; this.k = k; },
   get busy() { return this.t >= 0 && !this.fired; },   // still closing or shut
   update(dt) {
     if (this.t < 0) return;
-    this.t += dt;
+    this.t += dt / this.k;
     if (!this.fired && this.t >= this.CLOSE) { this.fired = true; Sfx.boop(); const cb = this.cb; this.cb = null; cb(); }
     if (this.t >= this.CLOSE + this.HOLD + this.OPEN) this.t = -1;
   },
@@ -6945,6 +6946,17 @@ const Engine = {
       if (this.timer <= 0) this.startRound();
     }
 
+    if (s === 'BREAK') {
+      this.breakT += dt;
+      // the beat: a tick each half second the shiba bounces on
+      if (Math.floor(this.breakT * 2) !== Math.floor((this.breakT - dt) * 2) && this.breakT > 0.05) Sfx.tick();
+      if (this.breakT > 0.2 && this.breakT - dt <= 0.2 && !this.breakWon) { FX.shake(4); buzz(60); }   // the lost life pops off
+      if (this.timer <= 0 && !Wipe.busy) {
+        if (this.breakNext === 'over') { this.state = 'GAMEOVER'; this.timer = 0.8; Sfx.gameover(); }
+        else { this.startRound(); FX.flash(PAL.ink, 0.15); }   // a flash cut straight to the next prompt
+      }
+    }
+
     if (s === 'PHOTO') {
       this.photoReveal = Math.min(1, (this.photoReveal || 0) + dt * 4);   // a quick camera flash, gone in a quarter second
       if (this.timer <= 0 || Input.justDown) {
@@ -6963,7 +6975,7 @@ const Engine = {
     const s = this.state;
     if (['TITLE', 'SETTINGS', 'ALBUM', 'PERMS', 'REPLAY', 'RUNWIN'].includes(s)) return 'menu';
     if (s === 'SHOP') return 'shop';
-    if (!['STAGE', 'PROMPT', 'PLAYING', 'RESULT', 'PHOTO'].includes(s)) return null;
+    if (!['STAGE', 'PROMPT', 'PLAYING', 'RESULT', 'PHOTO', 'BREAK'].includes(s)) return null;
     const how = this.game && this.game.meta.how;
     if ((s === 'PROMPT' || s === 'PLAYING') && how && how.mic && (Input.micReady || Input.micPending)) return null;
     if (s === 'PLAYING' && this.game.meta.ownBeat) return null;   // DANCE keeps its own time
@@ -7553,27 +7565,69 @@ const Engine = {
     this.readyLast = 4;
   },
 
+  // THE BREAK between Classic games (WarioWare's stage between microgames): the
+  // shiba on a little wooden stage reacting to how that went, bouncing on the
+  // beat; your lives big across the top (a lost one pops off and falls); the
+  // score; and what's coming: SPEED UP!, BOSS NEXT!, or the end.
+  drawBreak() {
+    const t = this.breakT, won = this.breakWon, over = this.breakNext === 'over';
+    this.menuBg();
+    // the stage: a wooden frame, a curtain-red floor the shiba stands on
+    const sx = 14, sy = TOP + 44, sw = W - 28, sh = 198;
+    g.rect(sx, sy, sw, sh, MENU_PANEL);
+    g.rect(sx + 4, sy + sh - 30, sw - 8, 26, '#8f2f3a'); g.rect(sx + 4, sy + sh - 30, sw - 8, 3, '#c24b4b');
+    g.nine('titlesign', 0, sx - 4, sy - 4, sw + 8, sh + 8, 22);
+    // lives: four big faces on a dark plaque; the one just lost pops up, spins and drops
+    g.nine('buttons', 0, CX - 72, TOP + 4, 144, 38, 6);
+    for (let i = 0; i < 4; i++) {   // art 1:1 (31x32), so it stays crisp
+      const x = CX - 50 + i * 33, y = TOP + 23;
+      if (i < this.lives) { g.sprite('face', x, y + (won ? -Math.round(Math.abs(Math.sin((t * 2 + i * 0.15) * Math.PI)) * 3) : 0), { frame: 0 }); continue; }
+      if (!won && i === this.lives) {       // the life you just lost
+        const k = Math.max(0, t - 0.2), up = k < 0.12 ? -k * 120 : -14.4 + (k - 0.12) * (k - 0.12) * 900;
+        if (k === 0) g.sprite('face', x, y, { frame: 0 });
+        else if (y + up < H) { ctx.save(); ctx.translate(x + k * 30, y + up); ctx.rotate(k * 7); ctx.globalAlpha = Math.max(0, 1 - k * 1.2); g.sprite('shiba', 0, 0, { frame: 10 }); ctx.restore(); }   // the shocked face
+      } else { ctx.globalAlpha = 0.35; g.sprite('face', x, y, { frame: 4 }); ctx.globalAlpha = 1; }
+    }
+    // the shiba on the stage: cheering and bouncing on the beat, or teary
+    const fy = sy + sh - 18, hop = won ? Math.round(Math.abs(Math.sin(t * 2 * Math.PI)) * 10) : 0;
+    if (won) g.fullShiba(CX, fy - hop, Math.floor(t * 8) % 2 ? g.FULL.cheer : g.FULL.cheer2);
+    else g.fullIdle(CX, fy, 'teary', t);
+    // the score, with the point you just earned popping in
+    const pop = won ? Math.max(0, 1 - t * 4) : 0;
+    g.outline(String(this.score), CX, sy + 34 + Math.round(pop * -4), 22 + Math.round(pop * 10), won ? PAL.accent : PAL.ink);
+    if (won && t < 0.6) { ctx.globalAlpha = 1 - t / 0.6; g.outline('+1', CX + 30, sy + 26 - t * 30, 10, PAL.accent); ctx.globalAlpha = 1; }
+    // what's next, on a plaque below the stage
+    const msg = over ? ['GAME OVER', PAL.bad] : this.breakNext === 'speedup' ? ['SPEED UP!', PAL.accent] : this.breakBoss ? ['BOSS NEXT!', PAL.bad] : null;
+    if (msg && Math.floor(t * 6) % 3 !== 2) {
+      g.nine('buttons', msg[1] === PAL.accent ? 1 : 0, CX - 56, BOT - 22, 112, 24, 6);
+      g.text(msg[0], CX, BOT - 5, 12, msg[1] === PAL.accent ? PAL.bg : msg[1]);
+    }
+  },
+
   // After a round's result (and its photo, if any): game over, a speed-up, or
   // straight on. Shared so a photo win can't skip the speed-up — SQUID is a
   // boss on a multiple of SPEEDUP_EVERY, so that used to happen every run.
-  advance() { Wipe.run(() => this.advanceNow()); },
+  advance() { Wipe.run(() => this.advanceNow(), this.mode === 'classic' && !this.tut && !this.testClass ? 0.7 : 1); },   // into Classic's break a little quicker
   advanceNow() {
     if (this.tut) { this.tutAdvance(); return; }
     // test mode: replay the same game forever, never lose lives or advance
     if (this.testClass) { this.lives = 4; this.startRound(this.testClass, this.testDiff); return; }
     if (this.mode === 'run') { Run.after(); return; }
-    if (this.lives <= 0) { this.state = 'GAMEOVER'; this.timer = 0.8; Sfx.gameover(); return; }
-    if (this.round % this.SPEEDUP_EVERY === 0) {
-      this.speed = Math.min(2.6, this.speed + 0.12);
-      this.state = 'SPEEDUP'; this.timer = 0.9; Sfx.speedup();
-    } else { this.startRound(); }
+    // Classic: the break between games (see drawBreak), then game over, or the
+    // next prompt; a speed-up is announced on the break instead of a stop of its own
+    const next = this.lives <= 0 ? 'over' : this.round % this.SPEEDUP_EVERY === 0 ? 'speedup' : 'round';
+    if (next === 'speedup') { this.speed = Math.min(2.6, this.speed + 0.12); Sfx.speedup(); }
+    this.breakNext = next; this.breakWon = this.result === 'WIN'; this.breakT = 0;
+    this.breakBoss = next !== 'over' && (this.round + 1) % this.BOSS_EVERY === 0;
+    // a beat to take it in, shorter as the game speeds up (the tempo builds)
+    this.state = 'BREAK'; this.timer = (next === 'over' ? 1.2 : 0.7) / Math.sqrt(this.speed);
   },
 
   // ── DRAW ───────────────────────────────────────────────────────────────────
   draw() {
     FX.pre();
     this.drawScene();
-    if (this.state !== 'TITLE' && !this.MENU_SCREENS.includes(this.state)) Mascot.draw(g);   // the title has its own shiba; menu screens have none
+    if (this.state !== 'TITLE' && this.state !== 'BREAK' && !this.MENU_SCREENS.includes(this.state)) Mascot.draw(g);   // the title has its own shiba; menu screens have none
     Juice.drawConfetti();
     if (this.state === 'PLAYING') {
       this.drawFuse(Math.max(0, this.timer / this.duration));
@@ -7603,7 +7657,7 @@ const Engine = {
   // ── PAUSE ──────────────────────────────────────────────────────────────────
   // Leaving the app pauses any screen with a clock running, and so does the
   // pause button in the top bar. Back in a game, a 3-2-1 before it carries on.
-  PAUSABLE: ['READY', 'STAGE', 'PROMPT', 'PLAYING', 'RESULT', 'PHOTO', 'SPEEDUP', 'CLEAR'],
+  PAUSABLE: ['READY', 'STAGE', 'PROMPT', 'PLAYING', 'RESULT', 'PHOTO', 'SPEEDUP', 'CLEAR', 'BREAK'],
   PAUSE_BTN: { x: CX - 12, y: 0, w: 24, h: TOP },
   PAUSE_RESUME: { x: CX - 50, y: CY - 4, w: 100, h: 24 },
   PAUSE_QUIT: { x: CX - 50, y: CY + 28, w: 100, h: 20 },
@@ -7897,6 +7951,7 @@ const Engine = {
       return;
     }
 
+    if (s === 'BREAK') { this.drawBreak(); return; }
     if (s === 'SPEEDUP') {
       g.text('SPEED', CX, CY - 12, 22, PAL.accent);
       g.text('UP!', CX, CY + 14, 22, PAL.accent);
