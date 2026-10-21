@@ -6119,30 +6119,32 @@ const Run = {
     g.text('TAP ELSEWHERE TO CLOSE', CX, P.y + P.h - 5, 6, PAL.mid);
   },
 
+  // RUN's tally sits on the menu backdrop in its wooden frame, so it keeps
+  // clear of the frame's 20px border
   drawTally() {
     const L = this.last;
     Juice.stamp(CX, TOP + 30, 20);
-    if (L.won && Engine.snap) Engine.drawPolaroid(Engine.snap, W - 24, TOP + 28, 34, 0.08);
+    if (L.won && Engine.snap) Engine.drawPolaroid(Engine.snap, W - 34, TOP + 32, 34, 0.08);
     g.text(Engine.game.meta.prompt, CX, TOP + 54, 7, PAL.mid);
     L.rows.forEach(([a, v, c], i) => {
-      g.text(a, 14, TOP + 70 + i * 12, 8, PAL.mid, 'left');
-      g.text(v, W - 14, TOP + 70 + i * 12, 8, c, 'right');
+      g.text(a, 22, TOP + 70 + i * 12, 8, PAL.mid, 'left');
+      g.text(v, W - 22, TOP + 70 + i * 12, 8, c, 'right');
     });
     if (L.won) {
       const y = TOP + 140;
-      g.rect(14, y, 64, 18, PAL.ink); g.text(String(L.chips), 46, y + 13, 11, PAL.bg);
+      g.rect(22, y, 60, 18, PAL.ink); g.text(String(L.chips), 52, y + 13, 11, PAL.bg);
       g.text('x', CX, y + 13, 11, PAL.ink);
-      g.rect(W - 78, y, 64, 18, PAL.bad); g.text(String(L.mult), W - 46, y + 13, 11, PAL.ink);
+      g.rect(W - 82, y, 60, 18, PAL.bad); g.text(String(L.mult), W - 52, y + 13, 11, PAL.ink);
       g.text('= ' + L.points, CX, y + 42, 16, PAL.accent);
     }
     // the stage bar fills from where it was to where it is now
     const y = TOP + 200, goal = this.target();
     const k = Math.min(1, (1.8 - Engine.timer) / 0.6);
     const shown = Math.round(L.from + (this.score - L.from) * Math.max(0, k));
-    g.text('SCORE', 8, y, 7, PAL.mid, 'left');
-    g.text(shown + ' / ' + goal, W - 8, y, 8, PAL.ink, 'right');
-    g.rect(8, y + 4, W - 16, 5, PAL.mid);
-    g.rect(8, y + 4, (W - 16) * Math.min(1, shown / goal), 5, PAL.accent);
+    g.text('SCORE', 22, y, 7, PAL.mid, 'left');
+    g.text(shown + ' / ' + goal, W - 22, y, 8, PAL.ink, 'right');
+    g.rect(22, y + 4, W - 44, 5, PAL.mid);
+    g.rect(22, y + 4, (W - 44) * Math.min(1, shown / goal), 5, PAL.accent);
     const msg = this.score >= goal ? ['TARGET HIT!', PAL.accent]
               : this.left <= 0 ? ['OUT OF GAMES', PAL.bad]
               : [this.left + (this.left === 1 ? ' GAME' : ' GAMES') + ' LEFT', PAL.ink];
@@ -7307,7 +7309,7 @@ const Engine = {
     g.clear();
     const s = this.state;
     if (this.MENU_SCREENS.includes(s) || s === 'PERMS') { this.menuBg(); this.menuPanel(); }
-    else if (['STAGE', 'CLEAR', 'SHOP'].includes(s)) { this.menuBg(); this.menuPanel(TOP + 6); }   // below RUN's HUD row
+    else if (['STAGE', 'CLEAR', 'SHOP', 'SPEEDUP'].includes(s) || (s === 'RESULT' && this.mode === 'run')) { this.menuBg(); this.menuPanel(TOP + 6); }   // below the HUD row; RUN's tally too
 
     if (s === 'TITLE') { this.drawTitle(); return; }
 
