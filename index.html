@@ -7620,7 +7620,8 @@ const Engine = {
     this.breakNext = next; this.breakWon = this.result === 'WIN'; this.breakT = 0;
     this.breakBoss = next !== 'over' && (this.round + 1) % this.BOSS_EVERY === 0;
     // a beat to take it in, shorter as the game speeds up (the tempo builds)
-    this.state = 'BREAK'; this.timer = (next === 'over' ? 1.2 : 0.7) / Math.sqrt(this.speed);
+    this.state = 'BREAK'; this.timer = (next === 'over' ? 1.8 : 1.4) / Math.sqrt(this.speed);
+    if (this.breakWon) Juice.confetti(30);   // a second burst over the stage
   },
 
   // ── DRAW ───────────────────────────────────────────────────────────────────
