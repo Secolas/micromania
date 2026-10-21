@@ -92,6 +92,12 @@ export default async function ({ url, launch }) {
   out.wins.pat = play(PatShiba, 3, (gm, i) => { if (!gm.fake && i % 3 === 0) tapAt(90, 150); });
   // fake-outs: forced on, a touch must lose and leaving it alone must win
   Engine.seen.add('pat'); Engine.seen.add('tap');
+  // HIGH FIVE on touch: tap whichever paws are up (both, one after the other)
+  out.wins.highfive = play(HighFive, 3, (gm, i) => {
+    if (gm.cheer > 0 || gm.raiseT < 0.3 || i % 6) return;
+    const k = gm.side === 'B' ? (gm.tapped.L ? 'R' : 'L') : gm.side, P = HighFive.PAW[k];
+    tapAt(P.x, P.y);
+  });
   let fakeSeen = 0; for (let k = 0; k < 60; k++) { Engine.startRound(PatShiba, 2); if (Engine.game.fake) fakeSeen++; }
   out.fakeRate = fakeSeen + '/60';
   const forceFake = (C) => { const o = Math.random; Math.random = () => 0.01; Engine.startRound(C, 2); Math.random = o; return Engine.game; };
