@@ -377,12 +377,17 @@ const Sfx = {
     try { localStorage.setItem('micromania.muted', this.muted ? '1' : '0'); } catch (e) {}
   },
   unlock() {
+    // On an iPhone the ringer switch on silent mutes web audio as "ambient"
+    // sound; asking for "playback" lets the game be heard like a video would
+    // (Safari 16.4+; elsewhere navigator.audioSession doesn't exist)
+    this.session(Input._mic ? 'play-and-record' : 'playback');
     // iOS suspends the context again after the tab is backgrounded, so every
     // touch re-resumes it, not just the first one
     if (this.ac) { if (this.ac.state === 'suspended') this.ac.resume(); return; }
     const AC = window.AudioContext || window.webkitAudioContext;
     if (AC) { this.ac = new AC(); this.wire(); }
   },
+  session(type) { try { if (navigator.audioSession && navigator.audioSession.type !== type) navigator.audioSession.type = type; } catch (e) {} },
   // The mix: effects and music each into the master, through a compressor so
   // a busy moment never clips, with a little room (a short reverb) on both.
   wire() {
@@ -739,6 +744,9 @@ const Input = {
     }, { passive: false });
     const end = e => {
       if (!this.down) return;
+      // iOS Safari only lets sound start inside a touch's END, so the
+      // unlock in pointerdown can leave it silent: try again on the way up
+      if (e.type === 'pointerup') Sfx.unlock();
       const raw = toVirtual(e), p = rv(raw);
       this.x = p.x; this.y = p.y;
       this.down = false; this._justUpRaw = true;
@@ -1072,6 +1080,7 @@ const Input = {
       .catch(err => { this.micDenied = true; this.micPending = false; this._why('mic', err); });
   },
   _useMic(stream) {
+    Sfx.session('play-and-record');   // iOS: the mic and the game's sound together
     Sfx.unlock();
     const ac = Sfx.ac || new (window.AudioContext || window.webkitAudioContext)();
     Sfx.ac = ac;
