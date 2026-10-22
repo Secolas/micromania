@@ -20,6 +20,14 @@ skipped when the browser says both are already granted.
 says NEW GAME! and waits for TAP WHEN READY instead of counting down. After
 that it's remembered.
 
+**iPhone (Safari)**: works on iOS 14.5 and later, over HTTPS (the Vercel link).
+Sound starts on the first tap; it is unlocked on the finger lifting too, which
+is when iOS allows it, and asks for the "playback" audio session so the ringer
+switch on silent doesn't mute the game (Safari 16.4+). Tilt and shake ask for
+motion permission inside a tap, as iOS requires. iPhones have no vibration for
+websites, so the buzzes are skipped there; install is Share > Add to Home
+Screen (the SETTINGS screen says so).
+
 **Camera check**: before the first camera game of a session, a CAMERA CHECK
 screen shows your live picture with an oval to put your face in, and three
 readings: LIGHT (too dark?), YOU (anyone in the middle of the picture: a
