@@ -130,3 +130,9 @@ PixelLab's two versions of each neck thing, drawn on the closet shiba
 line on row 8, only what's new below the eyes) by `cut_neck.py ... diff 0 fs0.png 12 48 8`:
 bandana 1, bow tie 1, bell collar 1, flower lei 1, scarf 1. `art/neckicons.png`
 is each one cropped for its card.
+
+`art/paws_<sheet>.png` (fullshiba, breakjump, shiba, fullidle): where each
+frame's raised paws are, so a neck thing goes behind them. PixelLab coloured
+each frame's front legs green (`edit_image`, the green-paw prompt), and
+`neck-options/paw_masks.py` turns that into a mask lined up on our frames, less
+the legs where they rest in frame 0, grown a pixel for the outline.
