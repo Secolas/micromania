@@ -12,6 +12,7 @@ export default async function ({ url, launch }) {
     Engine.best = 10; Closet.check(); out.classic = owned();
     for (let i = 0; i < 10; i++) Closet.won('tap', false); out.wins = Closet.owns('bow');
     Closet.won('steer', false); out.sled = Closet.owns('beanie');                  // beat SLED, where the rider wears it
+    Closet.won('run', false); out.jump = Closet.owns('cowboy');                    // beat JUMP!, where the runner wears it
     Closet.won('rock', false); out.rock = Closet.owns('shades');                   // beat HEADBANG, where the rocker wears them
     for (const C of BOSSES) Closet.won(C.meta.id, true); out.bossesOverTime = Closet.owns('crown');   // not in one game: no crown
     Closet.allBosses(); out.crown = Closet.owns('crown');
@@ -56,8 +57,8 @@ export default async function ({ url, launch }) {
     return out;
   });
   eq(r.start, ['party'], 'only the party hat to start');
-  eq(r.classic, ['cowboy', 'party'], 'a Classic best of 10 earns the cowboy hat');
-  assert(r.wins && r.sled && r.rock && r.crown && r.halo && r.photos && r.world2 && r.runWon && r.all, 'each item is earned: ' + JSON.stringify(r));
+  eq(r.classic, ['party'], 'a Classic best of 10 alone earns nothing now');
+  assert(r.wins && r.sled && r.jump && r.rock && r.crown && r.halo && r.photos && r.world2 && r.runWon && r.all, 'each item is earned: ' + JSON.stringify(r));
   eq(r.bossesOverTime, false, 'every boss over different games is not the crown');
   eq(r.crownInGame, true, 'every boss in one Classic game earns the crown');
   eq(r.dev, true, 'the dev menu can unlock everything');

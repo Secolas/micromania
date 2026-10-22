@@ -274,7 +274,7 @@ const Assets = {
     demo:     { src: 'art/demo.png',     fw: 32,  fh: 40,  frames: 7,  fps: 1  },
     highfive: { src: 'art/highfive.png', fw: 64,  fh: 64,  frames: 14, fps: 1  },
     breakjump:{ src: 'art/breakjump.png', fw: 64, fh: 96,  frames: 8,  fps: 1  },
-    hats:     { src: 'art/hats.png',     fw: 32,  fh: 32,  frames: 10, fps: 1  },
+    hats:     { src: 'art/hats.png',     fw: 32,  fh: 32,  frames: 11, fps: 1  },
     walkstone:{ src: 'art/walkstone.png', fw: 36, fh: 36,  frames: 1,  fps: 1  },
     fullidle: { src: 'art/fullidle.png', fw: 64,  fh: 64,  frames: 22, fps: 1  },
     leanmove: { src: 'art/leanmove.png', fw: 64,  fh: 64,  frames: 7,  fps: 1  },
@@ -3909,10 +3909,13 @@ class DinoRun extends Microgame {
     // down while falling.
     const drawY = this.ground - this.dogH / 2 - this.y;
     if (this.onGround) {
-      g.sprite('swiperight', this.px, drawY, { w: this.dogW * 2, h: this.dogH * 2, frame: Math.floor(this.legT * 14) % 9 });
+      const f = Math.floor(this.legT * 14) % 9;
+      g.sprite('swiperight', this.px, drawY, { w: this.dogW * 2, h: this.dogH * 2, frame: f });
+      Closet.pin('swiperight', f, this.px, drawY, this.dogW * 2, this.dogH * 2, 10, 2);   // its cowboy hat: beat JUMP! and the closet's is yours
     } else {
       const jf = this.vy > 60 ? 2 : this.vy < -60 ? 4 : 3;   // rising / falling / peak
       g.sprite('runjump', this.px, drawY, { w: this.dogW * 2, h: this.dogH * 2, frame: jf });
+      Closet.pin('runjump', jf, this.px, drawY, this.dogW * 2, this.dogH * 2, 10, 2);
     }
     // progress pips
     for (let i = 0; i < this.need; i++) g.rect(W - 8 - i * 8, TOP + 4, 5, 5, i < this.cleared ? PAL.accent : PAL.mid);
@@ -5020,8 +5023,7 @@ class SteerRun extends Microgame {
     for (const p of this.spray) { ctx.globalAlpha = 1 - p.t / 0.3; g.rect(p.x, p.y, 2, 2, PAL.ink); ctx.globalAlpha = 1; }
     // the sled under the shiba, leaning into the turn
     if (Assets.get('sledmove')) {
-      g.sprite('sledmove', Math.round(this.px), this.runY - 7, { frame: Math.floor(this.t * 8) % 4 });   // art/sledmove.png: sledder.png padded to 40x40, only its tail wagging
-      Closet.drawItem({ f: 9 }, Math.round(this.px) - 2, this.runY - 18, 1);   // its beanie (art/hats.png frame 9): beat SLED and the closet's beanie is yours
+      g.sprite('sledmove', Math.round(this.px), this.runY - 7, { frame: Math.floor(this.t * 8) % 4 });   // art/sledmove.png: the rider in its beanie (beat SLED and the closet's is yours), only its tail wagging
     }
     else if (Assets.get('sledder')) g.sprite('sledder', Math.round(this.px), this.runY - 4);   // art/sledder.png: the shiba from behind, sat in its sled
     else { g.sprite('sled', this.px, this.runY + 8); g.sprite('hero', this.px, this.runY - 2, { w: 22, h: 27, frame: 0 }); }
@@ -6214,8 +6216,8 @@ const Wipe = {
    with every bob, cheer and droop. */
 const Closet = {
   KEY: 'micromania.closet',
-  // f: hats.png frame (the crown uses art/crown.png; frame 9 is SLED's mini
-  // beanie). game: won by beating that game, where you see it (the SLED
+  // f: hats.png frame (the crown uses art/crown.png; frame 9 is a mini beanie,
+  // 10 the side-on cowboy hat JUMP!'s runner wears, both prompt icons too). game: won by beating that game, where you see it (the SLED
   // rider's beanie, the HEADBANG rocker's shades). face: worn on the eyes
   // (the sunglasses), not on top. sit: how far the hat's
   // bottom comes down past the top of the head (kept clear of the eyes on
@@ -6224,7 +6226,7 @@ const Closet = {
     { id: 'party',   name: 'PARTY HAT',     f: 0,  sit: 2, how: 'FREE TO WEAR',            got: s => true },
     { id: 'bow',     name: 'BOW',           f: 1,  sit: 3, dx: 5, how: 'WIN 10 GAMES',     got: s => s.wins >= 10 },
     { id: 'beanie',  name: 'BEANIE',        f: 2,  icon: 9, sit: 5, game: 'steer', how: 'BEAT SLED',  got: s => !!s.beat.steer },
-    { id: 'cowboy',  name: 'COWBOY HAT',    f: 3,  sit: 2, how: 'SCORE 10 IN CLASSIC',     got: s => s.classic >= 10 },
+    { id: 'cowboy',  name: 'COWBOY HAT',    f: 3,  icon: 10, sit: 2, game: 'run', how: 'BEAT JUMP!', got: s => !!s.beat.run },
     { id: 'shades',  name: 'SUNGLASSES',    f: 8,  face: true, game: 'rock', how: 'BEAT HEADBANG', got: s => !!s.beat.rock },
     { id: 'wizard',  name: 'WIZARD HAT',    f: 4,  sit: 2, how: 'WIN A RUN',               got: s => s.runWins >= 1 },
     { id: 'halo',    name: 'HALO',          f: 5,  sit: -5, how: 'SCORE 30 IN CLASSIC',    got: s => s.classic >= 30 },
@@ -6314,7 +6316,10 @@ const Closet = {
       let ey = -1, ex0 = 1e9, ex1 = -1;
       for (let py = top + 3; py < Math.min(a.fh, top + 30) && ey < 0; py++) for (let px = x0; px < x1; px++) if (dark(px, py) && inside(px, py)) { ey = py; ex0 = Math.min(ex0, px); ex1 = Math.max(ex1, px); }
       const E = this.EYES[name];   // measured: the fur has dark markings a search can mistake for eyes
-      const base = { x: (lo + hi) / 2, y: top + this.EARS, ex: E ? E.x : ey < 0 ? (lo + hi) / 2 : (ex0 + ex1) / 2, ey: E ? E.y : ey < 0 ? top + 12 : ey };
+      const M = this.HEADS[name];
+      if (M) { lo = M.box[0]; hi = M.box[2]; top = M.box[1]; }
+      const base = M ? { x: M.x, y: M.y, ex: M.x, ey: M.box[3] - 8 }
+        : { x: (lo + hi) / 2, y: top + this.EARS, ex: E ? E.x : ey < 0 ? (lo + hi) / 2 : (ex0 + ex1) / 2, ey: E ? E.y : ey < 0 ? top + 12 : ey };
       // the head patch to look for: the ears down past the eyes, across the head
       const px0 = Math.max(0, Math.round(lo - 2)), px1 = Math.min(a.fw, Math.round(hi + 3)), py0 = top, py1 = Math.min(a.fh, Math.round(base.ey + 8));
       const R = Math.round(a.fh * 0.4);   // how far the head can have moved
@@ -6349,6 +6354,15 @@ const Closet = {
   // where the eyes are in frame 0 of each sheet a shiba wears things on (the
   // middle between them, the top of their row): the sunglasses go here
   EYES: { shiba: { x: 13.5, y: 13 }, fullshiba: { x: 16.5, y: 23 }, breakjump: { x: 25.5, y: 54 }, fullidle: { x: 24.5, y: 23 } },
+  // the side-on runner (JUMP!): where a hat sits in frame 0, and the head to follow (x0, y0, x1, y1)
+  HEADS: { swiperight: { x: 74, y: 40, box: [62, 31, 87, 52] }, runjump: { x: 74, y: 40, box: [62, 31, 87, 52] } },
+  // a hats.png frame pinned to a sheet's head at 1:1, for a sprite drawn at any
+  // size (JUMP!'s runner is drawn at half size; the hat stays crisp)
+  pin(name, frame, cx, cy, w, h, f, sit = 0) {
+    const a = Assets.get(name), hd = this.head(name, frame); if (!a || !hd) return;
+    const kx = w / a.fw, ky = h / a.fh;
+    this.drawItem({ f }, cx - w / 2 + hd.x * kx, cy - h / 2 + hd.y * ky + sit, 1);
+  },
   // Draw the equipped hat on a sheet's frame drawn centred at cx, cy at w x h
   // (as g.sprite does). Its scale is the sprite's, so a 2x shiba wears it 2x.
   dress(name, frame, cx, cy, w, h) {
@@ -7846,6 +7860,7 @@ const Engine = {
   toyLvBtn(i) { return { x: CX - 14 + i * 26, y: TOP + 50, w: 22, h: 16 }; },
   toyCard(i) { const c = i % 2, r = (i / 2) | 0; return { x: 18 + c * 73, y: TOP + 72 + r * 24, w: 71, h: 22 }; },
   TOY_PREV: { x: 18, y: TOP + 220, w: 32, h: 18 },
+  TOY_DEV: { x: W - 42, y: TOP + 52, w: 26, h: 16 },   // ?dev only: unlock everything
   TOY_NEXT: { x: W - 50, y: TOP + 220, w: 32, h: 18 },
   closetCard(i) { const c = i % 4, r = (i / 4) | 0; return { x: 19 + c * 36, y: TOP + 146 + r * 34, w: 34, h: 32 }; },
   toyGames() { return [...POOL, ...BOSSES]; },
@@ -7886,6 +7901,7 @@ const Engine = {
       }
       return;
     }
+    if (DEBUG && this.hit(this.TOY_DEV, p)) { Sfx.tap(); Closet.unlockAll(); return; }
     // the closet: tap something you own to wear it (again to take it off); a locked one says how to earn it
     Closet.ITEMS.forEach((it, i) => {
       if (!this.hit(this.closetCard(i), p)) return;
@@ -7935,6 +7951,7 @@ const Engine = {
     g.fullShiba(CX, fy, 0); Closet.dress('fullshiba', 0, CX, fy - 64, 96, 128);
     ctx.restore();
     const own = Closet.stats.owned;
+    if (DEBUG) { const D = this.TOY_DEV; g.button(D, false); g.text('ALL', D.x + D.w / 2, D.y + 11, 7, PAL.accent); }   // ?dev: unlock everything
     Closet.ITEMS.forEach((it, i) => {
       const c = this.closetCard(i), has = own.includes(it.id), on = Closet.stats.hat === it.id;
       if (on) g.button(c, true); else if (has) g.nine('buttons', 0, c.x, c.y, c.w, c.h, 6);
