@@ -510,6 +510,24 @@ const Sfx = {
   hum(k)   { this.tone({ f: 620 + Math.sin(k) * 60, dur: 0.11, type: 'square', vol: 0.03, lp: 2200, vib: 0.02, vibRate: 12 }); },   // the laser, while you're on it
   creak()  { this.tone({ f: 330, f1: 180, dur: 0.34, type: 'sawtooth', vol: 0.06, lp: 900, vib: 0.1, vibRate: 18 }); this.hiss({ dur: 0.3, vol: 0.06, bp: 700, ff: 1500 }); },   // turning around
   foot(i)  { this.hiss({ dur: 0.05, vol: 0.2, lp: 700 + (i % 2) * 200 }); },        // a running footstep
+  // HEADBANG's guitar: a distorted power chord (root, fifth, octave through a
+  // soft clipper), palm-muted short; bright 0..1 opens the tone up as you rock
+  chug(f, vol, bright = 0) {
+    if (!this.ac || this.muted || !this.out) return;
+    const ac = this.ac, t = ac.currentTime;
+    if (!this.distCurve) { const n = 1024, c = new Float32Array(n); for (let i = 0; i < n; i++) c[i] = Math.tanh((i * 2 / n - 1) * 6); this.distCurve = c; }
+    const sh = ac.createWaveShaper(); sh.curve = this.distCurve; sh.oversample = '2x';
+    const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 1200 + bright * 2400; lp.Q.value = 0.9;
+    const g = ac.createGain();
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.005); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.17);
+    sh.connect(lp).connect(g).connect(this.out);
+    for (const [m, d] of [[1, 0], [1.5, 6], [2, -5]]) {
+      const o = ac.createOscillator(), og = ac.createGain();
+      o.type = 'sawtooth'; o.frequency.value = f * m; o.detune.value = d; og.gain.value = 0.35;
+      o.connect(og).connect(sh); o.start(t); o.stop(t + 0.2);
+    }
+  },
+  hat()    { this.hiss({ dur: 0.03, vol: 0.05, hp: 7000 }); },                          // a closed hi-hat
   goal()   { this.run([['G5', 0, 0.08], ['C6', 0.08, 0.08], ['E6', 0.16, 0.08], ['G6', 0.24, 0.22]], { vol: 0.03 }); },   // soft: the win sting follows it
   // WarioWare stings ───────────────────────────────────────────────────────────
   // a win: "ding-ding-DING!" up the chord, the last one ringing
@@ -4656,9 +4674,10 @@ class HeadBang extends Microgame {
   // the riff: an eighth-note chug with kick and snare, at 150 bpm
   static RIFF = ['E2', 'E2', 'G2', 'E2', 'A2', 'E2', 'G2', 'D2'];
   playStep(loud) {
-    const k = this.step % 8, vol = 0.03 + loud * 0.05, f = Sfx.hz(HeadBang.RIFF[k]);
-    Sfx.tone({ f, dur: 0.16, type: 'sawtooth', vol, lp: 1400 + loud * 1600 });
-    Sfx.tone({ f: f * 1.5, dur: 0.16, type: 'sawtooth', vol: vol * 0.7, lp: 1400 + loud * 1600, detune: 8 });
+    const k = this.step % 8, f = Sfx.hz(HeadBang.RIFF[k]);
+    Sfx.chug(f, 0.035 + loud * 0.045, loud);                                             // the guitar, louder and brighter as you rock
+    Sfx.tone({ f: f / 2, dur: 0.18, type: 'triangle', vol: 0.06 + loud * 0.04 });        // the bass, an octave down
+    Sfx.hat();
     if (k % 4 === 0) Sfx.tone({ f: 120, f1: 45, dur: 0.14, type: 'sine', vol: 0.12 });   // kick
     if (k % 4 === 2) Sfx.hiss({ dur: 0.12, vol: 0.06 + loud * 0.04, bp: 1800, q: 0.7 });  // snare
     if (k % 4 === 2) this.flash = 0.12;
@@ -6850,7 +6869,7 @@ const Engine = {
     Wipe.update(dt); Juice.update(dt);
     // the title plays its intro every time you arrive (not back from the album)
     if (this.state !== this._lastState) {
-      if (this.state === 'TITLE') { this.titleT = ['ALBUM', 'SETTINGS'].includes(this._lastState) ? 9 : 0; this.titleSfx = 0; }
+      if (this.state === 'TITLE') { this.titleT = ['ALBUM', 'SETTINGS'].includes(this._lastState) ? 9 : 0; this.titleSfx = 0; this.introHeard = !!Sfx.ac; }
       this._lastState = this.state;
     }
     if (this.state === 'TITLE') this.titleIntro(dt);
@@ -7150,6 +7169,14 @@ const Engine = {
       this.waitReady = false; Prefs.set('learned.' + this.game.meta.id, true);
       this.timer = 0.6; Sfx.tap(); Input.flush(); return;
     }
+    // A browser plays no sound until the first tap, so on a fresh visit the
+    // intro ran silent: that first tap plays it again, with the music and the
+    // shiba's bark (a tap on a button once it has settled still goes through)
+    if (s === 'TITLE' && !this.introHeard) {
+      this.introHeard = true;
+      const onBtn = [this.BTN_RUN, this.BTN_CLASSIC, this.BTN_ALBUM, this.BTN_SET].some(b => this.hit(b, p));
+      if ((this.titleT || 0) < this.TITLE_INTRO || !onBtn) { this.titleT = 0; this.titleSfx = 0; return; }
+    }
     if (s === 'TITLE' && (this.titleT || 0) < this.TITLE_INTRO) { this.titleT = 9; this.titleSfx = 99; return; }
     if (s === 'TITLE' && this.timer <= 0 && this.hit(this.BTN_ALBUM, p)) {
       Sfx.unlock(); Sfx.tap();
@@ -7279,6 +7306,7 @@ const Engine = {
     if (Run.best) best.push('RUN ' + Run.label(Run.best));
     if (this.best) best.push('CLASSIC ' + this.best);
     if (best.length && t > this.TITLE_INTRO) g.outline('BEST  ' + best.join('  ·  '), CX, H - 24, 8, PAL.ink);
+    if (!this.introHeard && t > this.TITLE_INTRO && Math.floor(this.time * 2) % 2) g.outline('TAP FOR SOUND', CX, H - 10, 8, PAL.accent);   // a fresh visit, still silent
   },
 
   // ── SHARE ──────────────────────────────────────────────────────────────────
