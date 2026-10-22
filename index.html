@@ -1457,7 +1457,7 @@ const g = {
   // tapping or dragging, a palm waving at the camera, a face blowing into the
   // mic, a hand tilting and shaking the phone. Drawn around (x, y), scaled by
   // s, looping on t (seconds). Kinds it doesn't know fall back to hint().
-  DEMOS: ['tap', 'mash', 'hold', 'count', 'wait', 'drag', 'swipe', 'rub', 'trace', 'flick', 'move', 'cover', 'still', 'blow', 'shout', 'shake'],
+  DEMOS: ['tap', 'mash', 'hold', 'count', 'wait', 'drag', 'swipe', 'rub', 'trace', 'flick', 'move', 'nod', 'cover', 'still', 'blow', 'shout', 'shake'],
   demo(kind, x, y, t, s = 1) {
     if (!this.DEMOS.includes(kind)) { this.hint(kind, x, y); return; }
     if (Assets.get('demo')) { this.demoArt(kind, x, y, t, s >= 1 ? 2 : 1); return; }
@@ -1531,6 +1531,15 @@ const g = {
         } else this.circle(fx, fy, 3, acc);
         for (let i = 1; i < pts.length; i++) this.line(pts[i - 1][0], pts[i - 1][1], pts[i][0], pts[i][1], mid, 2);
         finger(fx, fy + 3);
+        break;
+      }
+      case 'nod': {   // HEADBANG: a face nodding up and down at the camera, from a distance
+        ctx.translate(0, 8); phone();
+        this.circle(0, -21, 2.4, acc); this.circle(0, -21, 1, bg);
+        const dy = Math.round(Math.abs(Math.sin(t * 7)) * 6);
+        this.circle(0, -38 + dy, 7, ink); this.rect(-3, -40 + dy, 2, 2, bg); this.rect(2, -40 + dy, 2, 2, bg);
+        for (const sx of [-14, 14]) { this.line(sx, -44, sx, -30, mid, 2); this.line(sx - 3, -41, sx, -44, mid, 2); this.line(sx + 3, -41, sx, -44, mid, 2); this.line(sx - 3, -33, sx, -30, mid, 2); this.line(sx + 3, -33, sx, -30, mid, 2); }
+        this.rect(-10, -14, 20, 14, PAL.mid); this.rect(-2, -12 + Math.round(dy / 2), 4, 7, bg);
         break;
       }
       case 'move': case 'cover': case 'still': {
@@ -1635,6 +1644,17 @@ const g = {
           this.circle(fx + b * 10, fy - b * 12, 2, acc);
         } else this.circle(fx, fy, 2, acc);
         finger(fx, fy + 1);
+        break;
+      }
+      case 'nod': {   // HEADBANG: the shiba beside the phone nodding hard up and down
+        ctx.translate(14, 4); phone();
+        this.circle(-3, -17, 2, acc); this.circle(-3, -17, 1, bg);
+        const dy = Math.round(Math.abs(Math.sin(t * 7)) * 6);
+        this.rect(-7, -11, 14, 11, mid); this.rect(-2, -10 + Math.round(dy / 2), 4, 7, bg);
+        P(6, -46, -24 + dy);
+        const ax = -50;                                                           // up-and-down marks beside the head
+        this.line(ax, -20, ax, -4, mid, 2); this.line(ax - 3, -17, ax, -20, mid, 2); this.line(ax + 3, -17, ax, -20, mid, 2);
+        this.line(ax - 3, -7, ax, -4, mid, 2); this.line(ax + 3, -7, ax, -4, mid, 2);
         break;
       }
       case 'move': case 'cover': case 'still': {
@@ -4605,8 +4625,8 @@ class HideLens extends Microgame {
 // Continuous movement rather than hitting beats, so camera lag can't make you
 // miss; the band plays its own riff, louder the more you rock.
 class HeadBang extends Microgame {
-  static meta = { id: 'rock', env: 'disco@232', cam: true, ownBeat: true, prompt: 'HEADBANG!', hint: 'move', duration: 5.0, minDuration: 4.4, photo: true, photoCap: 'ROCK STAR!',
-    how: { cam: 'BANG YOUR HEAD\nTO FILL THE ROCK METER', touch: 'TAP FAST\nTO ROCK OUT' } };
+  static meta = { id: 'rock', env: 'disco@232', cam: true, ownBeat: true, prompt: 'HEADBANG!', hint: 'move', demo: 'nod', duration: 5.0, minDuration: 4.4, photo: true, photoCap: 'ROCK STAR!',
+    how: { cam: 'NOD YOUR HEAD UP AND DOWN\nFAST, LIKE A ROCK STAR', touch: 'TAP FAST\nTO ROCK OUT' } };
   init() {
     Input.enableCam();
     this.paused = Input.camPending; this.wait = 0;
@@ -4618,7 +4638,7 @@ class HeadBang extends Microgame {
   }
   // how hard you're rocking right now, said out loud: 0 = not enough (the
   // meter drains), then GOOD, ROCKIN', INSANE
-  static LEVELS = [['BANG HARDER!', 0], ['GOOD', 0.09], ["ROCKIN'!", 0.2], ['INSANE!!', 0.32]];
+  static LEVELS = [['NOD HARDER!', 0], ['GOOD', 0.09], ["ROCKIN'!", 0.2], ['INSANE!!', 0.32]];
   // the riff: an eighth-note chug with kick and snare, at 150 bpm
   static RIFF = ['E2', 'E2', 'G2', 'E2', 'A2', 'E2', 'G2', 'D2'];
   playStep(loud) {
@@ -4687,7 +4707,7 @@ class HeadBang extends Microgame {
     g.text('ROCK', 24, TOP + 26, 8, PAL.accent, 'left');
     g.bar(54, TOP + 19, W - 78, 9, this.rock, this.lvl === 0 && this.t >= 0.6 ? PAL.bad : PAL.accent);
     // the rating, big: drains in red when you're not rocking hard enough
-    if (this.t < 0.6) g.text(Input.camReady ? 'BANG YOUR HEAD!' : 'TAP FAST TO ROCK!', CX, TOP + 46, 9, PAL.ink);
+    if (this.t < 0.6) g.text(Input.camReady ? 'NOD UP AND DOWN!' : 'TAP FAST TO ROCK!', CX, TOP + 46, 9, PAL.ink);
     else {
       const [word] = HeadBang.LEVELS[this.lvl], sz = (this.lvl === 0 ? 10 : 12 + this.lvl * 2) + this.lvlPop * 16;
       if (this.lvl > 0 || Math.floor(this.t * 4) % 2) g.outline(word, CX, TOP + 50, sz, this.lvl === 0 ? PAL.bad : this.lvl === 3 ? PAL.accent : PAL.ink);
@@ -5071,7 +5091,7 @@ class BlowCandles extends Microgame {
 
 // DRAG — pull every seed off the dandelion, one by one (the blowing is BLOW and CANDLES)
 class Dandelion extends Microgame {
-  static meta = { id: 'puff', env: 'sunny@258', photo: true, photoCap: 'WHOOSH!', prompt: 'PLUCK!', hint: 'drag', duration: 4.8, minDuration: 4.2,
+  static meta = { id: 'puff', env: 'sunny@258', prompt: 'PLUCK!', hint: 'drag', duration: 4.8, minDuration: 4.2,
     how: 'DRAG EACH SEED\nOFF THE DANDELION' };
   init() {
     this.n = this.byD(6, 7, 8); this.seeds = [];
@@ -6788,7 +6808,7 @@ const Engine = {
   // camera/mic/motion game fell back to touch, then the touch it asks for
   demoKind(m) {
     const h = m.how, how = this.howTo(m);
-    if (!h || typeof h === 'string' || how !== h.touch || !['move', 'cover', 'still', 'blow', 'shout', 'shake'].includes(m.hint)) return m.hint;
+    if (!h || typeof h === 'string' || how !== h.touch || !['move', 'cover', 'still', 'blow', 'shout', 'shake'].includes(m.hint)) return m.demo || m.hint;   // meta.demo: a game's own how-to loop
     return /DON'T TOUCH/.test(how) ? 'wait' : /^RUB/.test(how) ? 'rub' : /^HOLD/.test(how) ? 'hold' : /FAST|TAP, TAP/.test(how) ? 'mash' : 'tap';
   },
   howTo(m) {
@@ -6974,10 +6994,7 @@ const Engine = {
 
     if (s === 'PHOTO') {
       this.photoReveal = Math.min(1, (this.photoReveal || 0) + dt * 4);   // a quick camera flash, gone in a quarter second
-      if (this.timer <= 0 || Input.justDown) {
-        Engine.lastPhoto = null;
-        this.advance();
-      }
+      if (this.timer <= 0 || Input.justDown) this.advance();   // the photo is cleared once the wipe has closed over it
     }
   },
 
@@ -7627,6 +7644,7 @@ const Engine = {
   // boss on a multiple of SPEEDUP_EVERY, so that used to happen every run.
   advance() { Wipe.run(() => this.advanceNow(), this.mode === 'classic' && !this.tut && !this.testClass ? 0.7 : 1); },   // into Classic's break a little quicker
   advanceNow() {
+    this.lastPhoto = null;   // only now: the wipe was still drawing the photo screen on its way shut
     if (this.tut) { this.tutAdvance(); return; }
     // test mode: replay the same game forever, never lose lives or advance
     if (this.testClass) { this.lives = 4; this.startRound(this.testClass, this.testDiff); return; }
@@ -7829,7 +7847,7 @@ const Engine = {
     g.clear();
     const s = this.state;
     if (this.MENU_SCREENS.includes(s) || s === 'PERMS') { this.menuBg(); this.menuPanel(); }
-    else if (['STAGE', 'CLEAR', 'SHOP', 'SPEEDUP'].includes(s) || (s === 'RESULT' && this.mode === 'run')) { this.menuBg(); this.menuPanel(TOP + 6); }   // below the HUD row; RUN's tally too
+    else if (['STAGE', 'CLEAR', 'SHOP', 'SPEEDUP', 'PHOTO'].includes(s) || (s === 'RESULT' && this.mode === 'run')) { this.menuBg(); this.menuPanel(TOP + 6); }   // below the HUD row; RUN's tally too
 
     if (s === 'TITLE') { this.drawTitle(); return; }
 
@@ -7978,8 +7996,7 @@ const Engine = {
       this.drawHud();
     }
 
-    if (s === 'PHOTO') {
-      g.clear();
+    if (s === 'PHOTO') {   // on the menu backdrop and frame (drawn above), like the other between-game screens
       const photo = Engine.lastPhoto;
       // the polaroid takes the camera's shape: portrait on a phone
       const asp = photo ? photo.width / photo.height : Input.camAspect();
