@@ -228,9 +228,9 @@ resize();
 const Coat = {
   LIST: [
     { id: 'red',      name: 'RED',         how: 'FREE TO WEAR',        got: s => true },
-    { id: 'cream',    name: 'CREAM',       how: 'WIN 25 GAMES',        got: s => s.wins >= 25 },
-    { id: 'blacktan', name: 'BLACK & TAN', how: 'SCORE 20 IN CLASSIC', got: s => s.classic >= 20 },
-    { id: 'sesame',   name: 'SESAME',      how: 'WIN 3 RUNS',          got: s => s.runWins >= 3 },
+    { id: 'cream',    name: 'CREAM',       how: 'WIN 100 GAMES',       got: s => s.wins >= 100 },
+    { id: 'blacktan', name: 'BLACK & TAN', how: 'SCORE 40 IN CLASSIC', got: s => s.classic >= 40 },
+    { id: 'sesame',   name: 'SESAME',      how: 'WIN 5 RUNS',          got: s => s.runWins >= 5 },
   ],
   SHEETS: ['shiba', 'fullshiba', 'fullidle', 'breakjump', 'catcher', 'hero', 'face', 'pump', 'dryshake', 'hopdog', 'ordersign',
     'flydog', 'swipeup', 'swipedown', 'runjump', 'swiperight', 'swipeleft', 'hidedog', 'facedir', 'rubdog', 'sleepdog', 'rocker',
@@ -6590,26 +6590,26 @@ const Closet = {
   // as drawn by PixelLab on the shiba itself (art/worn.png cell), see dress
   ITEMS: [
     { id: 'party',   name: 'PARTY HAT',     f: 0,  sit: 2, band: 1, how: 'FREE TO WEAR',            got: s => true },
-    { id: 'bow',     name: 'BOW',           f: 1,  sit: 3, dx: 5, band: 2, how: 'WIN 10 GAMES',     got: s => s.wins >= 10 },
-    { id: 'beanie',  name: 'BEANIE',        f: 2,  icon: 9, sit: 5, game: 'steer', band: 3, how: 'BEAT SLED',  got: s => !!s.beat.steer },
-    { id: 'cowboy',  name: 'COWBOY HAT',    f: 15, icon: 10, band: 0, game: 'run', how: 'BEAT JUMP!', got: s => !!s.beat.run },
-    { id: 'shades',  name: 'SUNGLASSES',    f: 8,  face: true, game: 'rock', band: 4, how: 'BEAT HEADBANG', got: s => !!s.beat.rock },
-    { id: 'chef',    name: 'CHEF HAT',      f: 14, sit: 2, game: 'cook', band: 10, how: 'BEAT COOK!',  got: s => !!s.beat.cook },
+    { id: 'bow',     name: 'BOW',           f: 1,  sit: 3, dx: 5, band: 2, how: 'WIN 50 GAMES',     got: s => s.wins >= 50 },
+    { id: 'beanie',  name: 'BEANIE',        f: 2,  icon: 9, sit: 5, game: 'steer', band: 3, how: 'BEAT SLED ON HARD',  got: s => !!s.beat.steer },
+    { id: 'cowboy',  name: 'COWBOY HAT',    f: 15, icon: 10, band: 0, game: 'run', how: 'BEAT JUMP! ON HARD', got: s => !!s.beat.run },
+    { id: 'shades',  name: 'SUNGLASSES',    f: 8,  face: true, game: 'rock', band: 4, how: 'BEAT HEADBANG ON HARD', got: s => !!s.beat.rock },
+    { id: 'chef',    name: 'CHEF HAT',      f: 14, sit: 2, game: 'cook', band: 10, how: 'BEAT COOK! ON HARD',  got: s => !!s.beat.cook },
     { id: 'wizard',  name: 'WIZARD HAT',    f: 12, sit: 5, band: 5, how: 'WIN A RUN',               got: s => s.runWins >= 1 },
-    { id: 'halo',    name: 'HALO',          f: 13, sit: -5, band: 6, how: 'SCORE 30 IN CLASSIC',    got: s => s.classic >= 30 },
-    { id: 'propeller', name: 'PROPELLER CAP', f: 6, sit: 3, band: 7, how: 'REACH WORLD 2 IN RUN',   got: s => s.runWorld >= 2 },
-    { id: 'flower',  name: 'FLOWER',        f: 7,  sit: 3, dx: -6, band: 8, how: 'TAKE 5 SELFIES',  got: s => s.photos >= 5 },
+    { id: 'halo',    name: 'HALO',          f: 13, sit: -5, band: 6, how: 'SCORE 50 IN CLASSIC',    got: s => s.classic >= 50 },
+    { id: 'propeller', name: 'PROPELLER CAP', f: 6, sit: 3, band: 7, how: 'REACH WORLD 3 IN RUN',   got: s => s.runWorld >= 3 },
+    { id: 'flower',  name: 'FLOWER',        f: 7,  sit: 3, dx: -6, band: 8, how: 'TAKE 15 SELFIES',  got: s => s.photos >= 15 },
     { id: 'crown',   name: 'CROWN',         f: 11, sit: 3, between: true, band: 9, how: 'ALL 7 BOSSES IN ONE CLASSIC GAME', got: s => !!s.allBosses },
   ],
   // things worn round the neck, together with a hat: PixelLab drew each on the
   // shiba (art/neckwear.png, 64x48 cells, the eye line on row 8, the eyes'
   // middle on column 32); art/neckicons.png has their cards
   NECK: [
-    { id: 'bandana', name: 'BANDANA',     neck: true, band: 0, how: 'WIN 5 GAMES',          got: s => s.wins >= 5 },
-    { id: 'bowtie',  name: 'BOW TIE',     neck: true, band: 1, how: 'SCORE 15 IN CLASSIC',  got: s => s.classic >= 15 },
-    { id: 'bell',    name: 'BELL COLLAR', neck: true, band: 2, game: 'walkies', how: 'BEAT WALKIES', got: s => !!s.beat.walkies },
-    { id: 'lei',     name: 'FLOWER LEI',  neck: true, band: 3, game: 'dig', how: 'BEAT DIG',   got: s => !!s.beat.dig },
-    { id: 'scarf',   name: 'SCARF',       neck: true, band: 4, how: 'WIN 50 GAMES',         got: s => s.wins >= 50 },
+    { id: 'bandana', name: 'BANDANA',     neck: true, band: 0, how: 'WIN 25 GAMES',         got: s => s.wins >= 25 },
+    { id: 'bowtie',  name: 'BOW TIE',     neck: true, band: 1, how: 'SCORE 25 IN CLASSIC',  got: s => s.classic >= 25 },
+    { id: 'bell',    name: 'BELL COLLAR', neck: true, band: 2, game: 'walkies', how: 'BEAT WALKIES ON HARD', got: s => !!s.beat.walkies },
+    { id: 'lei',     name: 'FLOWER LEI',  neck: true, band: 3, game: 'dig', how: 'BEAT DIG ON HARD',   got: s => !!s.beat.dig },
+    { id: 'scarf',   name: 'SCARF',       neck: true, band: 4, how: 'WIN 150 GAMES',        got: s => s.wins >= 150 },
   ],
   item(id) { return this.ITEMS.find(i => i.id === id) || this.NECK.find(i => i.id === id); },
 
@@ -6633,10 +6633,10 @@ const Closet = {
     });
   },
   met(id) { const s = this.stats; if (!s.met.includes(id)) { s.met.push(id); this.save(); } },
-  won(id, boss) {
+  won(id, boss, d = 1) {
     const s = this.stats; s.wins++;
     if (boss && !s.bosses.includes(id)) s.bosses.push(id);
-    if ([...this.ITEMS, ...this.NECK].some(i => i.game === id)) s.beat[id] = true;   // a game with something to win in it
+    if (d >= 3 && [...this.ITEMS, ...this.NECK].some(i => i.game === id)) s.beat[id] = true;   // a game with something to win in it, beaten on HARD
     this.save(); this.check();
   },
   // every boss beaten in one Classic game: the crown
@@ -7625,7 +7625,7 @@ const Engine = {
         if (this.game.won) {
           if (this.surprise === 'life' && this.mode === 'classic' && this.lives < 4) { this.lives++; this.gotLife = true; } else this.gotLife = false;
           this.score++; this.combo++; this.result = 'WIN'; Sfx.win(); buzz(20); Mascot.set('cheer');
-          if (!this.tut && !this.testClass) Closet.won(this.game.meta.id, !this.toy && (this.isBoss || BOSSES.includes(this.game.constructor)));   // a boss counts when it's for real, not practice
+          if (!this.tut && !this.testClass) Closet.won(this.game.meta.id, !this.toy && (this.isBoss || BOSSES.includes(this.game.constructor)), this.game.d);   // a boss counts when it's for real, not practice
           if (this.isBoss && this.mode === 'classic' && !this.toy && !this.tut && !this.testClass) {
             const b = this.bossesBeaten || (this.bossesBeaten = []), id = this.game.meta.id;
             if (!b.includes(id)) b.push(id);
@@ -7843,7 +7843,7 @@ const Engine = {
     // shiba's bark (a tap on a button once it has settled still goes through)
     if (s === 'TITLE' && !this.introHeard) {
       this.introHeard = true;
-      const onBtn = [this.BTN_RUN, this.BTN_CLASSIC, this.BTN_ALBUM, this.BTN_SET].some(b => this.hit(b, p));
+      const onBtn = [this.BTN_RUN, this.BTN_CLASSIC, this.BTN_ALBUM, this.BTN_TOY, this.BTN_SET].some(b => this.hit(b, p));
       if ((this.titleT || 0) < this.TITLE_INTRO || !onBtn) { this.titleT = 0; this.titleSfx = 0; return; }
     }
     if (s === 'TITLE' && (this.titleT || 0) < this.TITLE_INTRO) { this.titleT = 9; this.titleSfx = 99; return; }
@@ -7969,7 +7969,7 @@ const Engine = {
     const R = this.BTN_RUN, C = this.BTN_CLASSIC, A = this.BTN_ALBUM;
     const up = (i) => (1 - back((t - 1.3 - i * 0.08) / 0.45)) * 150;   // from below the bottom edge
     // the menu: white outlined words, all alike
-    const opts = [[R, 'RUN'], [C, 'CLASSIC'], [A, 'ALBUM'], [this.BTN_TOY, 'TOY ROOM'], [this.BTN_SET, 'SETTINGS']];
+    const opts = [[R, 'RUN'], [C, 'CLASSIC'], [A, 'ALBUM'], [this.BTN_TOY, 'DOGHOUSE'], [this.BTN_SET, 'SETTINGS']];
     opts.forEach(([b, label], i) => {
       if (Assets.get('button')) g.sprite('button', CX, b.y + up(i) + b.h / 2);   // art/button.png
       g.outline(label, CX, b.y + up(i) + b.h / 2 + 5, 14, PAL.ink);
@@ -8364,7 +8364,7 @@ const Engine = {
     }
   },
 
-  // ── TOY ROOM ────────────────────────────────────────────────────────────
+  // ── THE DOGHOUSE (the toy room) ────────────────────────────────────────────────────────────
   // Off the title: GAMES, every microgame you've met, to play again any time at
   // level 1, 2 or 3 (the best level you've cleared shows as pips), and CLOSET,
   // where your shiba wears what you've earned. A toy-room game is practice: no
@@ -8451,17 +8451,18 @@ const Engine = {
   drawToyLock() {
     const L = this.toyLock; if (!L || L.t <= 0) return;
     L.t -= STEP;
-    const k = Math.min(1, (2.4 - L.t) / 0.12, L.t / 0.25), w = 156, h = 50, x = CX - w / 2, y = Math.round(TOP + 92 + (1 - k) * 8);
+    const lines = g.wrap(L.how.startsWith('PLAY') ? L.how : 'TO UNLOCK: ' + L.how, 140, 7);   // a long one goes onto two lines
+    const k = Math.min(1, (2.4 - L.t) / 0.12, L.t / 0.25), w = 160, h = 36 + lines.length * 12, x = CX - w / 2, y = Math.round(TOP + 92 + (1 - k) * 8);
     ctx.globalAlpha = Math.max(0, k);
     g.nine('buttons', 1, x, y, w, h, 6) || g.rect(x, y, w, h, PAL.accent);
     g.text('LOCKED: ' + L.name, CX, y + 17, 8, PAL.bg);
-    g.text(L.how.startsWith('PLAY') ? L.how : 'TO UNLOCK: ' + L.how, CX, y + 33, L.how.length > 22 ? 6 : 7, PAL.bg);
+    lines.forEach((t, i) => g.text(t, CX, y + 33 + i * 12, 7, PAL.bg));
     ctx.globalAlpha = 1;
   },
   drawToyRoom() {
     const B = this.TOY_BACK;
     g.button(B, false); g.text('BACK', B.x + B.w / 2, B.y + 11, 7, PAL.ink);
-    g.text('TOY ROOM', CX + 18, TOP + 16, 12, PAL.accent);
+    g.text('DOGHOUSE', CX + 18, TOP + 16, 12, PAL.accent);
     for (const tb of this.TOY_TABS) { const on = this.toyTab === tb.id; g.button(tb, on); g.text(tb.label, tb.x + tb.w / 2, tb.y + 14, 7, on ? PAL.bg : PAL.ink); }
     if (this.toyMsgT > 0) this.toyMsgT -= STEP;
     if (this.toyTab === 'games') {
@@ -8862,9 +8863,10 @@ const Engine = {
       // is labelled by what you'll actually do
       const gr = Run.group(m), backup = m.how && typeof m.how === 'object' && !['TAP', 'DRAG'].includes(gr) && this.howTo(m) === m.how.touch;
       const prize = !this.tut && !this.testClass && Closet.prize(m.id);
-      if (prize) {   // WIN: BEANIE, with a small one of the thing, above the kind of game
-        g.outline('WIN: ' + prize.name, CX + 8, ty - 16, 8, PAL.accent);
-        Closet.drawItem(prize.icon != null ? { f: prize.icon } : prize, CX - 6 - (prize.name.length + 5) * 3, ty - 13, 1);
+      if (prize) {   // WIN: BEANIE (or, below HARD, ON HARD: BEANIE), with a small one of the thing, above the kind of game
+        const pre = this.game && this.game.d >= 3 ? 'WIN: ' : 'ON HARD: ';
+        g.outline(pre + prize.name, CX + 8, ty - 16, 8, PAL.accent);
+        Closet.drawItem(prize.icon != null ? { f: prize.icon } : prize, CX - 6 - (prize.name.length + pre.length) * 3, ty - 13, 1);
       }
       g.text((backup ? (this.demoKind(m) === 'rub' ? 'DRAG' : 'TAP') : this.groupLabel(gr)) + ' GAME' + (b.length ? '  ·  ' + b.map(t => t.name).join(' + ') + '!' : ''), CX, ty, 8, b.length ? PAL.accent : PAL.ink);
       // A surprise: the prompt starts out normal, then a stamp slams down on
