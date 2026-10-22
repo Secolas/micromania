@@ -26,6 +26,13 @@ export default async function ({ url, launch }) {
     for (let i = 0; i < 15; i++) Closet.won('tap', false);   // 25 wins in all: cream
     Run.wins = 3; Closet.check();                            // 3 runs won: sesame
     out.coats = Closet.stats.coats.slice().sort();
+    // neck things: earned like the rest, and worn with a hat
+    out.necksBefore = Closet.stats.necks.slice().sort();
+    Closet.won('walkies', false); Closet.won('dig', false); for (let i = 0; i < 25; i++) Closet.won('tap', false);
+    out.necks = Closet.stats.necks.slice().sort();
+    out.digPrize = Closet.prize('dig');
+    Closet.wear('cowboy'); Closet.wearNeck('bell'); out.both = [Closet.hat && Closet.hat.id, Closet.neck && Closet.neck.id];
+    Closet.wearNeck(null); Closet.wear(null);
     Closet.wearCoat('blacktan');
     const px = (a) => { const c = document.createElement('canvas'); c.width = a.img.width || a.img.naturalWidth; c.height = a.img.height || a.img.naturalHeight; const x = c.getContext('2d'); x.drawImage(a.img, 0, 0); const d = x.getImageData(0, 0, c.width, c.height).data; let o = 0; for (let i = 0; i < d.length; i += 4) if (d[i + 3] > 40 && d[i] > 200 && d[i + 1] > 100 && d[i + 1] < 160 && d[i + 2] < 90) o++; return o; };
     out.coatOrange = [px(Assets.get('fullshiba')), px(Assets.raw('fullshiba')), px(Assets.get('watcher')) === px(Assets.raw('watcher'))];
@@ -71,6 +78,10 @@ export default async function ({ url, launch }) {
   eq(r.coats, ['blacktan', 'cream', 'red', 'sesame'], 'every coat earned: ' + r.coats);
   assert(r.coatOrange[0] < r.coatOrange[1] / 20 && r.coatOrange[2], 'black and tan recolours the shiba, not the watcher: ' + r.coatOrange);
   eq(r.redSame, true, 'the red coat is the art as drawn');
+  eq(r.necksBefore, ['bandana', 'bowtie'], 'the bandana by 5 wins, the bow tie by 15 in Classic');
+  eq(r.necks, ['bandana', 'bell', 'bowtie', 'lei', 'scarf'], 'the bell collar from WALKIES, the lei from DIG, the scarf by 50 wins: ' + r.necks);
+  eq(r.digPrize, null, 'nothing left to win in DIG once the lei is yours');
+  eq(r.both, ['cowboy', 'bell'], 'a hat and a neck thing worn together');
   eq(r.bossesOverTime, false, 'every boss over different games is not the crown');
   eq(r.crownInGame, true, 'every boss in one Classic game earns the crown');
   eq(r.dev, true, 'the dev menu can unlock everything');
