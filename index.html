@@ -274,7 +274,7 @@ const Assets = {
     demo:     { src: 'art/demo.png',     fw: 32,  fh: 40,  frames: 7,  fps: 1  },
     highfive: { src: 'art/highfive.png', fw: 64,  fh: 64,  frames: 14, fps: 1  },
     breakjump:{ src: 'art/breakjump.png', fw: 64, fh: 96,  frames: 8,  fps: 1  },
-    hats:     { src: 'art/hats.png',     fw: 32,  fh: 32,  frames: 11, fps: 1  },
+    hats:     { src: 'art/hats.png',     fw: 32,  fh: 32,  frames: 10, fps: 1  },
     walkstone:{ src: 'art/walkstone.png', fw: 36, fh: 36,  frames: 1,  fps: 1  },
     fullidle: { src: 'art/fullidle.png', fw: 64,  fh: 64,  frames: 22, fps: 1  },
     leanmove: { src: 'art/leanmove.png', fw: 64,  fh: 64,  frames: 7,  fps: 1  },
@@ -5019,7 +5019,10 @@ class SteerRun extends Microgame {
     }
     for (const p of this.spray) { ctx.globalAlpha = 1 - p.t / 0.3; g.rect(p.x, p.y, 2, 2, PAL.ink); ctx.globalAlpha = 1; }
     // the sled under the shiba, leaning into the turn
-    if (Assets.get('sledmove')) g.sprite('sledmove', Math.round(this.px), this.runY - 7, { frame: Math.floor(this.t * 8) % 4 });   // art/sledmove.png: sledder.png padded to 40x40, only its tail wagging
+    if (Assets.get('sledmove')) {
+      g.sprite('sledmove', Math.round(this.px), this.runY - 7, { frame: Math.floor(this.t * 8) % 4 });   // art/sledmove.png: sledder.png padded to 40x40, only its tail wagging
+      Closet.drawItem({ f: 9 }, Math.round(this.px) - 2, this.runY - 18, 1);   // its beanie (art/hats.png frame 9): beat SLED and the closet's beanie is yours
+    }
     else if (Assets.get('sledder')) g.sprite('sledder', Math.round(this.px), this.runY - 4);   // art/sledder.png: the shiba from behind, sat in its sled
     else { g.sprite('sled', this.px, this.runY + 8); g.sprite('hero', this.px, this.runY - 2, { w: 22, h: 27, frame: 0 }); }
     for (let i = 0; i < this.need; i++) g.rect(W - 8 - i * 8, TOP + 4, 5, 5, i < this.passed ? PAL.accent : PAL.mid);
@@ -6211,22 +6214,23 @@ const Wipe = {
    with every bob, cheer and droop. */
 const Closet = {
   KEY: 'micromania.closet',
-  // f: hats.png frame (the crown uses art/crown.png). sit: how far the hat's
+  // f: hats.png frame (the crown uses art/crown.png; frame 9 is SLED's mini
+  // beanie). game: won by beating that game, where you see it (the SLED
+  // rider's beanie, the HEADBANG rocker's shades). face: worn on the eyes
+  // (the sunglasses), not on top. sit: how far the hat's
   // bottom comes down past the top of the head (kept clear of the eyes on
   // every shiba it goes on); dx: off to one side (the bow and flower, by an ear)
   ITEMS: [
-    { id: 'party',   name: 'PARTY HAT',     f: 0,  sit: 2, how: 'FREE TO WEAR',         got: s => true },
-    { id: 'bow',     name: 'BOW',           f: 1,  sit: 3, dx: 5, how: 'WIN 10 GAMES',  got: s => s.wins >= 10 },
-    { id: 'beanie',  name: 'BEANIE',        f: 2,  sit: 5, how: 'SCORE 5 IN CLASSIC',   got: s => s.classic >= 5 },
-    { id: 'cowboy',  name: 'COWBOY HAT',    f: 3,  sit: 2, how: 'SCORE 10 IN CLASSIC',  got: s => s.classic >= 10 },
-    { id: 'chef',    name: 'CHEF HAT',      f: 4,  sit: 4, how: 'SCORE 20 IN CLASSIC',  got: s => s.classic >= 20 },
-    { id: 'wizard',  name: 'WIZARD HAT',    f: 5,  sit: 2, how: 'SCORE 30 IN CLASSIC',  got: s => s.classic >= 30 },
-    { id: 'viking',  name: 'VIKING HELMET', f: 6,  sit: 1, how: 'BEAT A BOSS',          got: s => s.bosses.length >= 1 },
-    { id: 'halo',    name: 'HALO',          f: 7,  sit: -5, how: 'BEAT ALL 7 BOSSES',   got: s => s.bosses.length >= 7 },
-    { id: 'propeller', name: 'PROPELLER CAP', f: 8, sit: 3, how: 'REACH WORLD 2 IN RUN', got: s => s.runWorld >= 2 },
-    { id: 'crown',   name: 'CROWN',         crown: true, sit: 3, how: 'WIN A RUN',      got: s => s.runWins >= 1 },
-    { id: 'phones',  name: 'HEADPHONES',    f: 9,  sit: 4, how: 'MEET 25 GAMES',       got: s => s.met.length >= 25 },
-    { id: 'flower',  name: 'FLOWER',        f: 10, sit: 3, dx: -6, how: 'TAKE 5 SELFIES', got: s => s.photos >= 5 },
+    { id: 'party',   name: 'PARTY HAT',     f: 0,  sit: 2, how: 'FREE TO WEAR',            got: s => true },
+    { id: 'bow',     name: 'BOW',           f: 1,  sit: 3, dx: 5, how: 'WIN 10 GAMES',     got: s => s.wins >= 10 },
+    { id: 'beanie',  name: 'BEANIE',        f: 2,  icon: 9, sit: 5, game: 'steer', how: 'BEAT SLED',  got: s => !!s.beat.steer },
+    { id: 'cowboy',  name: 'COWBOY HAT',    f: 3,  sit: 2, how: 'SCORE 10 IN CLASSIC',     got: s => s.classic >= 10 },
+    { id: 'shades',  name: 'SUNGLASSES',    f: 8,  face: true, game: 'rock', how: 'BEAT HEADBANG', got: s => !!s.beat.rock },
+    { id: 'wizard',  name: 'WIZARD HAT',    f: 4,  sit: 2, how: 'WIN A RUN',               got: s => s.runWins >= 1 },
+    { id: 'halo',    name: 'HALO',          f: 5,  sit: -5, how: 'SCORE 30 IN CLASSIC',    got: s => s.classic >= 30 },
+    { id: 'propeller', name: 'PROPELLER CAP', f: 6, sit: 3, how: 'REACH WORLD 2 IN RUN',   got: s => s.runWorld >= 2 },
+    { id: 'flower',  name: 'FLOWER',        f: 7,  sit: 3, dx: -6, how: 'TAKE 5 SELFIES',  got: s => s.photos >= 5 },
+    { id: 'crown',   name: 'CROWN',         crown: true, sit: 3, how: 'ALL 7 BOSSES IN ONE CLASSIC GAME', got: s => !!s.allBosses },
   ],
   item(id) { return this.ITEMS.find(i => i.id === id); },
 
@@ -6236,7 +6240,7 @@ const Closet = {
     if (this._s) return this._s;
     let s = {};
     try { s = JSON.parse(localStorage.getItem(this.KEY) || '{}'); } catch (e) {}
-    this._s = Object.assign({ wins: 0, bosses: [], photos: 0, met: [], toy: {}, owned: [], hat: null, seen: [] }, s);
+    this._s = Object.assign({ wins: 0, bosses: [], photos: 0, met: [], toy: {}, owned: [], hat: null, beat: {}, allBosses: false }, s);
     return this._s;
   },
   save() { try { localStorage.setItem(this.KEY, JSON.stringify(this.stats)); } catch (e) {} },
@@ -6253,8 +6257,16 @@ const Closet = {
   won(id, boss) {
     const s = this.stats; s.wins++;
     if (boss && !s.bosses.includes(id)) s.bosses.push(id);
+    if (this.ITEMS.some(i => i.game === id)) s.beat[id] = true;   // a game with something to win in it
     this.save(); this.check();
   },
+  // every boss beaten in one Classic game: the crown
+  allBosses() { if (!this.stats.allBosses) { this.stats.allBosses = true; this.save(); this.check(); } },
+  // the thing a game has to win, if you haven't got it yet (for its prompt)
+  prize(gameId) { return this.ITEMS.find(i => i.game === gameId && !this.owns(i.id)) || null; },
+  // dev menu: everything, or a fresh start
+  unlockAll() { const s = this.stats; s.owned = this.ITEMS.map(i => i.id); s.met = [...POOL, ...BOSSES].map(C => C.meta.id); this.save(); },   // every game in the toy room too
+  resetAll() { this._s = null; try { localStorage.removeItem(this.KEY); } catch (e) {} this.check(); },
   photo() { this.stats.photos++; this.save(); this.check(); },
   toyBest(id, lv) { const s = this.stats; if ((s.toy[id] || 0) < lv) { s.toy[id] = lv; this.save(); } },
 
@@ -6272,9 +6284,13 @@ const Closet = {
   get hat() { const h = this.stats.hat; return h && this.owns(h) ? this.item(h) : null; },
   wear(id) { this.stats.hat = id; this.save(); },
 
-  // the top of the head in each frame of a sheet, found once from its pixels:
-  // the first row with any opaque pixel in the middle of the frame (the ears),
-  // and the middle of what's opaque across the next few rows
+  // Where the head is in each frame of a sheet, found once from its pixels.
+  // In frame 0 it's measured: the top of the head between the ear tips (where
+  // a hat sits) and the eye line (the topmost dark pixels inside the face, for
+  // glasses). Every other frame finds that same head by matching frame 0's
+  // picture of it (ears, eyes, cheeks) at each nearby offset and keeping the
+  // best fit, so the hat follows the head through a jump or a cheer even while
+  // the ears squash and the paws come up beside it.
   _heads: {},
   head(name, frame) {
     const a = Assets.get(name); if (!a) return null;
@@ -6284,26 +6300,63 @@ const Closet = {
       const c = document.createElement('canvas'); c.width = a.fw * a.frames; c.height = a.fh;
       const x = c.getContext('2d'); x.drawImage(a.img, 0, 0);
       let d; try { d = x.getImageData(0, 0, c.width, c.height).data; } catch (e) { return null; }
-      const op = (px, py) => d[(py * c.width + px) * 4 + 3] > 40;
+      const at = (px, py) => (py * c.width + px) * 4;
+      const op = (px, py) => px >= 0 && py >= 0 && px < c.width && py < a.fh && d[at(px, py) + 3] > 40;
+      const dark = (px, py) => { const i = at(px, py); return d[i + 3] > 40 && d[i] + d[i + 1] + d[i + 2] < 150; };
+      const inside = (px, py) => { for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) if (!op(px + dx, py + dy)) return false; return true; };
+      // frame 0: the ear tips, the head's middle across them, the eye line
+      const x0 = Math.floor(a.fw * 0.2), x1 = Math.ceil(a.fw * 0.8);
+      let top = -1;
+      for (let py = 0; py < a.fh && top < 0; py++) for (let px = x0; px < x1; px++) if (op(px, py)) { top = py; break; }
+      if (top < 0) return null;
+      let lo = 1e9, hi = -1;
+      for (let py = top; py < Math.min(a.fh, top + 8); py++) for (let px = x0; px < x1; px++) if (op(px, py)) { lo = Math.min(lo, px); hi = Math.max(hi, px); }
+      let ey = -1, ex0 = 1e9, ex1 = -1;
+      for (let py = top + 3; py < Math.min(a.fh, top + 30) && ey < 0; py++) for (let px = x0; px < x1; px++) if (dark(px, py) && inside(px, py)) { ey = py; ex0 = Math.min(ex0, px); ex1 = Math.max(ex1, px); }
+      const E = this.EYES[name];   // measured: the fur has dark markings a search can mistake for eyes
+      const base = { x: (lo + hi) / 2, y: top + this.EARS, ex: E ? E.x : ey < 0 ? (lo + hi) / 2 : (ex0 + ex1) / 2, ey: E ? E.y : ey < 0 ? top + 12 : ey };
+      // the head patch to look for: the ears down past the eyes, across the head
+      const px0 = Math.max(0, Math.round(lo - 2)), px1 = Math.min(a.fw, Math.round(hi + 3)), py0 = top, py1 = Math.min(a.fh, Math.round(base.ey + 8));
+      const R = Math.round(a.fh * 0.4);   // how far the head can have moved
       for (let f = 0; f < a.frames; f++) {
-        const x0 = f * a.fw + Math.floor(a.fw * 0.2), x1 = f * a.fw + Math.ceil(a.fw * 0.8);
-        let top = -1;
-        for (let py = 0; py < a.fh && top < 0; py++) for (let px = x0; px < x1; px++) if (op(px, py)) { top = py; break; }
-        if (top < 0) { H.push(null); continue; }
-        let lo = 1e9, hi = -1;
-        for (let py = top; py < Math.min(a.fh, top + 8); py++) for (let px = x0; px < x1; px++) if (op(px, py)) { lo = Math.min(lo, px); hi = Math.max(hi, px); }
-        H.push({ x: (lo + hi) / 2 - f * a.fw, y: top + this.EARS });
+        if (f === 0) { H.push(base); continue; }
+        let best = 1e18, bx = 0, by = 0;
+        for (let oy = -R; oy <= R; oy++) for (let ox = -R; ox <= R; ox++) {
+          let cost = 0;
+          for (let py = py0; py < py1 && cost < best; py++) {
+            const qy = py + oy; if (qy < 0 || qy >= a.fh) { cost += 1e6; continue; }
+            for (let px = px0; px < px1; px++) {
+              const qx = px + ox; const i = at(px, py);
+              if (qx < 0 || qx >= a.fw) { cost += d[i + 3] > 40 ? 900 : 0; continue; }
+              const j = at(f * a.fw + qx, qy), A = d[i + 3] > 40, B = d[j + 3] > 40;
+              cost += A !== B ? 900 : A ? Math.abs(d[i] - d[j]) + Math.abs(d[i + 1] - d[j + 1]) + Math.abs(d[i + 2] - d[j + 2]) : 0;
+            }
+          }
+          if (cost < best || (cost === best && Math.abs(ox) + Math.abs(oy) < Math.abs(bx) + Math.abs(by))) { best = cost; bx = ox; by = oy; }
+        }
+        // and the eyes themselves near where the match puts them: the hat never comes down past them
+        let fey = -1;
+        const black = (px, py) => { const i = at(px, py); return d[i + 3] > 40 && d[i] + d[i + 1] + d[i + 2] < 60; };
+        for (let py = Math.max(0, Math.round(base.ey + by - 3)); py <= Math.min(a.fh - 1, Math.round(base.ey + by + 3)) && fey < 0; py++)
+          for (let px = Math.max(0, Math.round(base.ex + bx - 7)); px <= Math.min(a.fw - 1, Math.round(base.ex + bx + 7)); px++) if (black(f * a.fw + px, py) && inside(f * a.fw + px, py)) { fey = py; break; }
+        const ey = fey < 0 ? base.ey + by : fey;
+        H.push({ x: base.x + bx, y: Math.min(base.y + by, ey - (base.ey - base.y)), ex: base.ex + bx, ey });
       }
     }
     return H[frame] || null;
   },
   EARS: 6,   // the hat sits this far below the ear tips, between them
+  // where the eyes are in frame 0 of each sheet a shiba wears things on (the
+  // middle between them, the top of their row): the sunglasses go here
+  EYES: { shiba: { x: 13.5, y: 13 }, fullshiba: { x: 16.5, y: 23 }, breakjump: { x: 25.5, y: 54 }, fullidle: { x: 24.5, y: 23 } },
   // Draw the equipped hat on a sheet's frame drawn centred at cx, cy at w x h
   // (as g.sprite does). Its scale is the sprite's, so a 2x shiba wears it 2x.
   dress(name, frame, cx, cy, w, h) {
     const it = this.hat; if (!it) return;
     const a = Assets.get(name), hd = this.head(name, frame); if (!a || !hd) return;
-    const k = w / a.fw, hx = cx - w / 2 + hd.x * k + (it.dx || 0) * k, hy = cy - h / 2 + hd.y * k + it.sit * k;
+    const k = w / a.fw;
+    if (it.face) { this.drawItem(it, cx - w / 2 + (hd.ex + 0.5) * k, cy - h / 2 + (hd.ey + 4) * k, k); return; }   // over the eyes
+    const hx = cx - w / 2 + hd.x * k + (it.dx || 0) * k, hy = cy - h / 2 + hd.y * k + it.sit * k;
     this.drawItem(it, hx, hy, k);
   },
   // an item with its bottom middle at x, y, at scale k (also the closet's cards)
@@ -6826,6 +6879,7 @@ const Engine = {
 
   reset() {
     this.lives = 4; this.score = 0; this.round = 0; this.combo = 0; this.speed = 1;
+    this.bossesBeaten = [];   // this Classic game's, for the crown
     this.lastId = null;
   },
 
@@ -7054,6 +7108,11 @@ const Engine = {
           if (this.surprise === 'life' && this.mode === 'classic' && this.lives < 4) { this.lives++; this.gotLife = true; } else this.gotLife = false;
           this.score++; this.combo++; this.result = 'WIN'; Sfx.win(); buzz(20); Mascot.set('cheer');
           if (!this.tut && !this.testClass) Closet.won(this.game.meta.id, !this.toy && (this.isBoss || BOSSES.includes(this.game.constructor)));   // a boss counts when it's for real, not practice
+          if (this.isBoss && this.mode === 'classic' && !this.toy && !this.tut && !this.testClass) {
+            const b = this.bossesBeaten || (this.bossesBeaten = []), id = this.game.meta.id;
+            if (!b.includes(id)) b.push(id);
+            if (b.length >= BOSSES.length) Closet.allBosses();
+          }
           // the action shot: the best moment caught while playing, stamped
           this.snap = null;
           if (this.game.meta.photo && this.shootsNow()) {
@@ -8188,6 +8247,11 @@ const Engine = {
       // a camera / sound / tilt game playing its touch backup (no sensor here)
       // is labelled by what you'll actually do
       const gr = Run.group(m), backup = m.how && typeof m.how === 'object' && !['TAP', 'DRAG'].includes(gr) && this.howTo(m) === m.how.touch;
+      const prize = !this.tut && !this.testClass && Closet.prize(m.id);
+      if (prize) {   // WIN: BEANIE, with a small one of the thing, above the kind of game
+        g.outline('WIN: ' + prize.name, CX + 8, ty - 16, 8, PAL.accent);
+        Closet.drawItem(prize.icon != null ? { f: prize.icon } : prize, CX - 6 - (prize.name.length + 5) * 3, ty - 13, 1);
+      }
       g.text((backup ? (this.demoKind(m) === 'rub' ? 'DRAG' : 'TAP') : this.groupLabel(gr)) + ' GAME' + (b.length ? '  ·  ' + b.map(t => t.name).join(' + ') + '!' : ''), CX, ty, 8, b.length ? PAL.accent : PAL.ink);
       // A surprise: the prompt starts out normal, then a stamp slams down on
       // the game's title a moment later (see REVEAL_AT)
@@ -8400,6 +8464,14 @@ else {
     lbtn.onclick = () => { loop = !loop; rebuild(); };
     lrow.appendChild(lbtn);
     list.appendChild(lrow);
+
+    // the closet, for testing what you wear
+    const crow = mk('div', null, 'devrow');
+    crow.appendChild(mk('span', 'CLOSET', 'devlab'));
+    const ua = mk('button', 'UNLOCK ALL'); ua.onclick = () => { Closet.unlockAll(); ua.textContent = 'UNLOCKED'; };
+    const rs = mk('button', 'RESET'); rs.onclick = () => { Closet.resetAll(); rs.textContent = 'RESET!'; };
+    crow.appendChild(ua); crow.appendChild(rs);
+    list.appendChild(crow);
 
     list.appendChild(mk('div', 'MICROGAMES', 'devhead'));
     const launch = (C) => {

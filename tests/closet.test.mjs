@@ -11,12 +11,20 @@ export default async function ({ url, launch }) {
     Closet.check(); out.start = owned();
     Engine.best = 10; Closet.check(); out.classic = owned();
     for (let i = 0; i < 10; i++) Closet.won('tap', false); out.wins = Closet.owns('bow');
-    Closet.won('redlight', true); out.boss = Closet.owns('viking') && !Closet.owns('halo');
-    for (const C of BOSSES) Closet.won(C.meta.id, true); out.allBosses = Closet.owns('halo');
+    Closet.won('steer', false); out.sled = Closet.owns('beanie');                  // beat SLED, where the rider wears it
+    Closet.won('rock', false); out.rock = Closet.owns('shades');                   // beat HEADBANG, where the rocker wears them
+    for (const C of BOSSES) Closet.won(C.meta.id, true); out.bossesOverTime = Closet.owns('crown');   // not in one game: no crown
+    Closet.allBosses(); out.crown = Closet.owns('crown');
+    Engine.best = 30; Closet.check(); out.halo = Closet.owns('halo');
     for (let i = 0; i < 5; i++) Closet.photo(); out.photos = Closet.owns('flower');
-    [...POOL].slice(0, 25).forEach(C => Closet.met(C.meta.id)); Closet.check(); out.met = Closet.owns('phones');
     Run.best = 3; Closet.check(); out.world2 = Closet.owns('propeller');
-    Run.wins = 1; Closet.check(); out.runWon = Closet.owns('crown');
+    Run.wins = 1; Closet.check(); out.runWon = Closet.owns('wizard');
+    out.all = Closet.stats.owned.length === Closet.ITEMS.length;
+    // the crown in a real Classic game: every boss beaten in one
+    Closet.resetAll(); Engine.reset(); Engine.mode = 'classic';
+    for (const C of BOSSES) { Engine.startRound(C, 3, true); Engine.state = 'PLAYING'; Engine.game.succeed(); Input.beginStep(); Engine.update(STEP); }
+    out.crownInGame = Closet.owns('crown');
+    Closet.unlockAll(); out.dev = Closet.stats.owned.length === Closet.ITEMS.length;
     out.toasts = Toast.q.length;
     // wearing: only what you own; drawn on the mascot without trouble
     Closet.wear('cowboy'); out.wearing = Closet.hat && Closet.hat.id;
@@ -48,8 +56,11 @@ export default async function ({ url, launch }) {
     return out;
   });
   eq(r.start, ['party'], 'only the party hat to start');
-  eq(r.classic, ['beanie', 'cowboy', 'party'], 'a Classic best of 10 earns the beanie and the cowboy hat');
-  assert(r.wins && r.boss && r.allBosses && r.photos && r.met && r.world2 && r.runWon, 'each item is earned: ' + JSON.stringify(r));
+  eq(r.classic, ['cowboy', 'party'], 'a Classic best of 10 earns the cowboy hat');
+  assert(r.wins && r.sled && r.rock && r.crown && r.halo && r.photos && r.world2 && r.runWon && r.all, 'each item is earned: ' + JSON.stringify(r));
+  eq(r.bossesOverTime, false, 'every boss over different games is not the crown');
+  eq(r.crownInGame, true, 'every boss in one Classic game earns the crown');
+  eq(r.dev, true, 'the dev menu can unlock everything');
   assert(r.toasts >= 8, 'a NEW! note for each: ' + r.toasts);
   eq([r.wearing, r.notOwned, r.head], ['cowboy', null, true], 'wear what you own, and it finds the head');
   eq(r.playing, ['PROMPT', 'tap', true], 'a toy-room card starts that game');

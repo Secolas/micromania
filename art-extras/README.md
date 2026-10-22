@@ -64,7 +64,10 @@ gripping paw, and the game's calm shiba face; each at its cell's top-left (see `
 | File | Size | What it is |
 | --- | --- | --- |
 | `halo-ring.png` | 32×32 | PixelLab's halo, a ring seen face-on; it looked like a hoop on a head. The halo in `art/hats.png` is a flat ellipse pixelled by hand. |
+| `viking-helmet.png`, `headphones.png` | 32×32 | Taken out of the closet (the user's call). |
+| `chef-hat.png` | 32×32 | Taken out of the closet, kept for a future cooking game. |
 
-`art/hats.png` (32×32 cells, each hat on its cell's bottom middle): party hat,
-bow, beanie, cowboy hat, chef hat, wizard hat, viking helmet, halo, propeller
-cap, headphones, flower. The crown reuses `art/crown.png`. See `Closet.ITEMS`.
+`art/hats.png` (32×32 cells, each on its cell's bottom middle): party hat,
+bow (small, by an ear), beanie, cowboy hat, wizard hat, halo, propeller cap,
+flower (small, by an ear), sunglasses (worn on the eyes), and the mini beanie
+SLED's rider wears. The crown reuses `art/crown.png`. See `Closet.ITEMS`.
