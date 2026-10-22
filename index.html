@@ -6212,19 +6212,20 @@ const Wipe = {
 const Closet = {
   KEY: 'micromania.closet',
   // f: hats.png frame (the crown uses art/crown.png). sit: how far the hat's
-  // bottom comes down past the top of the head; dx: off to one side
+  // bottom comes down past the top of the head (kept clear of the eyes on
+  // every shiba it goes on); dx: off to one side (the bow and flower, by an ear)
   ITEMS: [
     { id: 'party',   name: 'PARTY HAT',     f: 0,  sit: 2, how: 'FREE TO WEAR',         got: s => true },
     { id: 'bow',     name: 'BOW',           f: 1,  sit: 3, dx: 5, how: 'WIN 10 GAMES',  got: s => s.wins >= 10 },
     { id: 'beanie',  name: 'BEANIE',        f: 2,  sit: 5, how: 'SCORE 5 IN CLASSIC',   got: s => s.classic >= 5 },
-    { id: 'cowboy',  name: 'COWBOY HAT',    f: 3,  sit: 4, how: 'SCORE 10 IN CLASSIC',  got: s => s.classic >= 10 },
+    { id: 'cowboy',  name: 'COWBOY HAT',    f: 3,  sit: 2, how: 'SCORE 10 IN CLASSIC',  got: s => s.classic >= 10 },
     { id: 'chef',    name: 'CHEF HAT',      f: 4,  sit: 4, how: 'SCORE 20 IN CLASSIC',  got: s => s.classic >= 20 },
-    { id: 'wizard',  name: 'WIZARD HAT',    f: 5,  sit: 4, how: 'SCORE 30 IN CLASSIC',  got: s => s.classic >= 30 },
-    { id: 'viking',  name: 'VIKING HELMET', f: 6,  sit: 5, how: 'BEAT A BOSS',          got: s => s.bosses.length >= 1 },
+    { id: 'wizard',  name: 'WIZARD HAT',    f: 5,  sit: 2, how: 'SCORE 30 IN CLASSIC',  got: s => s.classic >= 30 },
+    { id: 'viking',  name: 'VIKING HELMET', f: 6,  sit: 1, how: 'BEAT A BOSS',          got: s => s.bosses.length >= 1 },
     { id: 'halo',    name: 'HALO',          f: 7,  sit: -5, how: 'BEAT ALL 7 BOSSES',   got: s => s.bosses.length >= 7 },
-    { id: 'propeller', name: 'PROPELLER CAP', f: 8, sit: 5, how: 'REACH WORLD 2 IN RUN', got: s => s.runWorld >= 2 },
+    { id: 'propeller', name: 'PROPELLER CAP', f: 8, sit: 3, how: 'REACH WORLD 2 IN RUN', got: s => s.runWorld >= 2 },
     { id: 'crown',   name: 'CROWN',         crown: true, sit: 3, how: 'WIN A RUN',      got: s => s.runWins >= 1 },
-    { id: 'phones',  name: 'HEADPHONES',    f: 9,  sit: 11, how: 'MEET 25 GAMES',       got: s => s.met.length >= 25 },
+    { id: 'phones',  name: 'HEADPHONES',    f: 9,  sit: 4, how: 'MEET 25 GAMES',       got: s => s.met.length >= 25 },
     { id: 'flower',  name: 'FLOWER',        f: 10, sit: 3, dx: -6, how: 'TAKE 5 SELFIES', got: s => s.photos >= 5 },
   ],
   item(id) { return this.ITEMS.find(i => i.id === id); },
