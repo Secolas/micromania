@@ -15,9 +15,10 @@ export default async function ({ url, launch }) {
       return peak;
     };
     const fx = ['tap', 'tick', 'boop', 'squeak', 'bark', 'growl', 'crunch', 'chomp', 'splash', 'whoosh', 'thud', 'sniff', 'heart', 'snore', 'poof',
+                'smack', 'clap', 'tissue', 'boing', 'clunk', 'creak', 'goal',
                 'win', 'fail', 'go', 'speedup', 'clear', 'gameover'];
     for (const n of fx) { const p = await render(1.8, () => Sfx[n]()); if (p < 0.02) out.quiet.push(n + ' ' + p.toFixed(3)); if (p > 0.95) out.loud.push(n); }
-    for (const [n, f] of [['prompt', () => Sfx.prompt(false)], ['promptBoss', () => Sfx.prompt(true)], ['step', () => Sfx.step(3)], ['fizz', () => Sfx.fizz(1)], ['roll', () => Sfx.roll(1)]]) {
+    for (const [n, f] of [['prompt', () => Sfx.prompt(false)], ['promptBoss', () => Sfx.prompt(true)], ['step', () => Sfx.step(3)], ['fizz', () => Sfx.fizz(1)], ['roll', () => Sfx.roll(1)], ['bonk', () => Sfx.bonk(3)], ['fly', () => Sfx.fly(true)], ['hum', () => Sfx.hum(1)], ['foot', () => Sfx.foot(1)]]) {
       const p = await render(1, f); if (p < 0.01) out.quiet.push(n); if (p > 0.95) out.loud.push(n);
     }
     for (const [name, S] of Object.entries(Music.SONGS)) {
