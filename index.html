@@ -274,7 +274,7 @@ const Assets = {
     demo:     { src: 'art/demo.png',     fw: 32,  fh: 40,  frames: 7,  fps: 1  },
     highfive: { src: 'art/highfive.png', fw: 64,  fh: 64,  frames: 14, fps: 1  },
     breakjump:{ src: 'art/breakjump.png', fw: 64, fh: 96,  frames: 8,  fps: 1  },
-    hats:     { src: 'art/hats.png',     fw: 32,  fh: 32,  frames: 11, fps: 1  },
+    hats:     { src: 'art/hats.png',     fw: 32,  fh: 32,  frames: 12, fps: 1  },
     runcowboy:{ src: 'art/runcowboy.png', fw: 120, fh: 120, frames: 9, fps: 1  },
     jumpcowboy:{ src: 'art/jumpcowboy.png', fw: 120, fh: 120, frames: 5, fps: 1 },
     walkstone:{ src: 'art/walkstone.png', fw: 36, fh: 36,  frames: 1,  fps: 1  },
@@ -6217,7 +6217,7 @@ const Wipe = {
    with every bob, cheer and droop. */
 const Closet = {
   KEY: 'micromania.closet',
-  // f: hats.png frame (the crown uses art/crown.png; frame 9 is a mini beanie,
+  // f: hats.png frame (small, to sit between the ears; frame 9 is a mini beanie,
   // 10 the side-on cowboy hat JUMP!'s runner wears: prompt icons). game: won by beating that game, where you see it (the SLED
   // rider's beanie, the HEADBANG rocker's shades). face: worn on the eyes
   // (the sunglasses), not on top. sit: how far the hat's
@@ -6233,7 +6233,7 @@ const Closet = {
     { id: 'halo',    name: 'HALO',          f: 5,  sit: -5, how: 'SCORE 30 IN CLASSIC',    got: s => s.classic >= 30 },
     { id: 'propeller', name: 'PROPELLER CAP', f: 6, sit: 3, how: 'REACH WORLD 2 IN RUN',   got: s => s.runWorld >= 2 },
     { id: 'flower',  name: 'FLOWER',        f: 7,  sit: 3, dx: -6, how: 'TAKE 5 SELFIES',  got: s => s.photos >= 5 },
-    { id: 'crown',   name: 'CROWN',         crown: true, sit: 3, how: 'ALL 7 BOSSES IN ONE CLASSIC GAME', got: s => !!s.allBosses },
+    { id: 'crown',   name: 'CROWN',         f: 11, sit: 3, how: 'ALL 7 BOSSES IN ONE CLASSIC GAME', got: s => !!s.allBosses },
   ],
   item(id) { return this.ITEMS.find(i => i.id === id); },
 
@@ -7855,7 +7855,7 @@ const Engine = {
   TOY_PREV: { x: 18, y: TOP + 220, w: 32, h: 18 },
   TOY_DEV: { x: W - 42, y: TOP + 52, w: 26, h: 16 },   // ?dev only: unlock everything
   TOY_NEXT: { x: W - 50, y: TOP + 220, w: 32, h: 18 },
-  closetCard(i) { const c = i % 4, r = (i / 4) | 0; return { x: 19 + c * 36, y: TOP + 146 + r * 34, w: 34, h: 32 }; },
+  closetCard(i) { const c = i % 5, r = (i / 5) | 0; return { x: 16 + c * 30, y: TOP + 164 + r * 32, w: 28, h: 30 }; },
   toyGames() { return [...POOL, ...BOSSES]; },
   openToy(tab) {
     this.state = 'TOYROOM'; this.timer = 0.2;
@@ -7936,13 +7936,21 @@ const Engine = {
     }
     // CLOSET: a mirror with your shiba in it, head and shoulders at 2x, wearing
     // what you've picked (its frame drawn over the edge of the glass)
-    const M = { x: CX - 46, y: TOP + 48, w: 92, h: 94 }, fy = M.y + M.h - 3;   // feet near the bottom of the glass
+    const M = { x: CX - 46, y: TOP + 50, w: 92, h: 106 }, fy = M.y + M.h - 3;   // feet near the bottom of the glass
     g.nine('buttons', 0, M.x - 4, M.y - 4, M.w + 8, M.h + 8, 6);   // the mirror's wooden frame
     g.rect(M.x, M.y, M.w, M.h, MENU_PANEL_DARK);                   // the glass
     g.rect(M.x + 5, M.y + 5, 3, 16, '#3d64a8'); g.rect(M.x + 10, M.y + 5, 2, 9, '#3d64a8');   // a glint
     ctx.save(); ctx.beginPath(); ctx.rect(M.x, M.y, M.w, M.h); ctx.clip();
-    // the whole shiba 1:1 (art/fullshiba.png, 48x64), so its hat and body show together
-    g.sprite('fullshiba', CX, fy - 32, { w: 48, h: 64, frame: 0 }); Closet.dress('fullshiba', 0, CX, fy - 32, 48, 64);
+    // the whole shiba 1:1, moving, so you see how it wears it: two of the break's
+    // happy jumps (art/breakjump.png), then a cheering wiggle (art/fullshiba.png)
+    const ct = this.time % 2.8;
+    if (ct < 1.4 && Assets.get('breakjump')) {
+      const f = Math.floor(ct / this.BREAK_JUMP * 8) % 8;
+      g.sprite('breakjump', CX, fy - 48, { frame: f }); Closet.dress('breakjump', f, CX, fy - 48, 64, 96);
+    } else {
+      const f = Math.floor(ct * 8) % 2 ? g.FULL.cheer : g.FULL.cheer2;
+      g.sprite('fullshiba', CX, fy - 32, { w: 48, h: 64, frame: f }); Closet.dress('fullshiba', f, CX, fy - 32, 48, 64);
+    }
     ctx.restore();
     const own = Closet.stats.owned;
     if (DEBUG) { const D = this.TOY_DEV; g.button(D, false); g.text('ALL', D.x + D.w / 2, D.y + 11, 7, PAL.accent); }   // ?dev: unlock everything
@@ -7950,11 +7958,12 @@ const Engine = {
       const c = this.closetCard(i), has = own.includes(it.id), on = Closet.stats.hat === it.id;
       if (on) g.button(c, true); else if (has) g.nine('buttons', 0, c.x, c.y, c.w, c.h, 6);
       else if (Assets.get('buttons')) { ctx.globalAlpha = 0.45; g.nine('buttons', 0, c.x, c.y, c.w, c.h, 6); ctx.globalAlpha = 1; }
-      if (has) Closet.drawItem(it, c.x + c.w / 2, c.y + c.h - 2, 1);
-      else { ctx.globalAlpha = 0.25; Closet.drawItem(it, c.x + c.w / 2, c.y + c.h - 2, 1); ctx.globalAlpha = 1; g.text('?', c.x + c.w / 2, c.y + 20, 12, PAL.ink); }
+      const iy = c.y + c.h - (it.face ? 10 : 5);   // small things sat in the middle of the card
+      if (has) Closet.drawItem(it, c.x + c.w / 2, iy, 1);
+      else { ctx.globalAlpha = 0.25; Closet.drawItem(it, c.x + c.w / 2, iy, 1); ctx.globalAlpha = 1; g.text('?', c.x + c.w / 2, c.y + 20, 11, PAL.ink); }
     });
     const sel = this.toySel ? Closet.item(this.toySel) : Closet.hat;
-    const y = TOP + 258;
+    const y = TOP + 246;
     if (sel) {
       g.text(sel.name, CX, y, 9, PAL.accent);
       g.text(Closet.owns(sel.id) ? (Closet.stats.hat === sel.id ? 'WEARING IT  ·  TAP TO TAKE OFF' : 'TAP TO WEAR') : sel.how, CX, y + 12, 7, Closet.owns(sel.id) ? PAL.ink : PAL.mid);

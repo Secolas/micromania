@@ -67,6 +67,7 @@ gripping paw, and the game's calm shiba face; each at its cell's top-left (see `
 | `halo-ring.png` | 32×32 | PixelLab's halo, a ring seen face-on; it looked like a hoop on a head. The halo in `art/hats.png` is a flat ellipse pixelled by hand. |
 | `viking-helmet.png`, `headphones.png` | 32×32 | Taken out of the closet (the user's call). |
 | `chef-hat.png` | 32×32 | Taken out of the closet, kept for a future cooking game. |
+| `hats-big.png` | 32×32 cells | The first, head-sized hats. `art/hats.png` now has small ones (PixelLab redrew each shrunk to about 12-17px) that sit between the ears. |
 
 `art/hats.png` (32×32 cells, each on its cell's bottom middle): party hat,
 bow (small, by an ear), beanie, cowboy hat, wizard hat, halo, propeller cap,
