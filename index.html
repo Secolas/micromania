@@ -686,6 +686,7 @@ const Input = {
   // camera: optical-flow motion + photo capture. motion is a 0..1 "how much are
   // you moving" value; camReady/camDenied/camPending mirror the mic pattern.
   _cam: null, _camVideo: null, _camCanvas: null, _camCtx: null, _prevFrame: null,
+  skin: 0,   // share of the middle of the picture that looks like skin (CAMCHECK's "you're in view")
   motion: 0, motionL: 0, motionR: 0, camReady: false, camDenied: false, camPending: false, camW: 48, camH: 36,
   // where the movement is, in player space (mirrored to match a selfie view):
   // motionX 0 = your left edge, 1 = your right; motionY 0 = top, 1 = bottom.
@@ -932,7 +933,7 @@ const Input = {
     cx.drawImage(src, 0, 0, w, h);
     const cur = cx.getImageData(0, 0, w, h).data;
     if (this._prevFrame) {
-      let diff = 0, left = 0, right = 0, sx = 0, sy = 0, lum = 0;
+      let diff = 0, left = 0, right = 0, sx = 0, sy = 0, lum = 0, skin = 0, mid = 0;
       const GW = this.GRID_W, cell = this._gridSum || (this._gridSum = new Float32Array(GW * this.GRID_H));
       cell.fill(0);
       // sum luminance change; also split by screen half. The camera is mirrored
@@ -945,7 +946,16 @@ const Input = {
         sx += d * px; sy += d * py;                   // diff-weighted centre of motion
         cell[((py * this.GRID_H / h) | 0) * GW + (GW - 1 - ((px * GW / w) | 0))] += d;   // mirrored too
         lum += cur[i] + cur[i + 1] + cur[i + 2];
+        // skin-coloured, in the middle of the picture? (YCbCr ranges that hold
+        // across skin tones in fair light; a hint for the camera check only)
+        if (px > w * 0.2 && px < w * 0.8 && py < h * 0.85) {
+          mid++;
+          const R = cur[i], G = cur[i + 1], Bl = cur[i + 2];
+          const Y = 0.299 * R + 0.587 * G + 0.114 * Bl, Cb = 128 - 0.1687 * R - 0.3313 * G + 0.5 * Bl, Cr = 128 + 0.5 * R - 0.4187 * G - 0.0813 * Bl;
+          if (Y > 40 && Cb >= 77 && Cb <= 127 && Cr >= 133 && Cr <= 173) skin++;
+        }
       }
+      this.skin += ((mid ? skin / mid : 0) - this.skin) * 0.35;
       const n = cur.length / 16;
       const norm = diff / n / 60;
       this.motion = Math.min(1, this.motion * 0.6 + norm * 0.8);
@@ -6810,6 +6820,64 @@ const Engine = {
     this.promptT = 0;
     if (this.surprise) this.timer += 0.9;   // a beat longer to take it in
     if (!this.seen.has(C.meta.id)) { this.seen.add(C.meta.id); this.timer += 1.1; }
+    // the session's first camera game: check the picture first (light, you, movement)
+    if (!this.camChecked && !this.tut && !this.testClass && Input.camReady && Run.group(C.meta) === 'CAMERA') { this.camChecked = true; this.openCamCheck('PROMPT'); }
+  },
+
+  // ── CAMERA CHECK ───────────────────────────────────────────────────────────
+  // Your live picture with an oval to put your face in, and three readings:
+  // enough light, you in the middle, movement seen when you wave. Never a
+  // gate: the button always carries on, it just says PLAY ANYWAY until all pass.
+  camChecked: false, cc: null,
+  CC_GO: { x: CX - 56, y: 244, w: 112, h: 24 },
+  openCamCheck(back) { this.cc = { back, timer: this.timer, t: 0, waved: 0 }; this.state = 'CAMCHECK'; },
+  camChecks() {
+    const on = Input.camReady;
+    return {
+      light: on && Input.bright >= 0.22,
+      you: on && Input.skin >= 0.06,
+      moved: on && this.cc.waved > 0.25,
+    };
+  },
+  camCheckUpdate(dt) {
+    const C = this.cc; C.t += dt;
+    if (Input.camReady && Input.motion > 0.16) C.waved += dt;   // a real wave, not one twitch
+  },
+  camCheckRelease(p) {
+    const C = this.cc;
+    if (C.t < 0.4 || !this.hit(this.CC_GO, p)) return;
+    Sfx.tap(); this.state = C.back;
+    if (C.back === 'PROMPT') { this.timer = C.timer; this.promptT = 0; }
+  },
+  drawCamCheck() {
+    const C = this.cc, ok = this.camChecks();
+    g.text('CAMERA CHECK', CX, TOP + 16, 12, PAL.accent);
+    // the live picture, in its own shape, with the oval to line your face up in
+    const a = Input.camAspect(), vh = a < 1 ? 128 : Math.round(132 / a), vw = Math.round(vh * a), vx = Math.round(CX - vw / 2), vy = TOP + 28;
+    g.rect(vx - 3, vy - 3, vw + 6, vh + 6, PAL.ink);
+    if (!Input.camReady || !Input.drawLive(ctx, vx, vy, vw, vh)) {
+      g.rect(vx, vy, vw, vh, PAL.mid);
+      g.text(Input.camPending ? 'ALLOW CAMERA…' : 'CAMERA IS OFF', CX, vy + vh / 2, 9, PAL.ink);
+    } else {
+      ctx.save(); ctx.setLineDash([4, 3]); ctx.lineWidth = 2; ctx.strokeStyle = ok.you ? PAL.accent : PAL.ink;
+      ctx.beginPath(); ctx.ellipse(CX, vy + vh * 0.42, vw * 0.24, vh * 0.25, 0, 0, 6.2832); ctx.stroke(); ctx.restore();
+    }
+    // the three readings: OK in yellow, what to do in red
+    const rows = [
+      ['LIGHT', ok.light, 'TOO DARK'],
+      ['YOU', ok.you, 'NOT IN VIEW'],
+      ['MOVEMENT', ok.moved, 'WAVE TO TEST'],
+    ];
+    const ry = vy + vh + 18;
+    rows.forEach(([label, pass, fix], i) => {
+      g.text(label, 26, ry + i * 14, 8, PAL.ink, 'left');
+      g.text(pass ? 'OK' : fix, W - 26, ry + i * 14, 8, pass ? PAL.accent : PAL.bad, 'right');
+    });
+    const tip = !Input.camReady ? 'TURN THE CAMERA ON IN SETTINGS' : !ok.light ? 'FACE A LIGHT OR A WINDOW'
+              : !ok.you ? 'PUT YOUR FACE IN THE OVAL' : !ok.moved ? 'WAVE YOUR HAND AT THE CAMERA' : 'ALL GOOD!';
+    g.text(tip, CX, ry + 44, 8, ok.light && ok.you && ok.moved ? PAL.accent : PAL.ink);
+    const B = this.CC_GO, all = ok.light && ok.you && ok.moved;
+    g.button(B, true); g.text(C.back === 'SETTINGS' ? 'DONE' : all ? 'LOOKS GOOD!' : 'PLAY ANYWAY', CX, B.y + 16, 10, PAL.bg);
   },
 
   // REVERSE only means something where direction does: drag games (not rubbing)
@@ -6926,6 +6994,7 @@ const Engine = {
       return;
     }
     if (s === 'RUNWIN') { Run.winUpdate(dt); return; }
+    if (s === 'CAMCHECK') { this.camCheckUpdate(dt); return; }
     if (s === 'CLEAR') {
       Mascot.set('cheer');
       if (this.timer <= 0 || (Input.justDown && this.timer < 1.9)) Run.openShop();
@@ -7042,7 +7111,7 @@ const Engine = {
   // The countdown, SPEED UP, STAGE CLEAR and GAME OVER have their own stings.
   musicTrack() {
     const s = this.state;
-    if (['TITLE', 'SETTINGS', 'ALBUM', 'PERMS', 'REPLAY', 'RUNWIN'].includes(s)) return 'menu';
+    if (['TITLE', 'SETTINGS', 'ALBUM', 'PERMS', 'REPLAY', 'RUNWIN', 'CAMCHECK'].includes(s)) return 'menu';
     if (s === 'SHOP') return 'shop';
     if (!['STAGE', 'PROMPT', 'PLAYING', 'RESULT', 'PHOTO', 'BREAK'].includes(s)) return null;
     const how = this.game && this.game.meta.how;
@@ -7113,7 +7182,8 @@ const Engine = {
   ],
   setSwitch(r) { return { x: W - 72, y: r.y - 4, w: 54, h: 20 }; },
   SET_INSTALL: { x: CX - 62, y: H - 48, w: 124, h: 22 },
-  SET_TUT: { x: CX - 50, y: H - 74, w: 100, h: 18 },
+  SET_TUT: { x: CX - 78, y: H - 74, w: 76, h: 18 },
+  SET_CAMCHK: { x: CX + 2, y: H - 74, w: 76, h: 18 },
   installEvt: null,
   installed() { return matchMedia('(display-mode: standalone)').matches || navigator.standalone === true; },
   TITLE_INTRO: 1.9,          // seconds until the title has settled and its buttons work
@@ -7122,7 +7192,7 @@ const Engine = {
   ALB_NEXT:    { x: W - 46, y: BOT - 26, w: 30, h: 20 },
   // the menu-style screens: black with drifting paw prints and a pixel frame,
   // and no mascot on the shelf
-  MENU_SCREENS: ['SETTINGS', 'ALBUM', 'PERMS', 'GAMEOVER', 'TUTORIAL', 'TUTCAT', 'TUTDONE', 'REPLAY', 'RUNWIN'],
+  MENU_SCREENS: ['SETTINGS', 'ALBUM', 'PERMS', 'GAMEOVER', 'TUTORIAL', 'TUTCAT', 'TUTDONE', 'REPLAY', 'RUNWIN', 'CAMCHECK'],
   groupLabel(gr) { return { TAP: 'TAP', DRAG: 'DRAG', CAMERA: 'CAMERA', BLOW: 'SOUND', SHAKE: 'TILT/SHAKE' }[gr] || gr; },
   menuBg() {
     const mt = Assets.get('menutile');
@@ -7203,6 +7273,7 @@ const Engine = {
       this.state = 'TITLE'; this.timer = 0.2;   // back to pick a mode
     } else if (s === 'REPLAY') this.replayRelease(p);
     else if (s === 'RUNWIN') Run.winRelease(p);
+    else if (s === 'CAMCHECK') this.camCheckRelease(p);
   },
 
   // ── TITLE ──
@@ -7551,7 +7622,8 @@ const Engine = {
   },
   settingsRelease(p) {
     if (this.hit(this.ALB_BACK, p)) { Sfx.tap(); this.state = 'TITLE'; this.timer = 0.2; return; }
-    if (this.hit(this.SET_TUT, p)) { Sfx.tap(); this.startTutorial(null); return; }   // replay it, then back to the title
+    if (this.hit(this.SET_TUT, p)) { Sfx.tap(); this.startTutorial(null); return; }
+    if (this.hit(this.SET_CAMCHK, p)) { Sfx.tap(); if (!Input.camReady && this.setState('cam') !== 'BLOCKED' && !Prefs.get('camOff', false)) Input.enableCam(); this.openCamCheck('SETTINGS'); return; }   // replay it, then back to the title
     if (this.installEvt && this.hit(this.SET_INSTALL, p)) {   // inside the tap, so Chrome shows its install popup
       Sfx.tap(); const e = this.installEvt;
       e.prompt(); e.userChoice.then(() => { this.installEvt = null; }).catch(() => {});
@@ -7604,7 +7676,8 @@ const Engine = {
       g.text("BROWSER'S SITE SETTINGS", CX, TOP + 224, 7, PAL.bad);
     } else g.text('OFF: THOSE GAMES ARE SKIPPED', CX, TOP + 216, 7, TEXT_MID);
     const T = this.SET_TUT;
-    g.button(T, false); g.text('HOW TO PLAY', CX, T.y + 12, 8, PAL.ink);
+    g.button(T, false); g.text('HOW TO PLAY', T.x + T.w / 2, T.y + 12, 8, PAL.ink);
+    const K = this.SET_CAMCHK; g.button(K, false); g.text('CAMERA CHECK', K.x + K.w / 2, K.y + 12, 8, PAL.ink);
     // put it on the home screen, to open like an app and play offline
     const I = this.SET_INSTALL;
     if (this.installed()) g.text('INSTALLED ON THIS PHONE', CX, I.y + 15, 8, PAL.ink);
@@ -7919,6 +7992,7 @@ const Engine = {
     if (s === 'STAGE') { this.drawHud(); Run.drawStage(); return; }
     if (s === 'CLEAR') { this.drawHud(); Run.drawClear(); return; }
     if (s === 'RUNWIN') { Run.drawWin(); return; }
+    if (s === 'CAMCHECK') { this.drawCamCheck(); return; }
     if (s === 'SHOP')  { this.drawHud(); Run.drawShop(); return; }
 
     if (s === 'REPLAY') { this.drawReplay(); return; }

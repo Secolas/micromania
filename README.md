@@ -20,6 +20,14 @@ skipped when the browser says both are already granted.
 says NEW GAME! and waits for TAP WHEN READY instead of counting down. After
 that it's remembered.
 
+**Camera check**: before the first camera game of a session, a CAMERA CHECK
+screen shows your live picture with an oval to put your face in, and three
+readings: LIGHT (too dark?), YOU (anyone in the middle of the picture: a
+skin-colour hint, not face recognition) and MOVEMENT (wave to test), each OK
+or what to do. It never blocks: the button says PLAY ANYWAY until all three
+pass, then LOOKS GOOD!, and the game's prompt carries on. SETTINGS > CAMERA
+CHECK opens it any time.
+
 **Replay**: camera games quietly record a short clip of you (about three
 seconds, plus half a second of your reaction to the result). At GAME OVER,
 WATCH REPLAY plays the last five back on a little TV, with numbered dots to
@@ -300,6 +308,7 @@ Chromium against the real page (served over http by `tests/run.mjs`).
 | `album`, `settings` | saving, paging, opening, sharing and deleting photos; every switch, saved across a reload |
 | `camera` | live frames from a fake camera, and recovery when the feed stalls |
 | `pwa` | manifest, icons, the service worker, and starting with the network off |
+| `camcheck` | the first camera game of a session opens the check; the three readings; the button returns to the prompt with its clock; not twice a session; SETTINGS opens it |
 | `replay` | camera games keep a clip, WATCH REPLAY plays them back, forward / pause / DONE work, a new run starts with no clips |
 | `reverse` | REVERSE mirrors a drag about where it went down and only applies to drag/tilt games; a new game's prompt waits for READY, then remembers |
 | `tutorial`, `pause` | the first-time tutorial (practice costs nothing, a miss replays, SKIP, replay from SETTINGS); pausing on leaving the app, RESUME's 3-2-1 with the clock intact, QUIT |
