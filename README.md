@@ -82,7 +82,7 @@ with notched corners, and no mascot in the corner.
 | FREEZE | the *absence* of movement — don't wake the sleeping shiba | don't tap |
 | SWAT | where the movement is | move your finger, tap |
 | HIDE | frame brightness — a hand over the lens | hold the screen |
-| HEADBANG | bang your head hard to fill the ROCK meter, to a hard-rock riff | tap fast |
+| HEADBANG | nod your head hard, up and down, to fill the ROCK meter, to a hard-rock riff | tap fast |
 | SQUID | move on green, freeze on red (red-light/green-light) | hold on green, release on red |
 
 While a camera game is on, the shelf at the bottom-left shows the **live
