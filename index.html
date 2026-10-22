@@ -274,7 +274,7 @@ const Assets = {
     demo:     { src: 'art/demo.png',     fw: 32,  fh: 40,  frames: 7,  fps: 1  },
     highfive: { src: 'art/highfive.png', fw: 64,  fh: 64,  frames: 14, fps: 1  },
     breakjump:{ src: 'art/breakjump.png', fw: 64, fh: 96,  frames: 8,  fps: 1  },
-    hats:     { src: 'art/hats.png',     fw: 32,  fh: 32,  frames: 15, fps: 1  },
+    hats:     { src: 'art/hats.png',     fw: 32,  fh: 32,  frames: 16, fps: 1  },
     chefmove: { src: 'art/chefmove.png', fw: 64,  fh: 64,  frames: 11, fps: 1  },
     cookfood: { src: 'art/cookfood.png', fw: 32,  fh: 28,  frames: 5,  fps: 1  },
     cooklayers:{ src: 'art/cooklayers.png', fw: 32, fh: 10, frames: 6, fps: 1  },
@@ -6485,7 +6485,7 @@ const Wipe = {
 const Closet = {
   KEY: 'micromania.closet',
   // f: hats.png frame (small, to sit between the ears; the wizard hat and halo
-  // are the big ones, 12 and 13, by choice; frame 9 is a mini beanie,
+  // are the big ones, 12 and 13, by choice, and so is the cowboy hat, 15; frame 9 is a mini beanie,
   // 10 the side-on cowboy hat JUMP!'s runner wears: prompt icons). game: won by beating that game, where you see it (the SLED
   // rider's beanie, the HEADBANG rocker's shades, COOK!'s chef hat, frame 14). face: worn on the eyes
   // (the sunglasses), not on top. sit: how far the hat's
@@ -6496,7 +6496,7 @@ const Closet = {
     { id: 'party',   name: 'PARTY HAT',     f: 0,  sit: 2, how: 'FREE TO WEAR',            got: s => true },
     { id: 'bow',     name: 'BOW',           f: 1,  sit: 3, dx: 5, how: 'WIN 10 GAMES',     got: s => s.wins >= 10 },
     { id: 'beanie',  name: 'BEANIE',        f: 2,  icon: 9, sit: 5, game: 'steer', how: 'BEAT SLED',  got: s => !!s.beat.steer },
-    { id: 'cowboy',  name: 'COWBOY HAT',    f: 3,  icon: 10, sit: 2, between: true, game: 'run', how: 'BEAT JUMP!', got: s => !!s.beat.run },
+    { id: 'cowboy',  name: 'COWBOY HAT',    f: 15, icon: 10, sit: 5, game: 'run', how: 'BEAT JUMP!', got: s => !!s.beat.run },
     { id: 'shades',  name: 'SUNGLASSES',    f: 8,  face: true, game: 'rock', how: 'BEAT HEADBANG', got: s => !!s.beat.rock },
     { id: 'chef',    name: 'CHEF HAT',      f: 14, sit: 2, game: 'cook', how: 'BEAT COOK!',  got: s => !!s.beat.cook },
     { id: 'wizard',  name: 'WIZARD HAT',    f: 12, sit: 5, how: 'WIN A RUN',               got: s => s.runWins >= 1 },

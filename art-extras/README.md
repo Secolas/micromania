@@ -68,7 +68,7 @@ gripping paw, and the game's calm shiba face; each at its cell's top-left (see `
 | `viking-helmet.png`, `headphones.png` | 32×32 | Taken out of the closet (the user's call). |
 | `chef-hat.png` | 32×32 | Taken out of the closet, kept for a future cooking game. |
 | `chef-hat-small.png` | 32×32 | PixelLab's redraw of it shrunk, muddy and mushroom-shaped. COOK!'s chef hat (`art/hats.png` frame 14) is pixelled by hand. |
-| `hats-big.png` | 32×32 cells | The first, head-sized hats. `art/hats.png` now has small ones (PixelLab redrew each shrunk to about 12-17px) that sit between the ears. |
+| `hats-big.png` | 32×32 cells | The first, head-sized hats. `art/hats.png` now has small ones (PixelLab redrew each shrunk to about 12-17px) that sit between the ears, except the wizard hat, halo and cowboy hat, which are these big ones again (the user's call). |
 
 `art/hats.png` (32×32 cells, each on its cell's bottom middle): party hat,
 bow (small, by an ear), beanie, cowboy hat, wizard hat, halo, propeller cap,
