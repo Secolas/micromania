@@ -10,25 +10,27 @@ export default async function ({ url, launch }) {
     const out = {}, owned = () => Closet.stats.owned.slice().sort();
     Closet.check(); out.start = owned();
     Engine.best = 10; Closet.check(); out.classic = owned();
-    for (let i = 0; i < 10; i++) Closet.won('tap', false); out.wins = Closet.owns('bow');
-    Closet.won('steer', false); out.sled = Closet.owns('beanie');                  // beat SLED, where the rider wears it
-    Closet.won('run', false); out.jump = Closet.owns('cowboy');                    // beat JUMP!, where the runner wears it
-    Closet.won('rock', false); out.rock = Closet.owns('shades');                   // beat HEADBANG, where the rocker wears them
-    out.cookBefore = Closet.owns('chef'); Closet.won('cook', false); out.cook = Closet.owns('chef');   // beat COOK!, where the chef wears it
-    for (const C of BOSSES) Closet.won(C.meta.id, true); out.bossesOverTime = Closet.owns('crown');   // not in one game: no crown
+    for (let i = 0; i < 49; i++) Closet.won('tap', false); out.bowEarly = Closet.owns('bow');
+    Closet.won('tap', false); out.wins = Closet.owns('bow');                       // 50 wins: the bow
+    Closet.won('steer', false, 2); out.sledEasy = Closet.owns('beanie');           // SLED beaten, but not on HARD: not yet
+    Closet.won('steer', false, 3); out.sled = Closet.owns('beanie');               // beat SLED on HARD, where the rider wears it
+    Closet.won('run', false, 3); out.jump = Closet.owns('cowboy');                 // beat JUMP! on HARD, where the runner wears it
+    Closet.won('rock', false, 3); out.rock = Closet.owns('shades');                // beat HEADBANG on HARD, where the rocker wears them
+    out.cookBefore = Closet.owns('chef'); Closet.won('cook', false, 3); out.cook = Closet.owns('chef');   // beat COOK! on HARD, where the chef wears it
+    for (const C of BOSSES) Closet.won(C.meta.id, true, 3); out.bossesOverTime = Closet.owns('crown');   // not in one game: no crown
     Closet.allBosses(); out.crown = Closet.owns('crown');
-    Engine.best = 30; Closet.check(); out.halo = Closet.owns('halo');
-    for (let i = 0; i < 5; i++) Closet.photo(); out.photos = Closet.owns('flower');
-    Run.best = 3; Closet.check(); out.world2 = Closet.owns('propeller');
+    Engine.best = 50; Closet.check(); out.halo = Closet.owns('halo');
+    for (let i = 0; i < 15; i++) Closet.photo(); out.photos = Closet.owns('flower');
+    Run.best = 6; Closet.check(); out.world2 = Closet.owns('propeller');           // world 3
     Run.wins = 1; Closet.check(); out.runWon = Closet.owns('wizard');
     out.all = Closet.stats.owned.length === Closet.ITEMS.length;
     // coats: earned like the rest, and wearing one recolours your shiba's sheets (not the watcher, not the art as drawn)
-    for (let i = 0; i < 15; i++) Closet.won('tap', false);   // 25 wins in all: cream
-    Run.wins = 3; Closet.check();                            // 3 runs won: sesame
+    for (let i = 0; i < 40; i++) Closet.won('tap', false);   // 100 wins in all: cream
+    Run.wins = 5; Closet.check();                            // 5 runs won: sesame
     out.coats = Closet.stats.coats.slice().sort();
     // neck things: earned like the rest, and worn with a hat
     out.necksBefore = Closet.stats.necks.slice().sort();
-    Closet.won('walkies', false); Closet.won('dig', false); for (let i = 0; i < 25; i++) Closet.won('tap', false);
+    Closet.won('walkies', false, 3); Closet.won('dig', false, 3); for (let i = 0; i < 50; i++) Closet.won('tap', false);
     out.necks = Closet.stats.necks.slice().sort();
     out.digPrize = Closet.prize('dig');
     Closet.wear('cowboy'); Closet.wearNeck('bell'); out.both = [Closet.hat && Closet.hat.id, Closet.neck && Closet.neck.id];
@@ -74,12 +76,13 @@ export default async function ({ url, launch }) {
   });
   eq(r.start, ['party'], 'only the party hat to start');
   eq(r.classic, ['party'], 'a Classic best of 10 alone earns nothing now');
+  eq([r.bowEarly, r.sledEasy], [false, false], 'not before 50 wins, not off HARD');
   assert(r.wins && r.sled && r.jump && r.rock && !r.cookBefore && r.cook && r.crown && r.halo && r.photos && r.world2 && r.runWon && r.all, 'each item is earned: ' + JSON.stringify(r));
   eq(r.coats, ['blacktan', 'cream', 'red', 'sesame'], 'every coat earned: ' + r.coats);
   assert(r.coatOrange[0] < r.coatOrange[1] / 20 && r.coatOrange[2], 'black and tan recolours the shiba, not the watcher: ' + r.coatOrange);
   eq(r.redSame, true, 'the red coat is the art as drawn');
-  eq(r.necksBefore, ['bandana', 'bowtie'], 'the bandana by 5 wins, the bow tie by 15 in Classic');
-  eq(r.necks, ['bandana', 'bell', 'bowtie', 'lei', 'scarf'], 'the bell collar from WALKIES, the lei from DIG, the scarf by 50 wins: ' + r.necks);
+  eq(r.necksBefore, ['bandana', 'bowtie'], 'the bandana by 25 wins, the bow tie by 25 in Classic');
+  eq(r.necks, ['bandana', 'bell', 'bowtie', 'lei', 'scarf'], 'the bell collar from WALKIES and the lei from DIG on HARD, the scarf by 150 wins: ' + r.necks);
   eq(r.digPrize, null, 'nothing left to win in DIG once the lei is yours');
   eq(r.both, ['cowboy', 'bell'], 'a hat and a neck thing worn together');
   eq(r.bossesOverTime, false, 'every boss over different games is not the crown');
