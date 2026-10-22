@@ -220,6 +220,75 @@ window.addEventListener('orientationchange', () => setTimeout(resize, 120));
 resize();
 
 // ── ASSETS (PixelLab hook) ───────────────────────────────────────────────────
+// ── COATS ───────────────────────────────────────────────────────────────────
+// Your shiba's fur, picked in the toy room. Every sheet that shows your shiba is
+// recoloured once per coat (cached): its orange fur, found by hue, each shade
+// mapped onto the coat's so the shading and the cream markings stay. The rest of
+// the art stays as drawn, and so do the RED LIGHT watcher and BOOP's moles.
+const Coat = {
+  LIST: [
+    { id: 'red',      name: 'RED',         how: 'FREE TO WEAR',        got: s => true },
+    { id: 'cream',    name: 'CREAM',       how: 'WIN 25 GAMES',        got: s => s.wins >= 25 },
+    { id: 'blacktan', name: 'BLACK & TAN', how: 'SCORE 20 IN CLASSIC', got: s => s.classic >= 20 },
+    { id: 'sesame',   name: 'SESAME',      how: 'WIN 3 RUNS',          got: s => s.runWins >= 3 },
+  ],
+  SHEETS: ['shiba', 'fullshiba', 'fullidle', 'breakjump', 'catcher', 'hero', 'face', 'pump', 'dryshake', 'hopdog', 'ordersign',
+    'flydog', 'swipeup', 'swipedown', 'runjump', 'swiperight', 'swipeleft', 'hidedog', 'facedir', 'rubdog', 'sleepdog', 'rocker',
+    'yesno', 'wag', 'feed', 'lean', 'leanmove', 'sledmove', 'sledder', 'digmove', 'highfive', 'demo', 'runcowboy', 'jumpcowboy', 'chefmove', 'worn'],
+  // art/worn.png: the hats PixelLab drew on the shiba have its ears in them. Only
+  // what's near a colour of the shiba's own fur (art/fullshiba.png) is fur; the
+  // cowboy hat's browns, the crown's and halo's golds are further off.
+  NEAR: { worn: 25 },
+  KEEP: { runcowboy: [0x762d1a, 0x89583c, 0x975c36], jumpcowboy: [0x762d1a, 0x89583c, 0x975c36] },   // JUMP!'s cowboy hat's browns
+  // each coat's fur for a shade t (0 the darkest orange, 1 the brightest), as hue, saturation, value
+  FUR: {
+    cream:    t => [0.10, 0.20 + 0.10 * (1 - t), 0.80 + 0.17 * t],
+    blacktan: t => [0.62, 0.18, 0.16 + 0.22 * t],
+    sesame:   t => [0.045, 0.70, 0.36 + 0.34 * t],
+  },
+  get id() {   // the one you wear (red until the closet has loaded)
+    try { const s = Closet.stats; return s.coat && s.coats.includes(s.coat) ? s.coat : 'red'; } catch (e) { return 'red'; }
+  },
+  _sheets: {},
+  // a sheet as it looks in coat id: the Assets entry itself for red or a sheet
+  // that isn't your shiba, else a copy with the recoloured picture
+  sheet(name, a, id = this.id) {
+    if (id === 'red' || !this.FUR[id] || !this.SHEETS.includes(name) || !a.img.naturalWidth && !a.img.width) return a;
+    const key = name + ':' + id;
+    if (this._sheets[key]) return this._sheets[key];
+    const c = document.createElement('canvas'); c.width = a.img.naturalWidth || a.img.width; c.height = a.img.naturalHeight || a.img.height;
+    const x = c.getContext('2d'); x.drawImage(a.img, 0, 0);
+    let d; try { d = x.getImageData(0, 0, c.width, c.height); } catch (e) { return a; }
+    const p = d.data, keep = this.KEEP[name] || [], fur = this.FUR[id], near = this.NEAR[name], own = near ? this.furColours() : null;
+    if (near && !own) return a;
+    for (let i = 0; i < p.length; i += 4) {
+      if (!p[i + 3]) continue;
+      const r = p[i] / 255, gn = p[i + 1] / 255, b = p[i + 2] / 255, mx = Math.max(r, gn, b), mn = Math.min(r, gn, b), v = mx, sat = mx ? (mx - mn) / mx : 0;
+      if (v <= 0.45 || sat <= 0.55 || mx !== r) continue;   // orange: red the strongest, bright and saturated
+      const h = ((gn - b) / (mx - mn)) / 6;
+      if (h <= 0.03 || h >= 0.12) continue;
+      if (keep.includes((p[i] << 16) | (p[i + 1] << 8) | p[i + 2])) continue;
+      if (near && !own.some(c => Math.abs(c[0] - p[i]) + Math.abs(c[1] - p[i + 1]) + Math.abs(c[2] - p[i + 2]) <= near)) continue;
+      const [H, S, V] = fur((v - 0.45) / 0.55), k = Math.floor(H * 6), f = H * 6 - k, P = V * (1 - S), Q = V * (1 - f * S), T = V * (1 - (1 - f) * S);
+      const [R, G, B] = [[V, T, P], [Q, V, P], [P, V, T], [P, Q, V], [T, P, V], [V, P, Q]][k % 6];
+      p[i] = Math.round(R * 255); p[i + 1] = Math.round(G * 255); p[i + 2] = Math.round(B * 255);
+    }
+    x.putImageData(d, 0, 0);
+    return (this._sheets[key] = Object.assign({}, a, { img: c }));
+  },
+  // the shiba's own fur colours, from art/fullshiba.png as drawn
+  furColours() {
+    if (this._fur) return this._fur;
+    const a = Assets.raw('fullshiba'); if (!a || !a.img.naturalWidth) return null;
+    const c = document.createElement('canvas'); c.width = a.img.naturalWidth; c.height = a.img.naturalHeight;
+    const x = c.getContext('2d'); x.drawImage(a.img, 0, 0);
+    let d; try { d = x.getImageData(0, 0, c.width, c.height).data; } catch (e) { return null; }
+    const seen = new Set(), out = [];
+    for (let i = 0; i < d.length; i += 4) { if (d[i + 3] < 40) continue; const k = (d[i] << 16) | (d[i + 1] << 8) | d[i + 2]; if (!seen.has(k)) { seen.add(k); out.push([d[i], d[i + 1], d[i + 2]]); } }
+    return (this._fur = out);
+  },
+};
+
 const Assets = {
   // Add entries here as art lands. Sheets are horizontal frame strips.
   manifest: {
@@ -367,7 +436,8 @@ const Assets = {
     }));
     return Promise.all(jobs);
   },
-  get(name) { return this.cache[name] || null; }
+  get(name) { const a = this.cache[name]; return a ? Coat.sheet(name, a) : null; },   // in the coat you wear
+  raw(name) { return this.cache[name] || null; }
 };
 
 // ── SETTINGS (saved on this phone) ───────────────────────────────────────────
@@ -1505,7 +1575,7 @@ const g = {
   },
   // Draws a PixelLab sprite, or a labelled placeholder if the art isn't in yet.
   sprite(name, x, y, o = {}) {
-    const a = Assets.get(name);
+    const a = o.raw ? Assets.raw(name) : Assets.get(name);
     const w = o.w || (a ? a.fw : 16), h = o.h || (a ? a.fh : 16);
     if (!a) {
       this.cRect(x, y, w, h, o.color || PAL.accent);
@@ -6286,12 +6356,14 @@ class CookBurger extends Microgame {
     if (Assets.get('chefmove')) {
       g.sprite('chefmove', 40, cy - 64, { w: 128, h: 128, frame: f });
     }
+    // the customer: a black-and-tan shiba, or a red one when you're black and tan
+    const bt = Coat.id === 'blacktan', CI = bt ? 'fullidle' : 'custidle', CF = bt ? 'fullshiba' : 'custfull';
     if (Assets.get('custidle')) {
       // served: up it jumps, cheering, so it's seen over the burger
       const up = served && this.served > 0.3 ? Math.round(18 + Math.abs(Math.sin((this.served - 0.3) * 9)) * 8) : 0;
-      if (up) g.sprite('custfull', 150, 238 - 64 - up, { w: 96, h: 128, frame: Math.floor(t * 8) % 2 ? g.FULL.cheer : g.FULL.cheer2 });
-      else if (lost) g.sprite('custfull', 150, 238 - 64, { w: 96, h: 128, frame: g.FULL.grumpy });
-      else g.sprite('custidle', 150, 238 - 64, { w: 128, h: 128, frame: g.IDLE.happy + Math.floor(t * 5 + 2) % 4 });
+      if (up) g.sprite(CF, 150, 238 - 64 - up, { w: 96, h: 128, frame: Math.floor(t * 8) % 2 ? g.FULL.cheer : g.FULL.cheer2, raw: true });
+      else if (lost) g.sprite(CF, 150, 238 - 64, { w: 96, h: 128, frame: g.FULL.grumpy, raw: true });
+      else g.sprite(CI, 150, 238 - 64, { w: 128, h: 128, frame: g.IDLE.happy + Math.floor(t * 5 + 2) % 4, raw: true });
     }
     // the counter: a steel top and a wooden front, the bins along it
     g.rect(0, 196, W, 6, '#c9ced8'); g.rect(0, 196, W, 1, '#f4f6fa'); g.rect(0, 202, W, 2, '#7d8494');
@@ -6513,7 +6585,7 @@ const Closet = {
     if (this._s) return this._s;
     let s = {};
     try { s = JSON.parse(localStorage.getItem(this.KEY) || '{}'); } catch (e) {}
-    this._s = Object.assign({ wins: 0, bosses: [], photos: 0, met: [], toy: {}, owned: [], hat: null, beat: {}, allBosses: false }, s);
+    this._s = Object.assign({ wins: 0, bosses: [], photos: 0, met: [], toy: {}, owned: [], hat: null, beat: {}, allBosses: false, coats: ['red'], coat: 'red' }, s);
     return this._s;
   },
   save() { try { localStorage.setItem(this.KEY, JSON.stringify(this.stats)); } catch (e) {} },
@@ -6538,7 +6610,7 @@ const Closet = {
   // the thing a game has to win, if you haven't got it yet (for its prompt)
   prize(gameId) { return this.ITEMS.find(i => i.game === gameId && !this.owns(i.id)) || null; },
   // dev menu: everything, or a fresh start
-  unlockAll() { const s = this.stats; s.owned = this.ITEMS.map(i => i.id); s.met = [...POOL, ...BOSSES].map(C => C.meta.id); this.save(); },   // every game in the toy room too
+  unlockAll() { const s = this.stats; s.owned = this.ITEMS.map(i => i.id); s.coats = Coat.LIST.map(c => c.id); s.met = [...POOL, ...BOSSES].map(C => C.meta.id); this.save(); },   // every game in the toy room too
   resetAll() { this._s = null; try { localStorage.removeItem(this.KEY); } catch (e) {} this.check(); },
   photo() { this.stats.photos++; this.save(); this.check(); },
   toyBest(id, lv) { const s = this.stats; if ((s.toy[id] || 0) < lv) { s.toy[id] = lv; this.save(); } },
@@ -6552,8 +6624,13 @@ const Closet = {
       s.owned.push(it.id);
       if (it.id !== 'party') Toast.show('NEW! ' + it.name, it);   // the free one is just there
     }
+    for (const c of Coat.LIST) {
+      if (s.coats.includes(c.id) || !c.got(v)) continue;
+      s.coats.push(c.id); Toast.show('NEW! ' + c.name, { coat: c.id });   // with the shiba's face in it
+    }
     this.save();
   },
+  wearCoat(id) { this.stats.coat = id; this.save(); },
   get hat() { const h = this.stats.hat; return h && this.owns(h) ? this.item(h) : null; },
   wear(id) { this.stats.hat = id; this.save(); },
 
@@ -6566,7 +6643,7 @@ const Closet = {
   // the ears squash and the paws come up beside it.
   _heads: {},
   head(name, frame) {
-    const a = Assets.get(name); if (!a) return null;
+    const a = Assets.raw(name); if (!a) return null;
     let H = this._heads[name];
     if (!H) {
       H = this._heads[name] = [];
@@ -6660,6 +6737,11 @@ const Closet = {
   },
   // an item with its bottom middle at x, y, at scale k (also the closet's cards)
   drawItem(it, x, y, k = 1) {
+    if (it.coat) {   // a coat: the shiba's face in it (art face, frame 0)
+      const a = Assets.raw('face'), c = a && Coat.sheet('face', a, it.coat);
+      if (c) ctx.drawImage(c.img, 0, 0, c.fw, c.fh, Math.round(x - c.fw * k / 2), Math.round(y - c.fh * k), c.fw * k, c.fh * k);
+      return;
+    }
     if (it.crown) { const c = Assets.get('crown'); if (c) ctx.drawImage(c.img, Math.round(x - c.fw * k / 2), Math.round(y - c.fh * k), c.fw * k, c.fh * k); return; }
     const a = Assets.get('hats'); if (!a) return;
     ctx.drawImage(a.img, it.f * a.fw, 0, a.fw, a.fh, Math.round(x - a.fw * k / 2), Math.round(y - a.fh * k), a.fw * k, a.fh * k);
@@ -8219,7 +8301,8 @@ const Engine = {
   // where your shiba wears what you've earned. A toy-room game is practice: no
   // lives, no best score, no surprises, and it comes straight back here.
   TOY_BACK: { x: 16, y: TOP + 2, w: 40, h: 16 },
-  TOY_TABS: [{ id: 'games', label: 'GAMES', x: 20, y: TOP + 24, w: 68, h: 20 }, { id: 'closet', label: 'CLOSET', x: 92, y: TOP + 24, w: 68, h: 20 }],
+  TOY_TABS: [{ id: 'games', label: 'GAMES', x: 8, y: TOP + 24, w: 52, h: 20 }, { id: 'closet', label: 'CLOSET', x: 64, y: TOP + 24, w: 52, h: 20 },
+    { id: 'coats', label: 'COATS', x: 120, y: TOP + 24, w: 52, h: 20 }],
   TOY_PER: 12,
   toyLvBtn(i) { return { x: CX - 14 + i * 26, y: TOP + 50, w: 22, h: 16 }; },
   toyCard(i) { const c = i % 2, r = (i / 2) | 0; return { x: 18 + c * 73, y: TOP + 72 + r * 24, w: 71, h: 22 }; },
@@ -8227,6 +8310,7 @@ const Engine = {
   TOY_DEV: { x: W - 42, y: TOP + 52, w: 26, h: 16 },   // ?dev only: unlock everything
   TOY_NEXT: { x: W - 50, y: TOP + 220, w: 32, h: 18 },
   closetCard(i) { const c = i % 6, r = (i / 6) | 0; return { x: 7 + c * 28, y: TOP + 164 + r * 32, w: 27, h: 30 }; },
+  coatCard(i) { return { x: 9 + i * 41, y: TOP + 164, w: 39, h: 46 }; },
   toyGames() { return [...POOL, ...BOSSES]; },
   openToy(tab) {
     this.state = 'TOYROOM'; this.timer = 0.2;
@@ -8266,6 +8350,15 @@ const Engine = {
       return;
     }
     if (DEBUG && this.hit(this.TOY_DEV, p)) { Sfx.tap(); Closet.unlockAll(); return; }
+    if (this.toyTab === 'coats') {   // a coat you have: wear it; a locked one says how to earn it
+      Coat.LIST.forEach((c, i) => {
+        if (!this.hit(this.coatCard(i), p)) return;
+        this.toySel = c.id;
+        if (!Closet.stats.coats.includes(c.id)) { Sfx.fail(); return; }
+        Sfx.tap(); Closet.wearCoat(c.id);
+      });
+      return;
+    }
     // the closet: tap something you own to wear it (again to take it off); a locked one says how to earn it
     Closet.ITEMS.forEach((it, i) => {
       if (!this.hit(this.closetCard(i), p)) return;
@@ -8325,6 +8418,7 @@ const Engine = {
     ctx.restore();
     const own = Closet.stats.owned;
     if (DEBUG) { const D = this.TOY_DEV; g.button(D, false); g.text('ALL', D.x + D.w / 2, D.y + 11, 7, PAL.accent); }   // ?dev: unlock everything
+    if (this.toyTab === 'coats') { this.drawCoats(); return; }
     Closet.ITEMS.forEach((it, i) => {
       const c = this.closetCard(i), has = own.includes(it.id), on = Closet.stats.hat === it.id;
       if (on) g.button(c, true); else if (has) g.nine('buttons', 0, c.x, c.y, c.w, c.h, 6);
@@ -8340,6 +8434,21 @@ const Engine = {
       g.text(Closet.owns(sel.id) ? (Closet.stats.hat === sel.id ? 'WEARING IT  ·  TAP TO TAKE OFF' : 'TAP TO WEAR') : sel.how, CX, y + 12, 7, Closet.owns(sel.id) ? PAL.ink : PAL.mid);
     } else g.text('TAP SOMETHING TO WEAR IT', CX, y + 6, 7, PAL.mid);
     g.text(own.length + ' OF ' + Closet.ITEMS.length + ' COLLECTED', CX, y + 26, 7, PAL.mid);
+  },
+  // COATS: one card each, the shiba's face in it; the mirror above shows it on you
+  drawCoats() {
+    const have = Closet.stats.coats, now = Coat.id;
+    Coat.LIST.forEach((c, i) => {
+      const b = this.coatCard(i), has = have.includes(c.id);
+      if (now === c.id) g.button(b, true); else if (has) g.nine('buttons', 0, b.x, b.y, b.w, b.h, 6);
+      else if (Assets.get('buttons')) { ctx.globalAlpha = 0.45; g.nine('buttons', 0, b.x, b.y, b.w, b.h, 6); ctx.globalAlpha = 1; }
+      if (has) Closet.drawItem({ coat: c.id }, b.x + b.w / 2, b.y + b.h - 7, 1);
+      else { ctx.globalAlpha = 0.25; Closet.drawItem({ coat: c.id }, b.x + b.w / 2, b.y + b.h - 7, 1); ctx.globalAlpha = 1; g.text('?', b.x + b.w / 2, b.y + 28, 11, PAL.ink); }
+    });
+    const sel = Coat.LIST.find(c => c.id === (this.toySel || now)) || Coat.LIST[0], y = TOP + 246, has = have.includes(sel.id);
+    g.text(sel.name, CX, y, 9, PAL.accent);
+    g.text(has ? (now === sel.id ? 'WEARING IT' : 'TAP TO WEAR') : sel.how, CX, y + 12, 7, has ? PAL.ink : PAL.mid);
+    g.text(have.length + ' OF ' + Coat.LIST.length + ' COATS', CX, y + 26, 7, PAL.mid);
   },
 
   // the mascot's shelf is below the play field in the games, not on the title or the menus
