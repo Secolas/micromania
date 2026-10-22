@@ -7847,7 +7847,7 @@ const Engine = {
     g.clear();
     const s = this.state;
     if (this.MENU_SCREENS.includes(s) || s === 'PERMS') { this.menuBg(); this.menuPanel(); }
-    else if (['STAGE', 'CLEAR', 'SHOP', 'SPEEDUP'].includes(s) || (s === 'RESULT' && this.mode === 'run')) { this.menuBg(); this.menuPanel(TOP + 6); }   // below the HUD row; RUN's tally too
+    else if (['STAGE', 'CLEAR', 'SHOP', 'SPEEDUP', 'PHOTO'].includes(s) || (s === 'RESULT' && this.mode === 'run')) { this.menuBg(); this.menuPanel(TOP + 6); }   // below the HUD row; RUN's tally too
 
     if (s === 'TITLE') { this.drawTitle(); return; }
 
@@ -7996,8 +7996,7 @@ const Engine = {
       this.drawHud();
     }
 
-    if (s === 'PHOTO') {
-      g.clear();
+    if (s === 'PHOTO') {   // on the menu backdrop and frame (drawn above), like the other between-game screens
       const photo = Engine.lastPhoto;
       // the polaroid takes the camera's shape: portrait on a phone
       const asp = photo ? photo.width / photo.height : Input.camAspect();
