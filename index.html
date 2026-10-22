@@ -274,7 +274,15 @@ const Assets = {
     demo:     { src: 'art/demo.png',     fw: 32,  fh: 40,  frames: 7,  fps: 1  },
     highfive: { src: 'art/highfive.png', fw: 64,  fh: 64,  frames: 14, fps: 1  },
     breakjump:{ src: 'art/breakjump.png', fw: 64, fh: 96,  frames: 8,  fps: 1  },
-    hats:     { src: 'art/hats.png',     fw: 32,  fh: 32,  frames: 14, fps: 1  },
+    hats:     { src: 'art/hats.png',     fw: 32,  fh: 32,  frames: 16, fps: 1  },
+    worn:     { src: 'art/worn.png',     fw: 64,  fh: 48,  frames: 11, fps: 1  },
+    chefmove: { src: 'art/chefmove.png', fw: 64,  fh: 64,  frames: 11, fps: 1  },
+    cookfood: { src: 'art/cookfood.png', fw: 32,  fh: 28,  frames: 5,  fps: 1  },
+    cooklayers:{ src: 'art/cooklayers.png', fw: 32, fh: 10, frames: 6, fps: 1  },
+    plate:    { src: 'art/plate.png',    fw: 38,  fh: 7,   frames: 1,  fps: 1  },
+    kitchen:  { src: 'art/kitchen.png',  fw: 180, fh: 200, frames: 1,  fps: 1  },
+    custidle: { src: 'art/custidle.png', fw: 64,  fh: 64,  frames: 22, fps: 1  },
+    custfull: { src: 'art/custfull.png', fw: 48,  fh: 64,  frames: 11, fps: 1  },
     runcowboy:{ src: 'art/runcowboy.png', fw: 120, fh: 120, frames: 9, fps: 1  },
     jumpcowboy:{ src: 'art/jumpcowboy.png', fw: 120, fh: 120, frames: 5, fps: 1 },
     walkstone:{ src: 'art/walkstone.png', fw: 36, fh: 36,  frames: 1,  fps: 1  },
@@ -2355,6 +2363,10 @@ const Env = {
         const th = Math.min(16, BOT - ty);   // the last row is cut at the field's edge, not left hanging into the shelf
         R(tx, ty, 16, th, SCENE.grout); R(tx + 1, ty + 1, 14, Math.max(0, th - 2), ((tx + ty) / 16) % 2 ? SCENE.tile : SCENE.tileHi);
       }
+    } else if (kind === 'kitchen') {
+      // art/kitchen.png (PixelLab, 180x200): tiles, shelves, sink and stove, down to the floor
+      R(0, TOP, W, BOT - TOP, '#8ec7aa');
+      prop('kitchen', CX, TOP + 200);
     } else if (kind === 'snow') {
       R(0, TOP, W, BOT - TOP, SCENE.snow);
       if (tiles('scenetiles', 0, TOP, W, BOT, () => 1 + Math.floor(rnd() * 4))) {} else
@@ -6157,6 +6169,182 @@ class YesNo extends Microgame {
   }
 }
 
+// COOK! — the chef shiba builds the burger on the ticket, bottom bun up, and
+// serves it to the shiba waiting at the end of the counter. Tap the bins in
+// the ticket's order; a wrong one bounces off the plate (three and it's burnt).
+class CookBurger extends Microgame {
+  static meta = { id: 'cook', env: 'kitchen', prompt: 'COOK!', hint: 'tap', duration: 6.0, minDuration: 5.0,
+    how: 'TAP THE FOOD IN THE\nORDER ON THE TICKET' };
+  // art/cookfood.png frames (the bins, the ticket); art/cooklayers.png frames
+  // and heights (the burger from the side: bun bottom, bun top, then the rest)
+  static FOOD = ['bun', 'patty', 'cheese', 'lettuce', 'tomato'];
+  static LAYER = { bun: 0, top: 1, patty: 2, cheese: 3, lettuce: 4, tomato: 5 };
+  static LH = [6, 9, 5, 5, 5, 4];
+  init() {
+    const shuffle = a => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+    // the middle of the burger: just a patty, then patty and cheese in either
+    // order, then the patty and two toppings in any order
+    const mid = this.byD(['patty'], shuffle(['patty', 'cheese']), shuffle(['patty', ...shuffle(['cheese', 'lettuce', 'tomato']).slice(0, 2)]));
+    this.recipe = ['bun', ...mid, 'bun'];
+    // the bins: what's in it, plus a decoy or two, in a random row along the counter
+    const bins = shuffle(this.byD(['bun', 'patty', 'cheese'], ['bun', 'patty', 'cheese', 'lettuce'], [...CookBurger.FOOD]));
+    const bw = 34, gap = 2, x0 = Math.round(CX - (bins.length * (bw + gap) - gap) / 2);
+    this.bins = bins.map((f, i) => ({ f, x: x0 + i * (bw + gap), y: 226, w: bw, h: 40, press: 0 }));
+    this.i = 0; this.miss = 0; this.MAXMISS = 3;
+    this.K = 2;                          // the food's scale
+    this.plateX = 86; this.plateY = 198; // the plate's middle, on the counter
+    this.fly = [];                       // food in the air: to the plate, or bouncing off it
+    this.hop = 0; this.squash = 0; this.served = -1; this.endT = 0; this.hearts = [];
+    this.reach = -1;                     // the chef's paw going out to put the food down (seconds in)
+    this.steam = [];                     // the patty sizzling as it lands
+  }
+  // a layer's art/cooklayers.png frame: the first bun is the bottom, the last the top
+  layerOf(k) { const f = this.recipe[k]; return f === 'bun' ? (k ? CookBurger.LAYER.top : CookBurger.LAYER.bun) : CookBurger.LAYER[f]; }
+  // where the bottom of layer n sits, from the plate up
+  stackTop(n = this.i) {
+    let y = this.plateY - 2 * this.K;
+    for (let k = 0; k < n; k++) y -= (CookBurger.LH[this.layerOf(k)] - 1) * this.K;
+    return y;
+  }
+  update(dt, input) {
+    this.hop = Math.max(0, this.hop - dt); this.squash = Math.max(0, this.squash - dt);
+    if (this.reach >= 0 && (this.reach += dt) > 0.3) this.reach = -1;
+    for (const p of this.steam) { p.t += dt; p.y -= 22 * dt; p.x += Math.sin(p.t * 9 + p.k) * 10 * dt; }
+    this.steam = this.steam.filter(p => p.t < 0.7);
+    for (const b of this.bins) b.press = Math.max(0, b.press - dt);
+    for (const h of this.hearts) { h.t += dt; h.y -= 26 * dt; }
+    this.hearts = this.hearts.filter(h => h.t < 0.9);
+    // food flying: in an arc onto the stack, or off it and away
+    for (const f of this.fly) {
+      f.t += dt;
+      if (f.bad) { f.vy += 700 * dt; f.x += f.vx * dt; f.y += f.vy * dt; f.rot += f.av * dt; continue; }
+      if (f.t >= f.dur) { f.done = true; this.land(); }
+    }
+    this.fly = this.fly.filter(f => !f.done && !(f.bad && f.y > H + 40));
+    // served: the plate slides along the counter to the customer, who cheers
+    if (this.served >= 0) {
+      this.served += dt;
+      if (this.served > 0.35 && Math.random() < dt * 10) this.hearts.push({ x: 150 + (Math.random() - 0.5) * 34, y: 112, t: 0 });
+      if (this.served > 1.0) { this.playingOut = false; this.succeed(); }
+      return;
+    }
+    if (this.endT) { this.endT -= dt; if (this.endT <= 0) { this.playingOut = false; this.lose(); } return; }
+    for (const tp of input.taps) {
+      const b = this.bins.find(b => tp.x >= b.x - 1 && tp.x <= b.x + b.w + 1 && tp.y >= b.y - 6 && tp.y <= b.y + b.h + 4);
+      if (b) this.pick(b);
+      if (this.endT) break;
+    }
+  }
+  pick(b) {
+    b.press = 0.12;
+    const k = this.i + this.fly.filter(f => !f.bad).length;   // food still in the air counts as placed
+    if (k >= this.recipe.length) return;
+    const x = b.x + b.w / 2, y = b.y + 14;
+    if (b.f === this.recipe[k]) {
+      this.fly.push({ f: b.f, layer: this.layerOf(k), x0: x, y0: y, t: 0, dur: 0.16 });
+      this.reach = 0;   // the chef reaches out and puts it down
+      Sfx.whoosh();
+      if (k + 1 >= this.recipe.length) this.playingOut = true;   // the last one gets to land
+      return;
+    }
+    // wrong: it bounces off the top of the burger and falls away
+    this.miss++;
+    this.fly.push({ f: b.f, bad: true, x, y, vx: (this.plateX - x) * 1.4 + (Math.random() - 0.5) * 60, vy: -340, rot: 0, av: (Math.random() < 0.5 ? -1 : 1) * 12, t: 0 });
+    Sfx.clunk(); buzz(40); FX.shake(2);
+    if (this.miss >= this.MAXMISS) { this.endT = 0.6; this.playingOut = true; }
+  }
+  land() {
+    this.i++; this.hop = 0.14; this.squash = 0.1;
+    Sfx.step(Math.min(7, this.i)); buzz(10);
+    FX.burst(this.plateX, this.stackTop(), PAL.accent, 6, 40);
+    if (this.recipe[this.i - 1] === 'patty') {   // hot off the grill: it sizzles
+      for (let n = 0; n < 5; n++) this.steam.push({ x: this.plateX - 18 + n * 9, y: this.stackTop() - 2, t: -n * 0.05, k: n * 2 });
+      Sfx.hiss({ dur: 0.35, vol: 0.03, hp: 3600 });   // the sizzle
+    }
+    if (this.i >= this.recipe.length) { this.served = 0; Sfx.bark(); this.playingOut = true; }
+  }
+  // the burger so far on its plate, the plate's middle at x, y
+  drawBurger(g, x, y) {
+    const K = this.K;
+    g.sprite('plate', x, y, { w: 38 * K, h: 7 * K });   // art/plate.png, from the side
+    let b = y - 2 * K;
+    for (let k = 0; k < this.i; k++) {
+      const L = this.layerOf(k), bump = k === this.i - 1 && this.squash > 0 ? K : 0;   // the newest one lands with a little bump
+      g.sprite('cooklayers', x, b - 5 * K + bump, { w: 32 * K, h: 10 * K, frame: L });
+      b -= (CookBurger.LH[L] - 1) * K;
+    }
+  }
+  draw(g) {
+    g.clear();
+    const t = this.t, served = this.served >= 0, lost = this.endT > 0 || (this.finished && !this.won);
+    // the chef at the stove end, turned to the customer waiting at the other,
+    // both sitting behind the counter, which hides their legs. art/chefmove.png
+    // (its chef hat drawn on by PixelLab, the same as the closet's):
+    // 0-3 sitting, tail going; 4-10 a paw reaching out to put the food down
+    const cy = 238 - (this.hop > 0 ? 3 : 0);
+    const chefF = this.reach >= 0 ? 4 + Math.min(6, Math.floor(this.reach / 0.04)) : Math.floor(t * 6) % 4, f = chefF;
+    if (Assets.get('chefmove')) {
+      g.sprite('chefmove', 40, cy - 64, { w: 128, h: 128, frame: f });
+    }
+    if (Assets.get('custidle')) {
+      // served: up it jumps, cheering, so it's seen over the burger
+      const up = served && this.served > 0.3 ? Math.round(18 + Math.abs(Math.sin((this.served - 0.3) * 9)) * 8) : 0;
+      if (up) g.sprite('custfull', 150, 238 - 64 - up, { w: 96, h: 128, frame: Math.floor(t * 8) % 2 ? g.FULL.cheer : g.FULL.cheer2 });
+      else if (lost) g.sprite('custfull', 150, 238 - 64, { w: 96, h: 128, frame: g.FULL.grumpy });
+      else g.sprite('custidle', 150, 238 - 64, { w: 128, h: 128, frame: g.IDLE.happy + Math.floor(t * 5 + 2) % 4 });
+    }
+    // the counter: a steel top and a wooden front, the bins along it
+    g.rect(0, 196, W, 6, '#c9ced8'); g.rect(0, 196, W, 1, '#f4f6fa'); g.rect(0, 202, W, 2, '#7d8494');
+    g.rect(0, 204, W, BOT - 204, '#c98a52'); g.rect(0, 204, W, 2, '#8a5530');
+    for (let x = 30; x < W; x += 60) g.rect(x, 206, 1, BOT - 206, '#a96c3c');
+    // the burger, sliding down to the customer once it's done
+    const k = served ? Math.min(1, this.served / 0.3) : 0, ease = k * k * (3 - 2 * k);
+    this.drawBurger(g, Math.round(this.plateX + (104 - this.plateX) * ease), this.plateY);
+    if (this.reach >= 0 && Assets.get('chefmove')) {   // reaching out, the chef leans in over the food it's putting down (the counter still hides its legs)
+      ctx.save(); ctx.beginPath(); ctx.rect(0, TOP, W, 196 - TOP); ctx.clip();
+      g.sprite('chefmove', 40, cy - 64, { w: 128, h: 128, frame: chefF }); ctx.restore();
+    }
+    for (const b of this.bins) {
+      const dn = b.press > 0 ? 2 : 0;
+      g.nine('buttons', 0, b.x, b.y + dn, b.w, b.h, 6) || g.rect(b.x, b.y + dn, b.w, b.h, PAL.mid);
+      g.sprite('cookfood', b.x + b.w / 2, b.y + dn + 18, { frame: CookBurger.FOOD.indexOf(b.f) });
+    }
+    for (const f of this.fly) {   // the food in the air
+      if (f.bad) {
+        ctx.save(); ctx.translate(Math.round(f.x), Math.round(f.y)); ctx.rotate(f.rot);
+        g.sprite('cookfood', 0, 0, { frame: CookBurger.FOOD.indexOf(f.f) }); ctx.restore();
+      } else {
+        const p = Math.min(1, f.t / f.dur), tx = this.plateX, ty = this.stackTop() - 6;
+        g.sprite('cooklayers', Math.round(f.x0 + (tx - f.x0) * p), Math.round(f.y0 + (ty - f.y0) * p - Math.sin(p * Math.PI) * 30), { w: 32 * this.K, h: 10 * this.K, frame: f.layer });
+      }
+    }
+    for (const p of this.steam) {   // white puffs curling up off the patty
+      if (p.t < 0) continue;
+      ctx.globalAlpha = Math.max(0, 0.95 - p.t / 0.7); const r = p.t < 0.2 ? 1 : 2, x = Math.round(p.x), y = Math.round(p.y);
+      g.rect(x - r - 1, y - r - 1, r * 2 + 3, r * 2 + 3, '#9aa3b4'); g.rect(x - r, y - r, r * 2 + 1, r * 2 + 1, '#ffffff'); ctx.globalAlpha = 1;
+    }
+    for (const h of this.hearts) { ctx.globalAlpha = Math.max(0, 1 - h.t / 0.9); PatShiba.prototype.heart(Math.round(h.x), Math.round(h.y), PAL.bad); ctx.globalAlpha = 1; }
+    this.drawTicket(g);
+  }
+  // the order ticket pinned up top: the burger's layers in order, ticked off
+  drawTicket(g) {
+    const n = this.recipe.length, step = 30, w = n * step + 6, x0 = Math.round(CX - w / 2), y0 = TOP + 30, th = 34;
+    g.rect(x0 + 2, y0 + 2, w, th, 'rgba(0,0,0,0.25)');
+    g.rect(x0, y0, w, th, '#fbf3dc'); g.box(x0, y0, w, th, '#5a3a22');
+    g.rect(CX - 3, y0 - 3, 6, 5, PAL.bad);   // the pin
+    for (let k = 0; k < n; k++) {
+      const x = x0 + 3 + k * step + step / 2, done = k < this.i, next = k === this.i && this.served < 0;
+      if (next) g.rect(x - step / 2 + 1, y0 + 2, step - 2, th - 4, PAL.accent);
+      if (done) ctx.globalAlpha = 0.35;
+      g.sprite('cookfood', x, y0 + th / 2, { frame: CookBurger.FOOD.indexOf(this.recipe[k]) });
+      ctx.globalAlpha = 1;
+      if (done) { g.line(x - 6, y0 + 18, x - 1, y0 + 23, '#2f8a3a', 3); g.line(x - 1, y0 + 23, x + 8, y0 + 11, '#2f8a3a', 3); }   // a tick
+    }
+    // the misses, along the ticket's foot
+    for (let k = 0; k < this.MAXMISS; k++) g.text('X', x0 + w - 6 - k * 9, y0 + th + 11, 9, k < this.miss ? PAL.bad : 'rgba(90,58,34,0.35)');
+  }
+}
+
 const POOL = [
   TapBug, CatchCoin, RubClean, PullTissue, SodaShake, SwipeArrow, PatShiba, HoldRelease, DontTap,
   StopBar, FollowDot, TapOrder, OddOneOut, FeedDog, WhackMole, PumpBalloon, CutRope,
@@ -6164,7 +6352,7 @@ const POOL = [
   Flappy, Crossy, Doodle, PianoTiles, DinoRun, KnockStack, MoveCam, DryShiba, LeanDodge,
   FreezeStatue, SwatFly, HideLens, HeadBang,
   BalanceBall, PourCup, SteerRun, BlowCandles, Dandelion, StackBlocks, SortTreats,
-  BeachDig, Walkies, BarkJump, SliceTreats, YesNo, HighFive
+  BeachDig, Walkies, BarkJump, SliceTreats, YesNo, HighFive, CookBurger
 ];
 const BOSSES = [Dodge, Squeeze, RedLight, Juggle, SquidDoll, WakeUp, BathTime];
 
@@ -6296,24 +6484,26 @@ const Wipe = {
 const Closet = {
   KEY: 'micromania.closet',
   // f: hats.png frame (small, to sit between the ears; the wizard hat and halo
-  // are the big ones, 12 and 13, by choice; frame 9 is a mini beanie,
+  // are the big ones, 12 and 13, by choice, and so is the cowboy hat, 15; frame 9 is a mini beanie,
   // 10 the side-on cowboy hat JUMP!'s runner wears: prompt icons). game: won by beating that game, where you see it (the SLED
-  // rider's beanie, the HEADBANG rocker's shades). face: worn on the eyes
+  // rider's beanie, the HEADBANG rocker's shades, COOK!'s chef hat, frame 14). face: worn on the eyes
   // (the sunglasses), not on top. sit: how far the hat's
   // bottom comes down past the top of the head (kept clear of the eyes on
   // every shiba it goes on); dx: off to one side (the bow and flower, by an ear);
-  // between: worn between the ears, which stand in front of it
+  // between: worn between the ears, which stand in front of it; band: worn
+  // as drawn by PixelLab on the shiba itself (art/worn.png cell), see dress
   ITEMS: [
-    { id: 'party',   name: 'PARTY HAT',     f: 0,  sit: 2, how: 'FREE TO WEAR',            got: s => true },
-    { id: 'bow',     name: 'BOW',           f: 1,  sit: 3, dx: 5, how: 'WIN 10 GAMES',     got: s => s.wins >= 10 },
-    { id: 'beanie',  name: 'BEANIE',        f: 2,  icon: 9, sit: 5, game: 'steer', how: 'BEAT SLED',  got: s => !!s.beat.steer },
-    { id: 'cowboy',  name: 'COWBOY HAT',    f: 3,  icon: 10, sit: 2, between: true, game: 'run', how: 'BEAT JUMP!', got: s => !!s.beat.run },
-    { id: 'shades',  name: 'SUNGLASSES',    f: 8,  face: true, game: 'rock', how: 'BEAT HEADBANG', got: s => !!s.beat.rock },
-    { id: 'wizard',  name: 'WIZARD HAT',    f: 12, sit: 5, how: 'WIN A RUN',               got: s => s.runWins >= 1 },
-    { id: 'halo',    name: 'HALO',          f: 13, sit: -5, how: 'SCORE 30 IN CLASSIC',    got: s => s.classic >= 30 },
-    { id: 'propeller', name: 'PROPELLER CAP', f: 6, sit: 3, how: 'REACH WORLD 2 IN RUN',   got: s => s.runWorld >= 2 },
-    { id: 'flower',  name: 'FLOWER',        f: 7,  sit: 3, dx: -6, how: 'TAKE 5 SELFIES',  got: s => s.photos >= 5 },
-    { id: 'crown',   name: 'CROWN',         f: 11, sit: 3, between: true, how: 'ALL 7 BOSSES IN ONE CLASSIC GAME', got: s => !!s.allBosses },
+    { id: 'party',   name: 'PARTY HAT',     f: 0,  sit: 2, band: 1, how: 'FREE TO WEAR',            got: s => true },
+    { id: 'bow',     name: 'BOW',           f: 1,  sit: 3, dx: 5, band: 2, how: 'WIN 10 GAMES',     got: s => s.wins >= 10 },
+    { id: 'beanie',  name: 'BEANIE',        f: 2,  icon: 9, sit: 5, game: 'steer', band: 3, how: 'BEAT SLED',  got: s => !!s.beat.steer },
+    { id: 'cowboy',  name: 'COWBOY HAT',    f: 15, icon: 10, band: 0, game: 'run', how: 'BEAT JUMP!', got: s => !!s.beat.run },
+    { id: 'shades',  name: 'SUNGLASSES',    f: 8,  face: true, game: 'rock', band: 4, how: 'BEAT HEADBANG', got: s => !!s.beat.rock },
+    { id: 'chef',    name: 'CHEF HAT',      f: 14, sit: 2, game: 'cook', band: 10, how: 'BEAT COOK!',  got: s => !!s.beat.cook },
+    { id: 'wizard',  name: 'WIZARD HAT',    f: 12, sit: 5, band: 5, how: 'WIN A RUN',               got: s => s.runWins >= 1 },
+    { id: 'halo',    name: 'HALO',          f: 13, sit: -5, band: 6, how: 'SCORE 30 IN CLASSIC',    got: s => s.classic >= 30 },
+    { id: 'propeller', name: 'PROPELLER CAP', f: 6, sit: 3, band: 7, how: 'REACH WORLD 2 IN RUN',   got: s => s.runWorld >= 2 },
+    { id: 'flower',  name: 'FLOWER',        f: 7,  sit: 3, dx: -6, band: 8, how: 'TAKE 5 SELFIES',  got: s => s.photos >= 5 },
+    { id: 'crown',   name: 'CROWN',         f: 11, sit: 3, between: true, band: 9, how: 'ALL 7 BOSSES IN ONE CLASSIC GAME', got: s => !!s.allBosses },
   ],
   item(id) { return this.ITEMS.find(i => i.id === id); },
 
@@ -6437,19 +6627,29 @@ const Closet = {
   EARS: 8,   // the hat sits this far below the ear tips, down over them (but see dress: never over the eyes)
   // where the eyes are in frame 0 of each sheet a shiba wears things on (the
   // middle between them, the top of their row): the sunglasses go here
-  EYES: { shiba: { x: 13.5, y: 13 }, fullshiba: { x: 16.5, y: 23 }, breakjump: { x: 25.5, y: 54 }, fullidle: { x: 24.5, y: 23 } },
+  EYES: { shiba: { x: 13.5, y: 13 }, fullshiba: { x: 16.5, y: 23 }, breakjump: { x: 25.5, y: 54 }, fullidle: { x: 24.5, y: 23 }, chefmove: { x: 45.5, y: 25 } },
 
   // Draw the equipped hat on a sheet's frame drawn centred at cx, cy at w x h
   // (as g.sprite does). Its scale is the sprite's, so a 2x shiba wears it 2x.
-  dress(name, frame, cx, cy, w, h) {
-    const it = this.hat; if (!it) return;
+  dress(name, frame, cx, cy, w, h, it = this.hat) {
+    if (!it) return;
     const a = Assets.get(name), hd = this.head(name, frame); if (!a || !hd) return;
     const k = w / a.fw;
+    // art/worn.png, 64x48 cells: things PixelLab drew on the shiba itself (a
+    // hat with the ears as they come through it, or sunglasses), lined up so
+    // the cell's row 32 goes on this frame's eye line and its middle on the eyes.
+    if (it.band != null) {
+      const B = Assets.get('worn'); if (!B) return;
+      const bx = cx - w / 2 + (Math.round(hd.ex + 0.5) + (it.bx || 0)) * k, by = cy - h / 2 + (hd.ey + (it.by || 0)) * k;
+      ctx.drawImage(B.img, it.band * B.fw, 0, B.fw, B.fh, Math.round(bx - B.fw / 2 * k), Math.round(by - 32 * k), B.fw * k, B.fh * k);
+      return;
+    }
     if (it.face) { this.drawItem(it, cx - w / 2 + (hd.ex + 0.5 + this.FACE_DX) * k, cy - h / 2 + (hd.ey + 4 + this.FACE_DY) * k, k); return; }   // over the eyes
     // as low as it sits, down over the ears, but its bottom stays above this frame's eyes
     const bottom = Math.min(hd.y + it.sit, hd.ey - 1);
     const hx = cx - w / 2 + hd.x * k + (it.dx || 0) * k, hy = cy - h / 2 + bottom * k;
     this.drawItem(it, hx, hy, k);
+
     // between the ears (the cowboy hat, the crown): the ears go back on top,
     // everything of the sprite above the dip between them, so they stand in front
     if (it.between) {
@@ -7993,8 +8193,8 @@ const Engine = {
     }
     // the shiba on the stage: a real happy jump (art/breakjump.png: crouch,
     // spring up legs out, tuck, land; 64x96 drawn 2x, feet on the floor), or teary
-    const fy = sy + sh - 18;
-    ctx.save(); ctx.beginPath(); ctx.rect(sx + 3, sy + 3, sw - 6, sh - 6); ctx.clip();   // a big hat at the top of a jump stays on the stage
+    const fy = sy + sh - 8;   // feet low on the stage's floor, so a hat at the top of a jump still fits
+    ctx.save(); ctx.beginPath(); ctx.rect(sx + 3, sy - 14, sw - 6, sh + 11); ctx.clip();   // on the stage; a tall hat at the top of a jump can rise over its frame
     if (won && Assets.get('breakjump')) {
       const f = Math.floor(t / this.BREAK_JUMP * 8) % 8;
       g.sprite('breakjump', CX, fy - 96, { w: 128, h: 192, frame: f }); Closet.dress('breakjump', f, CX, fy - 96, 128, 192);
@@ -8026,7 +8226,7 @@ const Engine = {
   TOY_PREV: { x: 18, y: TOP + 220, w: 32, h: 18 },
   TOY_DEV: { x: W - 42, y: TOP + 52, w: 26, h: 16 },   // ?dev only: unlock everything
   TOY_NEXT: { x: W - 50, y: TOP + 220, w: 32, h: 18 },
-  closetCard(i) { const c = i % 5, r = (i / 5) | 0; return { x: 16 + c * 30, y: TOP + 164 + r * 32, w: 28, h: 30 }; },
+  closetCard(i) { const c = i % 6, r = (i / 6) | 0; return { x: 7 + c * 28, y: TOP + 164 + r * 32, w: 27, h: 30 }; },
   toyGames() { return [...POOL, ...BOSSES]; },
   openToy(tab) {
     this.state = 'TOYROOM'; this.timer = 0.2;

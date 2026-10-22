@@ -67,9 +67,58 @@ gripping paw, and the game's calm shiba face; each at its cell's top-left (see `
 | `halo-ring.png` | 32×32 | PixelLab's halo, a ring seen face-on; it looked like a hoop on a head. The halo in `art/hats.png` is a flat ellipse pixelled by hand. |
 | `viking-helmet.png`, `headphones.png` | 32×32 | Taken out of the closet (the user's call). |
 | `chef-hat.png` | 32×32 | Taken out of the closet, kept for a future cooking game. |
-| `hats-big.png` | 32×32 cells | The first, head-sized hats. `art/hats.png` now has small ones (PixelLab redrew each shrunk to about 12-17px) that sit between the ears. |
+| `chef-hat-small.png` | 32×32 | PixelLab's redraw of it shrunk, muddy and mushroom-shaped. COOK!'s chef hat (`art/hats.png` frame 14) is pixelled by hand. |
+| `hats-big.png` | 32×32 cells | The first, head-sized hats. `art/hats.png` now has small ones (PixelLab redrew each shrunk to about 12-17px) that sit between the ears, except the wizard hat, halo and cowboy hat, which are these big ones again (the user's call). |
 
 `art/hats.png` (32×32 cells, each on its cell's bottom middle): party hat,
 bow (small, by an ear), beanie, cowboy hat, wizard hat, halo, propeller cap,
 flower (small, by an ear), sunglasses (worn on the eyes), and the mini beanie
 SLED's rider wears. The crown reuses `art/crown.png`. See `Closet.ITEMS`.
+
+## cook/ (COOK!, 2026-10-22)
+
+| File | Size | What it is |
+| --- | --- | --- |
+| `burger-icon.png` | 32×32 | PixelLab was asked for a top bun and drew a whole burger. The game's top bun is a hand-pixelled layer in `art/cooklayers.png`. |
+| `plate-topdown.png` | 44×26 | The plate seen from above. The burger is drawn from the side, so `art/plate.png` is a side-on plate pixelled by hand. |
+
+COOK!'s art: `art/kitchen.png` (PixelLab backdrop), `art/cookfood.png` (the
+bins' and ticket's pictures: bun, patty, cheese, lettuce, tomato),
+`art/cooklayers.png` (the burger's layers from the side), `art/plate.png`,
+`art/chefmove.png` (the chef turned to the customer: RUN & FREEZE's watcher
+frame 4 flipped, then PixelLab's `animate_image` from it for a sitting loop and
+a paw reaching out to put the food down),
+`art/custidle.png` / `art/custfull.png` (the black-and-tan customer: the
+shiba's own sheets recoloured), and the chef hat at `art/hats.png` frame 14
+(pixelled by hand; beat COOK! and it's yours in the closet).
+
+### closet/options/ (2026-10-22)
+
+PixelLab's versions of every closet item, each drawn on the closet shiba itself
+(`fullshiba.png` frame 0, `edit_image`): `<item>_<n>.png`. The ones in the
+game, cut into `art/worn.png` (64×48 cells, the shiba's eye line on row 32,
+its eyes' middle on column 32) by `cut_worn.py`:
+
+| Item | Pick | Cut |
+| --- | --- | --- |
+| cowboy | 1 | band (hat and ears, down to the eyes; its brim's outline on the eye line) |
+| party | 2 | diff (only what's new) |
+| bow | 2 | diff |
+| beanie | 2 | band |
+| shades | 2 | keep (their rows, minus the fur) |
+| wizard | 1 | band |
+| halo | 1 | diff |
+| propeller | 2 | band |
+| flower | 2 | diff |
+| crown | 2 | diff |
+| chef | 1 | band |
+
+To swap one: `python cut_worn.py <item>_<n>.png cell.png <mode> <extra> fs0.png [row0 row1]`
+and paste the cell into its column of `art/worn.png` (`band:` in `Closet.ITEMS`).
+
+`cook/chefmove-nohat.png` is COOK!'s chef before its hat. `art/chefmove.png`
+has PixelLab's chef hat drawn on every frame (`edit_image` on all 11 at once),
+grafted onto our own frames above the eyes so the body never moves, and
+recoloured to the closet chef hat's whites (version A). `chefmove-hat-a.png`
+is A as PixelLab coloured it (cream); `chefmove-hat-b.png` is the other
+version, a smaller toque between the ears.
