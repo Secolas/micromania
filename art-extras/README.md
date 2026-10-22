@@ -91,3 +91,27 @@ a paw reaching out to put the food down),
 `art/custidle.png` / `art/custfull.png` (the black-and-tan customer: the
 shiba's own sheets recoloured), and the chef hat at `art/hats.png` frame 14
 (pixelled by hand; beat COOK! and it's yours in the closet).
+
+### closet/options/ (2026-10-22)
+
+PixelLab's versions of every closet item, each drawn on the closet shiba itself
+(`fullshiba.png` frame 0, `edit_image`): `<item>_<n>.png`. The ones in the
+game, cut into `art/worn.png` (64×48 cells, the shiba's eye line on row 32,
+its eyes' middle on column 32) by `cut_worn.py`:
+
+| Item | Pick | Cut |
+| --- | --- | --- |
+| cowboy | 1 | band (hat and ears, down to the eyes; its brim's outline on the eye line) |
+| party | 2 | diff (only what's new) |
+| bow | 2 | diff |
+| beanie | 2 | band |
+| shades | 2 | keep (their rows, minus the fur) |
+| wizard | 1 | band |
+| halo | 1 | diff |
+| propeller | 2 | band |
+| flower | 2 | diff |
+| crown | 2 | diff |
+| chef | 1 | band |
+
+To swap one: `python cut_worn.py <item>_<n>.png cell.png <mode> <extra> fs0.png [row0 row1]`
+and paste the cell into its column of `art/worn.png` (`band:` in `Closet.ITEMS`).
