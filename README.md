@@ -232,11 +232,20 @@ A game opts in with `this.fakeOut(chance, prompt, how)` in `init()`.
 
 `Sfx` has a small kit beyond the blips — `bark`, `growl`, `boop`, `squeak`,
 `crunch`, `chomp`, `splash`, `whoosh`, `thud`, `fizz`, `roll`, `sniff`,
-`heart`, `poof`, `step` (a rising scale for progress) and the SPEED UP
-fanfare — all synthesised, no samples. Every game makes a sound while you play:
+`heart`, `poof`, `step` (a rising scale for progress), `smack`, `clap`,
+`tissue`, `boing`, `clunk`, `bonk`, `fly`, `hum`, `creak`, `foot`, `goal` and
+the SPEED UP fanfare — all synthesised, no samples. HEADBANG plays its own
+hard-rock band instead of the game music: a distorted power-chord guitar
+(`chug`), bass, kick, snare and hi-hat (`hat`), louder and brighter the harder
+you rock. A browser plays no sound before the first tap, so on a fresh visit
+the title says TAP FOR SOUND, and that first tap replays the intro with the
+title tune and the shiba's bark. Every game makes a sound while you play:
 the sensor games say what is happening (the soda fizzes harder, the sleeping
 shiba snores and goes "huh?" when you twitch, the shiba sniffing for you while HIDE's lens
-is uncovered).
+is uncovered). RUN & FREEZE has footsteps while you run, a creak as the dog
+turns, a heartbeat while it watches and a growl when it catches you; SWAT's fly
+buzzes and the swat smacks; the counting games (IN ORDER, GRAB, SWIPE, LEAN)
+climb a scale with each right one and clunk on a wrong one.
 
 Sound is synthesised live (no audio files), WarioWare Touched-style:
 

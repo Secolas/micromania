@@ -499,6 +499,36 @@ const Sfx = {
   twang() { this.tone({ f: 220, f1: 90, dur: 0.18, type: 'sawtooth', vol: 0.08, lp: 1200, vib: 0.08, vibRate: 40 }); this.whoosh(); },
   tap()  { this.tone({ f: 880, f1: 1320, dur: 0.05, type: 'sine', vol: 0.16 }); this.tone({ f: 1760, dur: 0.015, type: 'square', vol: 0.025 }); },
   tick() { this.tone({ f: 1700, dur: 0.03, type: 'sine', vol: 0.14 }); this.hiss({ dur: 0.02, vol: 0.07, bp: 2500 }); },   // a woodblock
+  // ── one game's own sounds ──
+  smack()  { this.hiss({ dur: 0.07, vol: 0.22, bp: 1800, q: 0.6 }); this.tone({ f: 180, f1: 70, dur: 0.08, type: 'sine', vol: 0.16 }); },   // a swatter landing
+  clap()   { const t = this.now(); this.hiss({ t, dur: 0.05, vol: 0.2, bp: 1400, q: 0.9 }); this.hiss({ t: t + 0.012, dur: 0.07, vol: 0.14, bp: 2400, q: 0.7 }); },   // paw meets hand
+  tissue() { this.hiss({ dur: 0.16, vol: 0.12, hp: 2600, ff: 6000, q: 0.6 }); },       // shhk, out of the box
+  boing()  { this.tone({ f: 170, f1: 520, dur: 0.16, type: 'sine', vol: 0.13, vib: 0.06, vibRate: 30 }); },
+  clunk()  { this.tone({ f: 150, f1: 90, dur: 0.12, type: 'square', vol: 0.06, lp: 600 }); },   // a wrong one
+  bonk(k)  { const f = 260 + Math.min(8, k) * 45; this.tone({ f, f1: f * 0.7, dur: 0.09, type: 'triangle', vol: 0.15 }); },   // rubbery, higher each keep-up
+  fly(near) { this.tone({ f: 210 + Math.random() * 30, dur: 0.13, type: 'sawtooth', vol: near ? 0.035 : 0.018, lp: 1400, vib: 0.05, vibRate: 45 }); },   // bzzz
+  hum(k)   { this.tone({ f: 620 + Math.sin(k) * 60, dur: 0.11, type: 'square', vol: 0.03, lp: 2200, vib: 0.02, vibRate: 12 }); },   // the laser, while you're on it
+  creak()  { this.tone({ f: 330, f1: 180, dur: 0.34, type: 'sawtooth', vol: 0.06, lp: 900, vib: 0.1, vibRate: 18 }); this.hiss({ dur: 0.3, vol: 0.06, bp: 700, ff: 1500 }); },   // turning around
+  foot(i)  { this.hiss({ dur: 0.05, vol: 0.2, lp: 700 + (i % 2) * 200 }); },        // a running footstep
+  // HEADBANG's guitar: a distorted power chord (root, fifth, octave through a
+  // soft clipper), palm-muted short; bright 0..1 opens the tone up as you rock
+  chug(f, vol, bright = 0) {
+    if (!this.ac || this.muted || !this.out) return;
+    const ac = this.ac, t = ac.currentTime;
+    if (!this.distCurve) { const n = 1024, c = new Float32Array(n); for (let i = 0; i < n; i++) c[i] = Math.tanh((i * 2 / n - 1) * 6); this.distCurve = c; }
+    const sh = ac.createWaveShaper(); sh.curve = this.distCurve; sh.oversample = '2x';
+    const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 1200 + bright * 2400; lp.Q.value = 0.9;
+    const g = ac.createGain();
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.005); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.17);
+    sh.connect(lp).connect(g).connect(this.out);
+    for (const [m, d] of [[1, 0], [1.5, 6], [2, -5]]) {
+      const o = ac.createOscillator(), og = ac.createGain();
+      o.type = 'sawtooth'; o.frequency.value = f * m; o.detune.value = d; og.gain.value = 0.35;
+      o.connect(og).connect(sh); o.start(t); o.stop(t + 0.2);
+    }
+  },
+  hat()    { this.hiss({ dur: 0.03, vol: 0.05, hp: 7000 }); },                          // a closed hi-hat
+  goal()   { this.run([['G5', 0, 0.08], ['C6', 0.08, 0.08], ['E6', 0.16, 0.08], ['G6', 0.24, 0.22]], { vol: 0.03 }); },   // soft: the win sting follows it
   // WarioWare stings ───────────────────────────────────────────────────────────
   // a win: "ding-ding-DING!" up the chord, the last one ringing
   win() {
@@ -2529,7 +2559,7 @@ class PullTissue extends Microgame {
     if (this.sheetY > 0) this.sheetY = Math.max(0, this.sheetY - dt * 4);   // retract between pulls
     // a downward swipe yanks one sheet out
     if (input.swipe && input.swipe.dir === 'down') {
-      this.pulled++; Sfx.tick(); buzz(10);
+      this.pulled++; Sfx.tissue(); buzz(10);
       this.sheetY = 1;
       FX.hit(CX, CY + 20, PAL.ink);
       if (this.pulled >= this.need) this.succeed();
@@ -2610,7 +2640,7 @@ class SwipeArrow extends Microgame {
   update(dt, input) {
     if (!input.swipe) return;
     if (input.swipe.dir === this.seq[this.i]) {
-      this.i++; if (this.i < this.seq.length) this.dirT = this.t; Sfx.tick(); buzz(10); FX.burst(CX, CY, PAL.ink, 5, 40);
+      this.i++; if (this.i < this.seq.length) this.dirT = this.t; Sfx.whoosh(); Sfx.step(this.i); buzz(10); FX.burst(CX, CY, PAL.ink, 5, 40);
       if (this.i >= this.seq.length) this.succeed();
     } else { buzz(40); FX.shake(3); this.lose(); }
   }
@@ -3029,7 +3059,7 @@ class FollowDot extends Microgame {
     this.off = on ? 0 : this.off + dt;
     // a soft ping while you're on it, one warning blip the moment you slip off
     this.pingT -= dt;
-    if (on) { this.warned = false; if (this.pingT <= 0) { Sfx.blip(1320, 0.04, 'sine', 0.03); this.pingT = 0.35; } }
+    if (on) { this.warned = false; if (this.pingT <= 0) { Sfx.hum(this.t * 9); this.pingT = 0.1; } }   // a steady hum while you're on the dot
     else if (this.off > 0.12 && !this.warned) { this.warned = true; Sfx.blip(330, 0.08, 'square', 0.04); }
     if (this.off > 0.42) this.lose();
   }
@@ -3073,8 +3103,8 @@ class TapOrder extends Microgame {
       if (d < best) { best = d; k = j; }
     }
     if (k < 0) return;
-    if (k === this.i) { this.i++; Sfx.tick(); FX.hit(this.pts[k].x, this.pts[k].y, PAL.accent); if (this.i >= this.n) this.succeed(); }
-    else if (k > this.i) { this.lose(); }
+    if (k === this.i) { this.i++; Sfx.step(this.i - 1); FX.hit(this.pts[k].x, this.pts[k].y, PAL.accent); if (this.i >= this.n) this.succeed(); }   // do, re, mi...
+    else if (k > this.i) { Sfx.clunk(); this.lose(); }
   }
   draw(g) {
     g.clear();
@@ -3566,8 +3596,9 @@ class GrabCount extends Microgame {
     if (!input.justDown) return;
     for (const it of this.items) {
       if (!it.taken && Math.hypot(input.x - it.x, input.y - it.y) < 15) {
-        it.taken = true; this.got++; Sfx.tick(); FX.hit(it.x, it.y, PAL.accent);
-        if (this.got > this.need) { this.lose(); return; }     // grabbed too many
+        it.taken = true; this.got++; FX.hit(it.x, it.y, PAL.accent);
+        if (this.got > this.need) { Sfx.clunk(); this.lose(); return; }
+        Sfx.step(this.got - 1);   // a rising note for each one     // grabbed too many
         if (this.got === this.need) this.doneAt = this.t;
         return;
       }
@@ -3777,7 +3808,7 @@ class Doodle extends Microgame {
     if (this.vy > 0) {
       for (const p of this.plats) {
         if (!p.used && Math.abs(this.y - p.y) < 9 && Math.abs(this.x - p.x) < this.pw / 2 + 3) {
-          this.vy = this.bounce; if (p !== this.plats[0]) { p.used = true; this.landed++; Sfx.tick(); FX.hit(p.x, p.y, PAL.accent); }
+          this.vy = this.bounce; if (p !== this.plats[0]) { p.used = true; this.landed++; Sfx.boing(); FX.hit(p.x, p.y, PAL.accent); }
         }
       }
     }
@@ -4247,7 +4278,7 @@ class LeanDodge extends Microgame {
     if (want > 0.18 && want >= other * 0.9) {
       this.hold += dt * 1.4;                       // fills a touch faster than real time
       if (this.hold >= this.holdNeed) {
-        this.hit++; FX.hit(this.dir === 'L' ? 30 : W - 30, CY, PAL.accent); Sfx.tick(); buzz(15);
+        this.hit++; FX.hit(this.dir === 'L' ? 30 : W - 30, CY, PAL.accent); Sfx.whoosh(); Sfx.step(this.hit); buzz(15);
         if (this.hit >= this.need) { this.succeed(); return; }
         this.newDir();
       }
@@ -4506,10 +4537,11 @@ class SwatFly extends Microgame {
     } else {
       swinging = Input.camReady ? input.motion > 0.12 : input.justDown;
     }
+    if ((this.buzzT = (this.buzzT || 0) - dt) <= 0) { this.buzzT = 0.13; Sfx.fly(near); }   // bzzz, louder when you're on it
     if (near && swinging) {
       this.dwell = 0;
       this.hit++; this.pop = 0.22;
-      Sfx.tick(); buzz(15); FX.hit(this.fly.x, this.fly.y, PAL.accent);
+      Sfx.smack(); buzz(15); FX.hit(this.fly.x, this.fly.y, PAL.accent);
       if (this.hit >= this.need) { this.succeed(); return; }
       this.newFly();
     }
@@ -4642,9 +4674,10 @@ class HeadBang extends Microgame {
   // the riff: an eighth-note chug with kick and snare, at 150 bpm
   static RIFF = ['E2', 'E2', 'G2', 'E2', 'A2', 'E2', 'G2', 'D2'];
   playStep(loud) {
-    const k = this.step % 8, vol = 0.03 + loud * 0.05, f = Sfx.hz(HeadBang.RIFF[k]);
-    Sfx.tone({ f, dur: 0.16, type: 'sawtooth', vol, lp: 1400 + loud * 1600 });
-    Sfx.tone({ f: f * 1.5, dur: 0.16, type: 'sawtooth', vol: vol * 0.7, lp: 1400 + loud * 1600, detune: 8 });
+    const k = this.step % 8, f = Sfx.hz(HeadBang.RIFF[k]);
+    Sfx.chug(f, 0.035 + loud * 0.045, loud);                                             // the guitar, louder and brighter as you rock
+    Sfx.tone({ f: f / 2, dur: 0.18, type: 'triangle', vol: 0.06 + loud * 0.04 });        // the bass, an octave down
+    Sfx.hat();
     if (k % 4 === 0) Sfx.tone({ f: 120, f1: 45, dur: 0.14, type: 'sine', vol: 0.12 });   // kick
     if (k % 4 === 2) Sfx.hiss({ dur: 0.12, vol: 0.06 + loud * 0.04, bp: 1800, q: 0.7 });  // snare
     if (k % 4 === 2) this.flash = 0.12;
@@ -4841,7 +4874,7 @@ class Juggle extends Microgame {
       if (best && bd < 24) {
         best.vy = -this.byD(150, 160, 170);
         best.vx = Math.max(-75, Math.min(75, best.vx + (best.x - t.x) * 3));
-        Sfx.boop(); buzz(12); FX.hit(best.x, best.y, PAL.accent);
+        this.keeps = (this.keeps || 0) + 1; Sfx.bonk(this.keeps); buzz(12); FX.hit(best.x, best.y, PAL.accent);
       }
     }
   }
@@ -5105,7 +5138,7 @@ class Dandelion extends Microgame {
   // a seed comes loose and floats off, the way it was pulled or blown
   release(s, vx, vy) {
     s.gone = true; s.vx = vx; s.vy = vy; s.spin = (Math.random() - 0.5) * 12;
-    this.cleared++; Sfx.tick(); buzz(14); FX.hit(s.x, s.y, PAL.ink);
+    this.cleared++; Sfx.poof(); buzz(14); FX.hit(s.x, s.y, PAL.ink);
   }
   // grab a seed and drag it far enough from the head to pull it off
   pull(input) {
@@ -5368,26 +5401,30 @@ class SquidDoll extends Microgame {
     switch (this.phase) {
       case 'green':                                   // the dog turned away — RUN
         this.face = 4;                                // back of head
-        if (moving > this.thr) this.prog = Math.min(1, this.prog + dt * this.speed * Math.min(1.4, moving / 0.2));
-        if (this.prog >= 1) { this.succeed(); return; }
-        if (this.pt <= 0) { this.phase = 'toRed'; this.pt = this.turn; }
+        if (moving > this.thr) {
+          this.prog = Math.min(1, this.prog + dt * this.speed * Math.min(1.4, moving / 0.2));
+          if ((this.footT = (this.footT || 0) - dt) <= 0) { this.footT = 0.16; Sfx.foot(this.feet = (this.feet || 0) + 1); }
+        }
+        if (this.prog >= 1) { Sfx.goal(); this.succeed(); return; }
+        if (this.pt <= 0) { this.phase = 'toRed'; this.pt = this.turn; Sfx.creak(); }
         break;
       case 'toRed':                                   // spinning to face you (grace — no fail yet)
         this.face = 2;                                // profile mid-spin
-        if (this.pt <= 0) { this.phase = 'red'; this.pt = this.rT; this.caught = 0; }
+        if (this.pt <= 0) { this.phase = 'red'; this.pt = this.rT; this.caught = 0; this.heartT = 0; this.growled = false; }
         break;
       case 'red':                                     // the dog watching — FREEZE
         this.face = 0;                                // facing you
+        if ((this.heartT -= dt) <= 0) { this.heartT = 0.5; Sfx.heart(); }   // ba-dum while it watches
         if (moving > this.thr) {
           this.caught += dt;
-          if (this.caught > 0.15) this.flash = 0.15;  // only react to sustained movement, not camera noise
+          if (this.caught > 0.15) { this.flash = 0.15; if (!this.growled) { this.growled = true; Sfx.growl(); } }  // only react to sustained movement, not camera noise
           if (this.caught > 0.5) { buzz(90); FX.shake(4); this.lose(); return; }
         } else this.caught = Math.max(0, this.caught - dt * 0.8);
         if (this.pt <= 0) { this.phase = 'toGreen'; this.pt = this.turn; }
         break;
       case 'toGreen':                                 // spinning back away
         this.face = 2;
-        if (this.pt <= 0) { this.phase = 'green'; this.pt = this.gT; }
+        if (this.pt <= 0) { this.phase = 'green'; this.pt = this.gT; Sfx.whoosh(); }
         break;
     }
   }
@@ -5476,7 +5513,7 @@ class HighFive extends Microgame {
       // where your hand(s) were, for the photo's paw: the busiest spot of each raised paw's side
       this.hands = (this.side === 'B' ? ['L', 'R'] : [this.side]).map(k => Input.camReady ? Input.motionPeakAt(...this.zone(k)) : null).filter(Boolean);
       this.done++; this.pop = 0.3; this.cheer = 0.35;
-      Sfx.tick(); buzz(25); FX.shake(2);
+      Sfx.clap(); buzz(25); FX.shake(2);
       for (const k of this.side === 'B' ? ['L', 'R'] : [this.side]) FX.hit(HighFive.PAW[k].x, HighFive.PAW[k].y, PAL.accent);
       if (this.done >= this.need) { this.cheer = 0; this.succeed(); }
     }
@@ -6832,7 +6869,7 @@ const Engine = {
     Wipe.update(dt); Juice.update(dt);
     // the title plays its intro every time you arrive (not back from the album)
     if (this.state !== this._lastState) {
-      if (this.state === 'TITLE') { this.titleT = ['ALBUM', 'SETTINGS'].includes(this._lastState) ? 9 : 0; this.titleSfx = 0; }
+      if (this.state === 'TITLE') { this.titleT = ['ALBUM', 'SETTINGS'].includes(this._lastState) ? 9 : 0; this.titleSfx = 0; this.introHeard = !!Sfx.ac; }
       this._lastState = this.state;
     }
     if (this.state === 'TITLE') this.titleIntro(dt);
@@ -7132,6 +7169,14 @@ const Engine = {
       this.waitReady = false; Prefs.set('learned.' + this.game.meta.id, true);
       this.timer = 0.6; Sfx.tap(); Input.flush(); return;
     }
+    // A browser plays no sound until the first tap, so on a fresh visit the
+    // intro ran silent: that first tap plays it again, with the music and the
+    // shiba's bark (a tap on a button once it has settled still goes through)
+    if (s === 'TITLE' && !this.introHeard) {
+      this.introHeard = true;
+      const onBtn = [this.BTN_RUN, this.BTN_CLASSIC, this.BTN_ALBUM, this.BTN_SET].some(b => this.hit(b, p));
+      if ((this.titleT || 0) < this.TITLE_INTRO || !onBtn) { this.titleT = 0; this.titleSfx = 0; return; }
+    }
     if (s === 'TITLE' && (this.titleT || 0) < this.TITLE_INTRO) { this.titleT = 9; this.titleSfx = 99; return; }
     if (s === 'TITLE' && this.timer <= 0 && this.hit(this.BTN_ALBUM, p)) {
       Sfx.unlock(); Sfx.tap();
@@ -7261,6 +7306,7 @@ const Engine = {
     if (Run.best) best.push('RUN ' + Run.label(Run.best));
     if (this.best) best.push('CLASSIC ' + this.best);
     if (best.length && t > this.TITLE_INTRO) g.outline('BEST  ' + best.join('  ·  '), CX, H - 24, 8, PAL.ink);
+    if (!this.introHeard && t > this.TITLE_INTRO && Math.floor(this.time * 2) % 2) g.outline('TAP FOR SOUND', CX, H - 10, 8, PAL.accent);   // a fresh visit, still silent
   },
 
   // ── SHARE ──────────────────────────────────────────────────────────────────
