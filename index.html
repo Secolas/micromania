@@ -234,11 +234,11 @@ const Coat = {
   ],
   SHEETS: ['shiba', 'fullshiba', 'fullidle', 'breakjump', 'catcher', 'hero', 'face', 'pump', 'dryshake', 'hopdog', 'ordersign',
     'flydog', 'swipeup', 'swipedown', 'runjump', 'swiperight', 'swipeleft', 'hidedog', 'facedir', 'rubdog', 'sleepdog', 'rocker',
-    'yesno', 'wag', 'feed', 'lean', 'leanmove', 'sledmove', 'sledder', 'digmove', 'highfive', 'demo', 'runcowboy', 'jumpcowboy', 'chefmove', 'worn'],
+    'yesno', 'wag', 'feed', 'lean', 'leanmove', 'sledmove', 'sledder', 'digmove', 'highfive', 'demo', 'runcowboy', 'jumpcowboy', 'chefmove', 'worn', 'neckwear'],
   // art/worn.png: the hats PixelLab drew on the shiba have its ears in them. Only
   // what's near a colour of the shiba's own fur (art/fullshiba.png) is fur; the
   // cowboy hat's browns, the crown's and halo's golds are further off.
-  NEAR: { worn: 25 },
+  NEAR: { worn: 25, neckwear: 25 },
   KEEP: { runcowboy: [0x762d1a, 0x89583c, 0x975c36], jumpcowboy: [0x762d1a, 0x89583c, 0x975c36] },   // JUMP!'s cowboy hat's browns
   // each coat's fur for a shade t (0 the darkest orange, 1 the brightest), as hue, saturation, value
   FUR: {
@@ -344,6 +344,12 @@ const Assets = {
     highfive: { src: 'art/highfive.png', fw: 64,  fh: 64,  frames: 14, fps: 1  },
     breakjump:{ src: 'art/breakjump.png', fw: 64, fh: 96,  frames: 8,  fps: 1  },
     hats:     { src: 'art/hats.png',     fw: 32,  fh: 32,  frames: 16, fps: 1  },
+    neckwear: { src: 'art/neckwear.png', fw: 64,  fh: 48,  frames: 5,  fps: 1  },
+    neckicons:{ src: 'art/neckicons.png', fw: 32, fh: 32,  frames: 5,  fps: 1  },
+    paws_fullshiba:{ src: 'art/paws_fullshiba.png', fw: 48, fh: 64, frames: 11, fps: 1 },
+    paws_breakjump:{ src: 'art/paws_breakjump.png', fw: 64, fh: 96, frames: 8, fps: 1 },
+    paws_shiba:    { src: 'art/paws_shiba.png',    fw: 35, fh: 37, frames: 17, fps: 1 },
+    paws_fullidle: { src: 'art/paws_fullidle.png', fw: 64, fh: 64, frames: 22, fps: 1 },
     worn:     { src: 'art/worn.png',     fw: 64,  fh: 48,  frames: 11, fps: 1  },
     chefmove: { src: 'art/chefmove.png', fw: 64,  fh: 64,  frames: 11, fps: 1  },
     cookfood: { src: 'art/cookfood.png', fw: 32,  fh: 28,  frames: 5,  fps: 1  },
@@ -3157,8 +3163,10 @@ class FollowDot extends Microgame {
     this.off = 0; this.grace = 0.7;     // time to get your finger there
     this.pingT = 0; this.warned = false;
     this.dx = CX; this.dy = BOT - 20; this.face = 1;   // the shiba chasing the dot
+    this.trail = [];                                    // where the dot just was, for its streak
   }
   update(dt, input) {
+    this.trail.unshift({ x: this.x, y: this.y }); if (this.trail.length > 7) this.trail.pop();
     this.x += this.vx * dt; this.y += this.vy * dt;
     if (this.x < 16 || this.x > W - 16) this.vx *= -1;
     if (this.y < TOP + 16 || this.y > BOT - 16) this.vy *= -1;
@@ -3182,10 +3190,26 @@ class FollowDot extends Microgame {
     const held = this.off === 0 && this.grace <= 0;
     // where your finger has to stay, and the laser dot itself
     ctx.globalAlpha = held ? 0.35 : 0.2; g.circle(this.x, this.y, this.r, held ? PAL.accent : PAL.mid); ctx.globalAlpha = 1;
-    g.sprite('laser', this.x, this.y);   // art/laser.png
+    this.laserDot(this.x, this.y);
     if (this.off > 0 && this.grace <= 0) g.bar(30, BOT - 14, W - 60, 5, 1 - this.off / 0.42, PAL.bad, PAL.mid);
   }
 }
+
+// the laser pointer's dot on the floor: a hot white core in a small red dot,
+// a soft red glow that flickers, and a fading streak where it's just been
+FollowDot.prototype.laserDot = function (x, y) {
+  for (let i = this.trail.length - 1; i >= 0; i--) {   // the streak, thinning out behind it
+    const p = this.trail[i], k = 1 - (i + 1) / (this.trail.length + 1);
+    ctx.globalAlpha = 0.45 * k; g.circle(p.x, p.y, 1 + 2 * k, '#ff2a2a');
+  }
+  ctx.globalAlpha = 1;
+  const fl = 0.85 + Math.sin(this.t * 47) * 0.1 + Math.sin(this.t * 23) * 0.05, r = 11 * fl;
+  const glow = ctx.createRadialGradient(x, y, 0, x, y, r);
+  glow.addColorStop(0, 'rgba(255,70,70,0.75)'); glow.addColorStop(0.35, 'rgba(255,30,30,0.32)'); glow.addColorStop(1, 'rgba(255,0,0,0)');
+  ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(x, y, r, 0, 6.2832); ctx.fill();
+  g.circle(x, y, 3.2, '#ff2020');
+  g.circle(x, y, 1.6, '#fff4f0');
+};
 
 // 13. SEQUENCE — tap the targets in numbered order
 class TapOrder extends Microgame {
@@ -6577,7 +6601,17 @@ const Closet = {
     { id: 'flower',  name: 'FLOWER',        f: 7,  sit: 3, dx: -6, band: 8, how: 'TAKE 5 SELFIES',  got: s => s.photos >= 5 },
     { id: 'crown',   name: 'CROWN',         f: 11, sit: 3, between: true, band: 9, how: 'ALL 7 BOSSES IN ONE CLASSIC GAME', got: s => !!s.allBosses },
   ],
-  item(id) { return this.ITEMS.find(i => i.id === id); },
+  // things worn round the neck, together with a hat: PixelLab drew each on the
+  // shiba (art/neckwear.png, 64x48 cells, the eye line on row 8, the eyes'
+  // middle on column 32); art/neckicons.png has their cards
+  NECK: [
+    { id: 'bandana', name: 'BANDANA',     neck: true, band: 0, how: 'WIN 5 GAMES',          got: s => s.wins >= 5 },
+    { id: 'bowtie',  name: 'BOW TIE',     neck: true, band: 1, how: 'SCORE 15 IN CLASSIC',  got: s => s.classic >= 15 },
+    { id: 'bell',    name: 'BELL COLLAR', neck: true, band: 2, game: 'walkies', how: 'BEAT WALKIES', got: s => !!s.beat.walkies },
+    { id: 'lei',     name: 'FLOWER LEI',  neck: true, band: 3, game: 'dig', how: 'BEAT DIG',   got: s => !!s.beat.dig },
+    { id: 'scarf',   name: 'SCARF',       neck: true, band: 4, how: 'WIN 50 GAMES',         got: s => s.wins >= 50 },
+  ],
+  item(id) { return this.ITEMS.find(i => i.id === id) || this.NECK.find(i => i.id === id); },
 
   // what you've done, kept across runs
   _s: null,
@@ -6585,7 +6619,7 @@ const Closet = {
     if (this._s) return this._s;
     let s = {};
     try { s = JSON.parse(localStorage.getItem(this.KEY) || '{}'); } catch (e) {}
-    this._s = Object.assign({ wins: 0, bosses: [], photos: 0, met: [], toy: {}, owned: [], hat: null, beat: {}, allBosses: false, coats: ['red'], coat: 'red' }, s);
+    this._s = Object.assign({ wins: 0, bosses: [], photos: 0, met: [], toy: {}, owned: [], hat: null, beat: {}, allBosses: false, coats: ['red'], coat: 'red', necks: [], neck: null }, s);
     return this._s;
   },
   save() { try { localStorage.setItem(this.KEY, JSON.stringify(this.stats)); } catch (e) {} },
@@ -6602,15 +6636,15 @@ const Closet = {
   won(id, boss) {
     const s = this.stats; s.wins++;
     if (boss && !s.bosses.includes(id)) s.bosses.push(id);
-    if (this.ITEMS.some(i => i.game === id)) s.beat[id] = true;   // a game with something to win in it
+    if ([...this.ITEMS, ...this.NECK].some(i => i.game === id)) s.beat[id] = true;   // a game with something to win in it
     this.save(); this.check();
   },
   // every boss beaten in one Classic game: the crown
   allBosses() { if (!this.stats.allBosses) { this.stats.allBosses = true; this.save(); this.check(); } },
   // the thing a game has to win, if you haven't got it yet (for its prompt)
-  prize(gameId) { return this.ITEMS.find(i => i.game === gameId && !this.owns(i.id)) || null; },
+  prize(gameId) { return this.ITEMS.find(i => i.game === gameId && !this.owns(i.id)) || this.NECK.find(i => i.game === gameId && !this.stats.necks.includes(i.id)) || null; },
   // dev menu: everything, or a fresh start
-  unlockAll() { const s = this.stats; s.owned = this.ITEMS.map(i => i.id); s.coats = Coat.LIST.map(c => c.id); s.met = [...POOL, ...BOSSES].map(C => C.meta.id); this.save(); },   // every game in the toy room too
+  unlockAll() { const s = this.stats; s.owned = this.ITEMS.map(i => i.id); s.coats = Coat.LIST.map(c => c.id); s.necks = this.NECK.map(i => i.id); s.met = [...POOL, ...BOSSES].map(C => C.meta.id); this.save(); },   // every game in the toy room too
   resetAll() { this._s = null; try { localStorage.removeItem(this.KEY); } catch (e) {} this.check(); },
   photo() { this.stats.photos++; this.save(); this.check(); },
   toyBest(id, lv) { const s = this.stats; if ((s.toy[id] || 0) < lv) { s.toy[id] = lv; this.save(); } },
@@ -6624,6 +6658,10 @@ const Closet = {
       s.owned.push(it.id);
       if (it.id !== 'party') Toast.show('NEW! ' + it.name, it);   // the free one is just there
     }
+    for (const it of this.NECK) {
+      if (s.necks.includes(it.id) || !it.got(v)) continue;
+      s.necks.push(it.id); Toast.show('NEW! ' + it.name, it);
+    }
     for (const c of Coat.LIST) {
       if (s.coats.includes(c.id) || !c.got(v)) continue;
       s.coats.push(c.id); Toast.show('NEW! ' + c.name, { coat: c.id });   // with the shiba's face in it
@@ -6632,6 +6670,8 @@ const Closet = {
   },
   wearCoat(id) { this.stats.coat = id; this.save(); },
   get hat() { const h = this.stats.hat; return h && this.owns(h) ? this.item(h) : null; },
+  get neck() { const n = this.stats.neck; return n && this.stats.necks.includes(n) ? this.item(n) : null; },
+  wearNeck(id) { this.stats.neck = id; this.save(); },
   wear(id) { this.stats.hat = id; this.save(); },
 
   // Where the head is in each frame of a sheet, found once from its pixels.
@@ -6708,10 +6748,15 @@ const Closet = {
 
   // Draw the equipped hat on a sheet's frame drawn centred at cx, cy at w x h
   // (as g.sprite does). Its scale is the sprite's, so a 2x shiba wears it 2x.
-  dress(name, frame, cx, cy, w, h, it = this.hat) {
-    if (!it) return;
+  dress(name, frame, cx, cy, w, h, it = this.hat, neck = this.neck) {
+    if (!it && !neck) return;
     const a = Assets.get(name), hd = this.head(name, frame); if (!a || !hd) return;
     const k = w / a.fw;
+    if (neck) {   // round the neck: its cell's row 8 on this frame's eye line, its middle on the eyes, behind a raised paw
+      const N = this.neckFor(name, frame, neck, hd);
+      if (N) ctx.drawImage(N.c, 0, 0, N.c.width, N.c.height, Math.round(cx - w / 2 + N.x * k), Math.round(cy - h / 2 + N.y * k), N.c.width * k, N.c.height * k);
+    }
+    if (!it) return;
     // art/worn.png, 64x48 cells: things PixelLab drew on the shiba itself (a
     // hat with the ears as they come through it, or sunglasses), lined up so
     // the cell's row 32 goes on this frame's eye line and its middle on the eyes.
@@ -6735,8 +6780,32 @@ const Closet = {
       ctx.restore();
     }
   },
+  // A neck thing for one frame, at the sheet's own size (cached): its cell from
+  // art/neckwear.png with a hole wherever a paw is up in front of the chest, so
+  // the paw stays in front. art/paws_<sheet>.png has the paws: PixelLab coloured
+  // each frame's front legs green, less the legs where they rest.
+  _necks: {},
+  neckFor(name, frame, it, hd) {
+    const key = [name, frame, it.band, Coat.id].join(':');
+    if (this._necks[key] !== undefined) return this._necks[key];
+    const a = Assets.raw(name), N = Assets.get('neckwear'); if (!a || !N) return null;
+    const x0 = Math.round(hd.ex + 0.5) - N.fw / 2, y0 = Math.round(hd.ey) - 8;
+    const c = document.createElement('canvas'); c.width = N.fw; c.height = N.fh;
+    const x = c.getContext('2d'); x.drawImage(N.img, it.band * N.fw, 0, N.fw, N.fh, 0, 0, N.fw, N.fh);
+    const P = Assets.raw('paws_' + name);
+    if (P) {   // cut the paw out of it: drawn at the frame's place, the mask erases what it covers
+      x.globalCompositeOperation = 'destination-out';
+      x.drawImage(P.img, frame * P.fw, 0, P.fw, P.fh, -x0, -y0, P.fw, P.fh);
+      x.globalCompositeOperation = 'source-over';
+    }
+    return (this._necks[key] = { c, x: x0, y: y0 });
+  },
   // an item with its bottom middle at x, y, at scale k (also the closet's cards)
   drawItem(it, x, y, k = 1) {
+    if (it.neck) {   // art/neckicons.png
+      const a = Assets.get('neckicons'); if (a) ctx.drawImage(a.img, it.band * a.fw, 0, a.fw, a.fh, Math.round(x - a.fw * k / 2), Math.round(y - a.fh * k), a.fw * k, a.fh * k);
+      return;
+    }
     if (it.coat) {   // a coat: the shiba's face in it (art face, frame 0)
       const a = Assets.raw('face'), c = a && Coat.sheet('face', a, it.coat);
       if (c) ctx.drawImage(c.img, 0, 0, c.fw, c.fh, Math.round(x - c.fw * k / 2), Math.round(y - c.fh * k), c.fw * k, c.fh * k);
@@ -8301,8 +8370,8 @@ const Engine = {
   // where your shiba wears what you've earned. A toy-room game is practice: no
   // lives, no best score, no surprises, and it comes straight back here.
   TOY_BACK: { x: 16, y: TOP + 2, w: 40, h: 16 },
-  TOY_TABS: [{ id: 'games', label: 'GAMES', x: 8, y: TOP + 24, w: 52, h: 20 }, { id: 'closet', label: 'CLOSET', x: 64, y: TOP + 24, w: 52, h: 20 },
-    { id: 'coats', label: 'COATS', x: 120, y: TOP + 24, w: 52, h: 20 }],
+  TOY_TABS: [{ id: 'games', label: 'GAMES', x: 6, y: TOP + 24, w: 40, h: 20 }, { id: 'closet', label: 'HATS', x: 49, y: TOP + 24, w: 40, h: 20 },
+    { id: 'neck', label: 'NECK', x: 92, y: TOP + 24, w: 40, h: 20 }, { id: 'coats', label: 'COATS', x: 135, y: TOP + 24, w: 40, h: 20 }],
   TOY_PER: 12,
   toyLvBtn(i) { return { x: CX - 14 + i * 26, y: TOP + 50, w: 22, h: 16 }; },
   toyCard(i) { const c = i % 2, r = (i / 2) | 0; return { x: 18 + c * 73, y: TOP + 72 + r * 24, w: 71, h: 22 }; },
@@ -8311,6 +8380,7 @@ const Engine = {
   TOY_NEXT: { x: W - 50, y: TOP + 220, w: 32, h: 18 },
   closetCard(i) { const c = i % 6, r = (i / 6) | 0; return { x: 7 + c * 28, y: TOP + 164 + r * 32, w: 27, h: 30 }; },
   coatCard(i) { return { x: 9 + i * 41, y: TOP + 164, w: 39, h: 46 }; },
+  neckCard(i) { return { x: 6 + i * 34, y: TOP + 166, w: 32, h: 40 }; },
   toyGames() { return [...POOL, ...BOSSES]; },
   openToy(tab) {
     this.state = 'TOYROOM'; this.timer = 0.2;
@@ -8335,7 +8405,7 @@ const Engine = {
   },
   toyRelease(p) {
     if (this.hit(this.TOY_BACK, p)) { Sfx.tap(); this.state = 'TITLE'; this.timer = 0.2; return; }
-    for (const tb of this.TOY_TABS) if (this.hit(tb, p)) { Sfx.tap(); this.toyTab = tb.id; this.toySel = null; return; }
+    for (const tb of this.TOY_TABS) if (this.hit(tb, p)) { Sfx.tap(); this.toyTab = tb.id; this.toySel = null; this.toyLock = null; return; }
     if (this.toyTab === 'games') {
       for (let i = 0; i < 3; i++) if (this.hit(this.toyLvBtn(i), p)) { Sfx.tap(); this.toyLv = i + 1; return; }
       const L = this.toyGames(), pages = Math.ceil(L.length / this.TOY_PER);
@@ -8344,17 +8414,26 @@ const Engine = {
       for (let i = 0; i < this.TOY_PER; i++) {
         const C = L[this.toyPage * this.TOY_PER + i];
         if (!C || !this.hit(this.toyCard(i), p)) continue;
-        if (!Closet.stats.met.includes(C.meta.id)) { Sfx.fail(); this.toyMsg = ['PLAY IT IN A RUN FIRST', PAL.mid]; this.toyMsgT = 1.6; return; }
+        if (!Closet.stats.met.includes(C.meta.id)) { Sfx.fail(); this.locked('THIS GAME', 'PLAY IT IN A RUN FIRST'); return; }
         Sfx.tap(); this.playToy(C); return;
       }
       return;
     }
     if (DEBUG && this.hit(this.TOY_DEV, p)) { Sfx.tap(); Closet.unlockAll(); return; }
+    if (this.toyTab === 'neck') {   // tap one you have to wear it (again to take it off); a locked one says how to earn it
+      Closet.NECK.forEach((it, i) => {
+        if (!this.hit(this.neckCard(i), p)) return;
+        this.toySel = it.id;
+        if (!Closet.stats.necks.includes(it.id)) { Sfx.fail(); this.locked(it.name, it.how); return; }
+        Sfx.tap(); Closet.wearNeck(Closet.stats.neck === it.id ? null : it.id);
+      });
+      return;
+    }
     if (this.toyTab === 'coats') {   // a coat you have: wear it; a locked one says how to earn it
       Coat.LIST.forEach((c, i) => {
         if (!this.hit(this.coatCard(i), p)) return;
         this.toySel = c.id;
-        if (!Closet.stats.coats.includes(c.id)) { Sfx.fail(); return; }
+        if (!Closet.stats.coats.includes(c.id)) { Sfx.fail(); this.locked(c.name + ' COAT', c.how); return; }
         Sfx.tap(); Closet.wearCoat(c.id);
       });
       return;
@@ -8363,15 +8442,27 @@ const Engine = {
     Closet.ITEMS.forEach((it, i) => {
       if (!this.hit(this.closetCard(i), p)) return;
       this.toySel = it.id;
-      if (!Closet.owns(it.id)) { Sfx.fail(); return; }
+      if (!Closet.owns(it.id)) { Sfx.fail(); this.locked(it.name, it.how); return; }
       Sfx.tap(); Closet.wear(Closet.stats.hat === it.id ? null : it.id);
     });
+  },
+  // a locked thing tapped: a note over the mirror saying how to unlock it
+  locked(name, how) { this.toyLock = { name, how, t: 2.4 }; },
+  drawToyLock() {
+    const L = this.toyLock; if (!L || L.t <= 0) return;
+    L.t -= STEP;
+    const k = Math.min(1, (2.4 - L.t) / 0.12, L.t / 0.25), w = 156, h = 50, x = CX - w / 2, y = Math.round(TOP + 92 + (1 - k) * 8);
+    ctx.globalAlpha = Math.max(0, k);
+    g.nine('buttons', 1, x, y, w, h, 6) || g.rect(x, y, w, h, PAL.accent);
+    g.text('LOCKED: ' + L.name, CX, y + 17, 8, PAL.bg);
+    g.text(L.how.startsWith('PLAY') ? L.how : 'TO UNLOCK: ' + L.how, CX, y + 33, L.how.length > 22 ? 6 : 7, PAL.bg);
+    ctx.globalAlpha = 1;
   },
   drawToyRoom() {
     const B = this.TOY_BACK;
     g.button(B, false); g.text('BACK', B.x + B.w / 2, B.y + 11, 7, PAL.ink);
     g.text('TOY ROOM', CX + 18, TOP + 16, 12, PAL.accent);
-    for (const tb of this.TOY_TABS) { const on = this.toyTab === tb.id; g.button(tb, on); g.text(tb.label, tb.x + tb.w / 2, tb.y + 14, 9, on ? PAL.bg : PAL.ink); }
+    for (const tb of this.TOY_TABS) { const on = this.toyTab === tb.id; g.button(tb, on); g.text(tb.label, tb.x + tb.w / 2, tb.y + 14, 7, on ? PAL.bg : PAL.ink); }
     if (this.toyMsgT > 0) this.toyMsgT -= STEP;
     if (this.toyTab === 'games') {
       g.text('LEVEL', CX - 30, TOP + 62, 8, PAL.ink, 'right');
@@ -8396,6 +8487,7 @@ const Engine = {
       const n = L.filter(C => met.includes(C.meta.id)).length;
       g.text(n + ' OF ' + L.length + ' GAMES MET', CX, TOP + 254, 7, PAL.mid);
       if (this.toyMsgT > 0) g.outline(this.toyMsg[0], CX, TOP + 270, 9, this.toyMsg[1]);
+      this.drawToyLock();
       return;
     }
     // CLOSET: a mirror with your shiba in it, head and shoulders at 2x, wearing
@@ -8418,7 +8510,8 @@ const Engine = {
     ctx.restore();
     const own = Closet.stats.owned;
     if (DEBUG) { const D = this.TOY_DEV; g.button(D, false); g.text('ALL', D.x + D.w / 2, D.y + 11, 7, PAL.accent); }   // ?dev: unlock everything
-    if (this.toyTab === 'coats') { this.drawCoats(); return; }
+    if (this.toyTab === 'coats') { this.drawCoats(); this.drawToyLock(); return; }
+    if (this.toyTab === 'neck') { this.drawNecks(); this.drawToyLock(); return; }
     Closet.ITEMS.forEach((it, i) => {
       const c = this.closetCard(i), has = own.includes(it.id), on = Closet.stats.hat === it.id;
       if (on) g.button(c, true); else if (has) g.nine('buttons', 0, c.x, c.y, c.w, c.h, 6);
@@ -8434,6 +8527,25 @@ const Engine = {
       g.text(Closet.owns(sel.id) ? (Closet.stats.hat === sel.id ? 'WEARING IT  ·  TAP TO TAKE OFF' : 'TAP TO WEAR') : sel.how, CX, y + 12, 7, Closet.owns(sel.id) ? PAL.ink : PAL.mid);
     } else g.text('TAP SOMETHING TO WEAR IT', CX, y + 6, 7, PAL.mid);
     g.text(own.length + ' OF ' + Closet.ITEMS.length + ' COLLECTED', CX, y + 26, 7, PAL.mid);
+    this.drawToyLock();
+  },
+  // NECK: one card each; worn with whatever hat you have on
+  drawNecks() {
+    const have = Closet.stats.necks, now = Closet.stats.neck;
+    Closet.NECK.forEach((it, i) => {
+      const b = this.neckCard(i), has = have.includes(it.id);
+      if (now === it.id && has) g.button(b, true); else if (has) g.nine('buttons', 0, b.x, b.y, b.w, b.h, 6);
+      else if (Assets.get('buttons')) { ctx.globalAlpha = 0.45; g.nine('buttons', 0, b.x, b.y, b.w, b.h, 6); ctx.globalAlpha = 1; }
+      if (has) Closet.drawItem(it, b.x + b.w / 2, b.y + b.h - 4, 1);
+      else { ctx.globalAlpha = 0.25; Closet.drawItem(it, b.x + b.w / 2, b.y + b.h - 4, 1); ctx.globalAlpha = 1; g.text('?', b.x + b.w / 2, b.y + 25, 11, PAL.ink); }
+    });
+    const sel = Closet.item(this.toySel) || Closet.neck, y = TOP + 246;
+    if (sel && sel.neck) {
+      const has = have.includes(sel.id);
+      g.text(sel.name, CX, y, 9, PAL.accent);
+      g.text(has ? (now === sel.id ? 'WEARING IT  ·  TAP TO TAKE OFF' : 'TAP TO WEAR') : sel.how, CX, y + 12, 7, has ? PAL.ink : PAL.mid);
+    } else g.text('WEAR ONE WITH YOUR HAT', CX, y + 6, 7, PAL.mid);
+    g.text(have.length + ' OF ' + Closet.NECK.length + ' COLLECTED', CX, y + 26, 7, PAL.mid);
   },
   // COATS: one card each, the shiba's face in it; the mirror above shows it on you
   drawCoats() {
