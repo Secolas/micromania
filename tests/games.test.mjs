@@ -60,7 +60,14 @@ export default async function ({ url, launch }) {
   // STACK: drop each one right over the top of the tower (it sways, so aim at where the top is now)
   out.wins.stack = play(StackBlocks, 3, (gm) => { if (gm.drop || gm.endT || gm.tumble.length) return; const tx = gm.done ? gm.xAt(gm.done - 1) : gm.baseX; if (Math.abs(gm.bx - tx) <= 2) tapAt(90, 150); });
   // ... and a careless player who taps whenever: should lose most of the time
-  out.losses = { stack: play(StackBlocks, 3, (gm, i) => { if (i % 25 === 10) tapAt(90, 150); }) };
+  out.losses = { stack: play(StackBlocks, 3, (gm, i) => { if (i % 25 === 10) tapAt(90, 150); }),
+    // COOK: a cook who grabs whatever's in the wrong bin burns it
+    cook: play(CookBurger, 3, (gm, i) => { if (i % 6 === 3) { const b = gm.bins.find(b => b.f !== gm.recipe[gm.i]); tapAt(b.x + b.w / 2, b.y + 20); } }) };
+  // COOK: tap the ticket's next food, one at a time, a beat apart
+  out.wins.cook = play(CookBurger, 3, (gm, i) => {
+    const k = gm.i + gm.fly.filter(f => !f.bad).length;
+    if (i % 8 === 4 && k < gm.recipe.length) { const b = gm.bins.find(b => b.f === gm.recipe[k]); tapAt(b.x + b.w / 2, b.y + 20); }
+  });
   out.wins.shh = play(DontTap, 3, () => {});
   out.wins.dodge = play(Dodge, 3, (gm) => { const danger = gm.blocks.filter(b => b.y > gm.py - 80 && b.y < gm.py + 10); let best = gm.px, bs = -1; for (let x = 12; x < W - 12; x += 4) { const s = Math.min(...danger.map(b => Math.abs(b.x - x) - b.w / 2), 999); if (s > bs) { bs = s; best = x; } } hold(best, 250); });
   out.wins.squeeze = play(Squeeze, 3, (gm) => { const w = gm.walls.filter(w => w.y < gm.py).sort((a, b) => b.y - a.y)[0]; hold(w ? w.gx : 90, 250); });
@@ -112,6 +119,7 @@ export default async function ({ url, launch }) {
   assert(!out.crash.length, 'games crashed or never ended: ' + out.crash.join(', '));
   // a working game should be winnable most of the time by a player who reads it
   for (const [id, r] of Object.entries(out.wins)) { const [w, n] = r.split('/').map(Number); assert(w >= n * 0.4, `${id}: scripted player won only ${r}`); }
+  { const [w, n] = out.losses.cook.split('/').map(Number); assert(w === 0, 'COOK: tapping the wrong food should never win, won ' + out.losses.cook); }
   assert(out.fakeIdleWins, 'fake-out: leaving it alone should win');
   assert(out.fakeTouchLoses, 'fake-out: touching it should lose');
   await done();

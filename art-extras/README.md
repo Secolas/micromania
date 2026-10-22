@@ -73,3 +73,17 @@ gripping paw, and the game's calm shiba face; each at its cell's top-left (see `
 bow (small, by an ear), beanie, cowboy hat, wizard hat, halo, propeller cap,
 flower (small, by an ear), sunglasses (worn on the eyes), and the mini beanie
 SLED's rider wears. The crown reuses `art/crown.png`. See `Closet.ITEMS`.
+
+## cook/ (COOK!, 2026-10-22)
+
+| File | Size | What it is |
+| --- | --- | --- |
+| `burger-icon.png` | 32×32 | PixelLab was asked for a top bun and drew a whole burger. The game's top bun is a hand-pixelled layer in `art/cooklayers.png`. |
+| `plate-topdown.png` | 44×26 | The plate seen from above. The burger is drawn from the side, so `art/plate.png` is a side-on plate pixelled by hand. |
+
+COOK!'s art: `art/kitchen.png` (PixelLab backdrop), `art/cookfood.png` (the
+bins' and ticket's pictures: bun, patty, cheese, lettuce, tomato),
+`art/cooklayers.png` (the burger's layers from the side), `art/plate.png`,
+`art/custidle.png` / `art/custfull.png` (the black-and-tan customer: the
+shiba's own sheets recoloured), and the chef hat at `art/hats.png` frame 14
+(PixelLab's chef hat, redrawn small).
