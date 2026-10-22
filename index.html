@@ -6223,18 +6223,19 @@ const Closet = {
   // rider's beanie, the HEADBANG rocker's shades). face: worn on the eyes
   // (the sunglasses), not on top. sit: how far the hat's
   // bottom comes down past the top of the head (kept clear of the eyes on
-  // every shiba it goes on); dx: off to one side (the bow and flower, by an ear)
+  // every shiba it goes on); dx: off to one side (the bow and flower, by an ear);
+  // between: worn between the ears, which stand in front of it
   ITEMS: [
     { id: 'party',   name: 'PARTY HAT',     f: 0,  sit: 2, how: 'FREE TO WEAR',            got: s => true },
     { id: 'bow',     name: 'BOW',           f: 1,  sit: 3, dx: 5, how: 'WIN 10 GAMES',     got: s => s.wins >= 10 },
     { id: 'beanie',  name: 'BEANIE',        f: 2,  icon: 9, sit: 5, game: 'steer', how: 'BEAT SLED',  got: s => !!s.beat.steer },
-    { id: 'cowboy',  name: 'COWBOY HAT',    f: 3,  icon: 10, sit: 2, game: 'run', how: 'BEAT JUMP!', got: s => !!s.beat.run },
+    { id: 'cowboy',  name: 'COWBOY HAT',    f: 3,  icon: 10, sit: 2, between: true, game: 'run', how: 'BEAT JUMP!', got: s => !!s.beat.run },
     { id: 'shades',  name: 'SUNGLASSES',    f: 8,  face: true, game: 'rock', how: 'BEAT HEADBANG', got: s => !!s.beat.rock },
-    { id: 'wizard',  name: 'WIZARD HAT',    f: 12, sit: 2, how: 'WIN A RUN',               got: s => s.runWins >= 1 },
+    { id: 'wizard',  name: 'WIZARD HAT',    f: 12, sit: 5, how: 'WIN A RUN',               got: s => s.runWins >= 1 },
     { id: 'halo',    name: 'HALO',          f: 13, sit: -5, how: 'SCORE 30 IN CLASSIC',    got: s => s.classic >= 30 },
     { id: 'propeller', name: 'PROPELLER CAP', f: 6, sit: 3, how: 'REACH WORLD 2 IN RUN',   got: s => s.runWorld >= 2 },
     { id: 'flower',  name: 'FLOWER',        f: 7,  sit: 3, dx: -6, how: 'TAKE 5 SELFIES',  got: s => s.photos >= 5 },
-    { id: 'crown',   name: 'CROWN',         f: 11, sit: 3, how: 'ALL 7 BOSSES IN ONE CLASSIC GAME', got: s => !!s.allBosses },
+    { id: 'crown',   name: 'CROWN',         f: 11, sit: 3, between: true, how: 'ALL 7 BOSSES IN ONE CLASSIC GAME', got: s => !!s.allBosses },
   ],
   item(id) { return this.ITEMS.find(i => i.id === id); },
 
@@ -6317,9 +6318,12 @@ const Closet = {
       for (let py = top; py < Math.min(a.fh, top + 8); py++) for (let px = x0; px < x1; px++) if (op(px, py)) { lo = Math.min(lo, px); hi = Math.max(hi, px); }
       let ey = -1, ex0 = 1e9, ex1 = -1;
       for (let py = top + 3; py < Math.min(a.fh, top + 30) && ey < 0; py++) for (let px = x0; px < x1; px++) if (dark(px, py) && inside(px, py)) { ey = py; ex0 = Math.min(ex0, px); ex1 = Math.max(ex1, px); }
+      // the dip between the ears: the head's top at its middle column (above it is only ear)
+      let dip = top; const mc = Math.round((lo + hi) / 2);
+      for (let py = top; py < a.fh; py++) if (op(mc, py) && op(mc - 1, py) && op(mc + 1, py)) { dip = py; break; }
       const E = this.EYES[name];   // measured: the fur has dark markings a search can mistake for eyes
 
-      const base = { x: (lo + hi) / 2, y: top + this.EARS, ex: E ? E.x : ey < 0 ? (lo + hi) / 2 : (ex0 + ex1) / 2, ey: E ? E.y : ey < 0 ? top + 12 : ey };
+      const base = { x: (lo + hi) / 2, y: top + this.EARS, ex: E ? E.x : ey < 0 ? (lo + hi) / 2 : (ex0 + ex1) / 2, ey: E ? E.y : ey < 0 ? top + 12 : ey, dip };
       // the head patch to look for: the ears down past the eyes, across the head
       const px0 = Math.max(0, Math.round(lo - 2)), px1 = Math.min(a.fw, Math.round(hi + 3)), py0 = top, py1 = Math.min(a.fh, Math.round(base.ey + 8));
       const R = Math.round(a.fh * 0.4);   // how far the head can have moved
@@ -6345,12 +6349,13 @@ const Closet = {
         for (let py = Math.max(0, Math.round(base.ey + by - 3)); py <= Math.min(a.fh - 1, Math.round(base.ey + by + 3)) && fey < 0; py++)
           for (let px = Math.max(0, Math.round(base.ex + bx - 7)); px <= Math.min(a.fw - 1, Math.round(base.ex + bx + 7)); px++) if (black(f * a.fw + px, py) && inside(f * a.fw + px, py)) { fey = py; break; }
         const ey = fey < 0 ? base.ey + by : fey;
-        H.push({ x: base.x + bx, y: Math.min(base.y + by, ey - (base.ey - base.y)), ex: base.ex + bx, ey });
+        H.push({ x: base.x + bx, y: Math.min(base.y + by, ey - (base.ey - base.y)), ex: base.ex + bx, ey, dip: base.dip + by });
       }
     }
     return H[frame] || null;
   },
   FACE_DX: -1,   // the sunglasses sit this far left of the eyes' middle, so both lenses cover them
+  FACE_DY: 1,    // and this far below the top of the eyes, resting just above the nose
   EARS: 8,   // the hat sits this far below the ear tips, down over them (but see dress: never over the eyes)
   // where the eyes are in frame 0 of each sheet a shiba wears things on (the
   // middle between them, the top of their row): the sunglasses go here
@@ -6362,11 +6367,18 @@ const Closet = {
     const it = this.hat; if (!it) return;
     const a = Assets.get(name), hd = this.head(name, frame); if (!a || !hd) return;
     const k = w / a.fw;
-    if (it.face) { this.drawItem(it, cx - w / 2 + (hd.ex + 0.5 + this.FACE_DX) * k, cy - h / 2 + (hd.ey + 4) * k, k); return; }   // over the eyes
+    if (it.face) { this.drawItem(it, cx - w / 2 + (hd.ex + 0.5 + this.FACE_DX) * k, cy - h / 2 + (hd.ey + 4 + this.FACE_DY) * k, k); return; }   // over the eyes
     // as low as it sits, down over the ears, but its bottom stays above this frame's eyes
     const bottom = Math.min(hd.y + it.sit, hd.ey - 1);
     const hx = cx - w / 2 + hd.x * k + (it.dx || 0) * k, hy = cy - h / 2 + bottom * k;
     this.drawItem(it, hx, hy, k);
+    // between the ears (the cowboy hat, the crown): the ears go back on top,
+    // everything of the sprite above the dip between them, so they stand in front
+    if (it.between) {
+      ctx.save(); ctx.beginPath(); ctx.rect(cx - w / 2, cy - h / 2, w, hd.dip * k); ctx.clip();
+      ctx.drawImage(a.img, frame * a.fw, 0, a.fw, a.fh, cx - w / 2, cy - h / 2, w, h);
+      ctx.restore();
+    }
   },
   // an item with its bottom middle at x, y, at scale k (also the closet's cards)
   drawItem(it, x, y, k = 1) {
