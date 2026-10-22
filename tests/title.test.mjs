@@ -24,6 +24,13 @@ export default async function ({ url, launch }) {
     await page.evaluate(() => { const b = Engine.ALB_BACK; Engine.release({ x: b.x + 5, y: b.y + 5 }); });
     eq(await page.evaluate(() => [Engine.state, Engine.titleT >= 9]), ['TITLE', true], 'BACK returns to a settled title');
   }
+  // a fresh visit's first tap, once the intro has settled, on any menu button opens it (not the intro again)
+  for (const [k, want] of [['album', 'ALBUM'], ['toy', 'TOYROOM'], ['set', 'SETTINGS']]) {
+    await page.evaluate(() => { Engine.state = Engine._lastState = 'TITLE'; Engine.timer = 0; Engine.titleT = 9; Engine.introHeard = false; }); await page.waitForTimeout(100);
+    await click(90, B[k].y + 12); await page.waitForTimeout(150);
+    eq(await page.evaluate(() => Engine.state), want, 'a first tap on ' + k + ' opens ' + want);
+    await page.evaluate(() => { const b = Engine.ALB_BACK; Engine.release({ x: b.x + 5, y: b.y + 5 }); });
+  }
   for (const [k, mode] of [['classic', 'classic'], ['run', 'run']]) {
     await page.evaluate(() => { Engine.state = Engine._lastState = 'TITLE'; Engine.timer = 0; Engine.titleT = 9; }); await page.waitForTimeout(100);
     await click(90, B[k].y + 12); await page.waitForTimeout(150);

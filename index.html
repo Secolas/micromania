@@ -7843,7 +7843,7 @@ const Engine = {
     // shiba's bark (a tap on a button once it has settled still goes through)
     if (s === 'TITLE' && !this.introHeard) {
       this.introHeard = true;
-      const onBtn = [this.BTN_RUN, this.BTN_CLASSIC, this.BTN_ALBUM, this.BTN_SET].some(b => this.hit(b, p));
+      const onBtn = [this.BTN_RUN, this.BTN_CLASSIC, this.BTN_ALBUM, this.BTN_TOY, this.BTN_SET].some(b => this.hit(b, p));
       if ((this.titleT || 0) < this.TITLE_INTRO || !onBtn) { this.titleT = 0; this.titleSfx = 0; return; }
     }
     if (s === 'TITLE' && (this.titleT || 0) < this.TITLE_INTRO) { this.titleT = 9; this.titleSfx = 99; return; }
