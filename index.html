@@ -6195,6 +6195,7 @@ class CookBurger extends Microgame {
     this.fly = [];                       // food in the air: to the plate, or bouncing off it
     this.hop = 0; this.squash = 0; this.served = -1; this.endT = 0; this.hearts = [];
     this.reach = -1;                     // the chef's paw going out to put the food down (seconds in)
+    this.hat = { ...Closet.item('chef'), dx: 3 };   // the chef's head is turned to the customer: its hat sits a little to the right
     this.steam = [];                     // the patty sizzling as it lands
   }
   // a layer's art/cooklayers.png frame: the first bun is the bottom, the last the top
@@ -6283,7 +6284,7 @@ class CookBurger extends Microgame {
     const chefF = this.reach >= 0 ? 4 + Math.min(6, Math.floor(this.reach / 0.04)) : Math.floor(t * 6) % 4, f = chefF;
     if (Assets.get('chefmove')) {
       g.sprite('chefmove', 40, cy - 64, { w: 128, h: 128, frame: f });
-      Closet.dress('chefmove', f, 40, cy - 64, 128, 128, Closet.item('chef'));   // beat it and the hat's yours
+      Closet.dress('chefmove', f, 40, cy - 64, 128, 128, this.hat);   // beat it and the hat's yours
     }
     if (Assets.get('custidle')) {
       // served: up it jumps, cheering, so it's seen over the burger
@@ -6302,7 +6303,7 @@ class CookBurger extends Microgame {
     if (this.reach >= 0 && Assets.get('chefmove')) {   // reaching out, the chef leans in over the food it's putting down (the counter still hides its legs)
       ctx.save(); ctx.beginPath(); ctx.rect(0, TOP, W, 196 - TOP); ctx.clip();
       g.sprite('chefmove', 40, cy - 64, { w: 128, h: 128, frame: chefF }); ctx.restore();
-      Closet.dress('chefmove', chefF, 40, cy - 64, 128, 128, Closet.item('chef'));
+      Closet.dress('chefmove', chefF, 40, cy - 64, 128, 128, this.hat);
     }
     for (const b of this.bins) {
       const dn = b.press > 0 ? 2 : 0;
@@ -6497,7 +6498,7 @@ const Closet = {
     { id: 'beanie',  name: 'BEANIE',        f: 2,  icon: 9, sit: 5, game: 'steer', how: 'BEAT SLED',  got: s => !!s.beat.steer },
     { id: 'cowboy',  name: 'COWBOY HAT',    f: 3,  icon: 10, sit: 2, between: true, game: 'run', how: 'BEAT JUMP!', got: s => !!s.beat.run },
     { id: 'shades',  name: 'SUNGLASSES',    f: 8,  face: true, game: 'rock', how: 'BEAT HEADBANG', got: s => !!s.beat.rock },
-    { id: 'chef',    name: 'CHEF HAT',      f: 14, sit: 2, between: true, game: 'cook', how: 'BEAT COOK!',  got: s => !!s.beat.cook },
+    { id: 'chef',    name: 'CHEF HAT',      f: 14, sit: 2, game: 'cook', how: 'BEAT COOK!',  got: s => !!s.beat.cook },
     { id: 'wizard',  name: 'WIZARD HAT',    f: 12, sit: 5, how: 'WIN A RUN',               got: s => s.runWins >= 1 },
     { id: 'halo',    name: 'HALO',          f: 13, sit: -5, how: 'SCORE 30 IN CLASSIC',    got: s => s.classic >= 30 },
     { id: 'propeller', name: 'PROPELLER CAP', f: 6, sit: 3, how: 'REACH WORLD 2 IN RUN',   got: s => s.runWorld >= 2 },

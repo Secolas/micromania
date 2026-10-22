@@ -67,7 +67,7 @@ gripping paw, and the game's calm shiba face; each at its cell's top-left (see `
 | `halo-ring.png` | 32×32 | PixelLab's halo, a ring seen face-on; it looked like a hoop on a head. The halo in `art/hats.png` is a flat ellipse pixelled by hand. |
 | `viking-helmet.png`, `headphones.png` | 32×32 | Taken out of the closet (the user's call). |
 | `chef-hat.png` | 32×32 | Taken out of the closet, kept for a future cooking game. |
-| `chef-hat-small.png` | 32×32 | PixelLab's redraw of it shrunk, muddy and mushroom-shaped. COOK!'s chef hat (`art/hats.png` frame 14) is pixelled by hand, a narrow toque (11px) that stands between the ears. |
+| `chef-hat-small.png` | 32×32 | PixelLab's redraw of it shrunk, muddy and mushroom-shaped. COOK!'s chef hat (`art/hats.png` frame 14) is pixelled by hand. |
 | `hats-big.png` | 32×32 cells | The first, head-sized hats. `art/hats.png` now has small ones (PixelLab redrew each shrunk to about 12-17px) that sit between the ears. |
 
 `art/hats.png` (32×32 cells, each on its cell's bottom middle): party hat,
