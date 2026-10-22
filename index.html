@@ -6497,7 +6497,7 @@ const Closet = {
     { id: 'beanie',  name: 'BEANIE',        f: 2,  icon: 9, sit: 5, game: 'steer', how: 'BEAT SLED',  got: s => !!s.beat.steer },
     { id: 'cowboy',  name: 'COWBOY HAT',    f: 3,  icon: 10, sit: 2, between: true, game: 'run', how: 'BEAT JUMP!', got: s => !!s.beat.run },
     { id: 'shades',  name: 'SUNGLASSES',    f: 8,  face: true, game: 'rock', how: 'BEAT HEADBANG', got: s => !!s.beat.rock },
-    { id: 'chef',    name: 'CHEF HAT',      f: 14, sit: 2, game: 'cook', how: 'BEAT COOK!',  got: s => !!s.beat.cook },
+    { id: 'chef',    name: 'CHEF HAT',      f: 14, sit: 2, between: true, game: 'cook', how: 'BEAT COOK!',  got: s => !!s.beat.cook },
     { id: 'wizard',  name: 'WIZARD HAT',    f: 12, sit: 5, how: 'WIN A RUN',               got: s => s.runWins >= 1 },
     { id: 'halo',    name: 'HALO',          f: 13, sit: -5, how: 'SCORE 30 IN CLASSIC',    got: s => s.classic >= 30 },
     { id: 'propeller', name: 'PROPELLER CAP', f: 6, sit: 3, how: 'REACH WORLD 2 IN RUN',   got: s => s.runWorld >= 2 },
