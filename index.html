@@ -1497,7 +1497,7 @@ const g = {
   // tapping or dragging, a palm waving at the camera, a face blowing into the
   // mic, a hand tilting and shaking the phone. Drawn around (x, y), scaled by
   // s, looping on t (seconds). Kinds it doesn't know fall back to hint().
-  DEMOS: ['tap', 'mash', 'hold', 'count', 'wait', 'drag', 'swipe', 'rub', 'trace', 'flick', 'move', 'nod', 'cover', 'still', 'blow', 'shout', 'shake'],
+  DEMOS: ['tap', 'mash', 'hold', 'count', 'wait', 'drag', 'swipe', 'rub', 'trace', 'flick', 'move', 'nod', 'cover', 'still', 'blow', 'shout', 'shake', 'tilt'],
   demo(kind, x, y, t, s = 1) {
     if (!this.DEMOS.includes(kind)) { this.hint(kind, x, y); return; }
     if (Assets.get('demo')) { this.demoArt(kind, x, y, t, s >= 1 ? 2 : 1); return; }
@@ -1614,9 +1614,9 @@ const g = {
         }
         break;
       }
-      case 'shake': {
-        // half the loop a slow tilt, half a fast shake
-        const k = t % 3, tilt = k < 1.5, a = tilt ? Math.sin(k / 1.5 * 6.2832) * 0.45 : Math.sin(k * 45) * 0.12, dx = tilt ? 0 : Math.sin(k * 45) * 3;
+      case 'shake': case 'tilt': {
+        // half the loop a slow tilt, half a fast shake ('tilt': the tilt only)
+        const k = kind === 'tilt' ? t % 1.5 : t % 3, tilt = k < 1.5, a = tilt ? Math.sin(k / 1.5 * 6.2832) * 0.45 : Math.sin(k * 45) * 0.12, dx = tilt ? 0 : Math.sin(k * 45) * 3;
         ctx.save(); ctx.translate(dx, 8); ctx.rotate(a); ctx.translate(0, -8);
         phone();
         // a ball rolling to the low side, so the tilt reads as tilt
@@ -1626,7 +1626,7 @@ const g = {
         for (let i = 0; i < 3; i++) this.line(-6 + i * 6, 13, -6 + i * 6, 18, mid);
         ctx.restore();
         if (!tilt) for (let i = 0; i < 2; i++) { this.line(-22 - i * 4, -6, -22 - i * 4, 6, mid, 2); this.line(22 + i * 4, -6, 22 + i * 4, 6, mid, 2); }
-        else this.text(a > 0 ? '>' : '<', a > 0 ? 24 : -24, 4, 10, mid);
+        else this.arrowHead(a > 0 ? 24 : -24, 2, a > 0 ? 1 : -1, mid);
         break;
       }
     }
@@ -1729,21 +1729,23 @@ const g = {
         }
         break;
       }
-      case 'shake': {
-        // half the loop a slow tilt, half a fast shake
-        const q = t % 3, tilt = q < 1.5, ang = tilt ? Math.sin(q / 1.5 * 6.2832) * 0.45 : Math.sin(q * 45) * 0.12, dx = tilt ? 0 : Math.round(Math.sin(q * 45) * 3);
+      case 'shake': case 'tilt': {
+        // half the loop a slow tilt, half a fast shake ('tilt': the tilt only)
+        const q = kind === 'tilt' ? t % 1.5 : t % 3, tilt = q < 1.5, ang = tilt ? Math.sin(q / 1.5 * 6.2832) * 0.45 : Math.sin(q * 45) * 0.12, dx = tilt ? 0 : Math.round(Math.sin(q * 45) * 3);
         ctx.save(); ctx.translate(dx, 8); ctx.rotate(ang); ctx.translate(0, -8);
         phone();
         this.circle(tilt ? Math.max(-6, Math.min(6, ang * 15)) : Math.sin(q * 45) * 3, 4, 2, acc);   // a ball rolling to the low side
         P(5, 5, -5); PF(5, -37, -5);                                              // a paw gripping each side
         ctx.restore();
         if (!tilt) for (let i = 0; i < 2; i++) { this.line(-17 - i * 4, -6, -17 - i * 4, 6, mid, 2); this.line(17 + i * 4, -6, 17 + i * 4, 6, mid, 2); }
-        else this.text(ang > 0 ? '>' : '<', ang > 0 ? 19 : -19, 4, 10, mid);
+        else this.arrowHead(ang > 0 ? 19 : -19, 2, ang > 0 ? 1 : -1, mid);
         break;
       }
     }
     ctx.restore();
   },
+  // a small solid arrowhead pointing left (dir -1) or right (dir 1)
+  arrowHead(x, y, dir, c) { ctx.fillStyle = c; ctx.beginPath(); ctx.moveTo(x + dir * 4, y); ctx.lineTo(x - dir * 3, y - 5); ctx.lineTo(x - dir * 3, y + 5); ctx.closePath(); ctx.fill(); },
   // control pictograms shown on the prompt card
   hint(kind, x, y) {
     const c = PAL.ink;
@@ -6912,21 +6914,30 @@ const Engine = {
   // which how-to animation the prompt plays: the game's own hint, unless a
   // camera/mic/motion game fell back to touch, then the touch it asks for
   demoKind(m) {
-    const h = m.how, how = this.howTo(m);
+    const h = m.how, how = this.howTo(m), key = this.howKey(m);
+    if (key === 'tilt') return 'tilt';      // a tilt game on a phone that tilts: paws tilting it, not the camera
+    if (key === 'motion') return 'shake';
     if (!h || typeof h === 'string' || how !== h.touch || !['move', 'cover', 'still', 'blow', 'shout', 'shake'].includes(m.hint)) return m.demo || m.hint;   // meta.demo: a game's own how-to loop
     return /DON'T TOUCH/.test(how) ? 'wait' : /^RUB/.test(how) ? 'rub' : /^HOLD/.test(how) ? 'hold' : /FAST|TAP, TAP/.test(how) ? 'mash' : 'tap';
   },
   howTo(m) {
     const h = m.how;
     if (!h || typeof h === 'string') return h || '';
+    return h[this.howKey(m)] || h.touch || '';
+  },
+  // which of a game's how-tos this player gets: the first sensor they have
+  // (in the order the game lists them), else touch
+  howKey(m) {
+    const h = m.how;
+    if (!h || typeof h === 'string') return null;
     const has = {
       tilt: Input.tiltReady,
       cam: Input.camReady || Input.camPending,
       mic: Input.micReady || Input.micPending,
       motion: Input._motionOn && (navigator.maxTouchPoints > 0),
     };
-    for (const k in h) if (k === 'touch' || has[k]) return h[k];
-    return h.touch || '';
+    for (const k in h) if (k === 'touch' || has[k]) return k;
+    return 'touch';
   },
 
   update(dt) {
