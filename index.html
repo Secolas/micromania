@@ -6196,7 +6196,6 @@ class CookBurger extends Microgame {
     this.fly = [];                       // food in the air: to the plate, or bouncing off it
     this.hop = 0; this.squash = 0; this.served = -1; this.endT = 0; this.hearts = [];
     this.reach = -1;                     // the chef's paw going out to put the food down (seconds in)
-    this.hat = { ...Closet.item('chef'), dx: 3 };   // the chef's head is turned to the customer: its hat sits a little to the right
     this.steam = [];                     // the patty sizzling as it lands
   }
   // a layer's art/cooklayers.png frame: the first bun is the bottom, the last the top
@@ -6279,13 +6278,13 @@ class CookBurger extends Microgame {
     g.clear();
     const t = this.t, served = this.served >= 0, lost = this.endT > 0 || (this.finished && !this.won);
     // the chef at the stove end, turned to the customer waiting at the other,
-    // both sitting behind the counter, which hides their legs. art/chefmove.png:
+    // both sitting behind the counter, which hides their legs. art/chefmove.png
+    // (its chef hat drawn on by PixelLab, the same as the closet's):
     // 0-3 sitting, tail going; 4-10 a paw reaching out to put the food down
     const cy = 238 - (this.hop > 0 ? 3 : 0);
     const chefF = this.reach >= 0 ? 4 + Math.min(6, Math.floor(this.reach / 0.04)) : Math.floor(t * 6) % 4, f = chefF;
     if (Assets.get('chefmove')) {
       g.sprite('chefmove', 40, cy - 64, { w: 128, h: 128, frame: f });
-      Closet.dress('chefmove', f, 40, cy - 64, 128, 128, this.hat);   // beat it and the hat's yours
     }
     if (Assets.get('custidle')) {
       // served: up it jumps, cheering, so it's seen over the burger
@@ -6304,7 +6303,6 @@ class CookBurger extends Microgame {
     if (this.reach >= 0 && Assets.get('chefmove')) {   // reaching out, the chef leans in over the food it's putting down (the counter still hides its legs)
       ctx.save(); ctx.beginPath(); ctx.rect(0, TOP, W, 196 - TOP); ctx.clip();
       g.sprite('chefmove', 40, cy - 64, { w: 128, h: 128, frame: chefF }); ctx.restore();
-      Closet.dress('chefmove', chefF, 40, cy - 64, 128, 128, this.hat);
     }
     for (const b of this.bins) {
       const dn = b.press > 0 ? 2 : 0;

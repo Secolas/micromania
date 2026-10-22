@@ -115,3 +115,10 @@ its eyes' middle on column 32) by `cut_worn.py`:
 
 To swap one: `python cut_worn.py <item>_<n>.png cell.png <mode> <extra> fs0.png [row0 row1]`
 and paste the cell into its column of `art/worn.png` (`band:` in `Closet.ITEMS`).
+
+`cook/chefmove-nohat.png` is COOK!'s chef before its hat. `art/chefmove.png`
+has PixelLab's chef hat drawn on every frame (`edit_image` on all 11 at once),
+grafted onto our own frames above the eyes so the body never moves, and
+recoloured to the closet chef hat's whites (version A). `chefmove-hat-a.png`
+is A as PixelLab coloured it (cream); `chefmove-hat-b.png` is the other
+version, a smaller toque between the ears.
