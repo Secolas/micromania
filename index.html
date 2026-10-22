@@ -275,6 +275,7 @@ const Assets = {
     highfive: { src: 'art/highfive.png', fw: 64,  fh: 64,  frames: 14, fps: 1  },
     breakjump:{ src: 'art/breakjump.png', fw: 64, fh: 96,  frames: 8,  fps: 1  },
     hats:     { src: 'art/hats.png',     fw: 32,  fh: 32,  frames: 15, fps: 1  },
+    chefmove: { src: 'art/chefmove.png', fw: 64,  fh: 64,  frames: 11, fps: 1  },
     cookfood: { src: 'art/cookfood.png', fw: 32,  fh: 28,  frames: 5,  fps: 1  },
     cooklayers:{ src: 'art/cooklayers.png', fw: 32, fh: 10, frames: 6, fps: 1  },
     plate:    { src: 'art/plate.png',    fw: 38,  fh: 7,   frames: 1,  fps: 1  },
@@ -6193,6 +6194,8 @@ class CookBurger extends Microgame {
     this.plateX = 86; this.plateY = 198; // the plate's middle, on the counter
     this.fly = [];                       // food in the air: to the plate, or bouncing off it
     this.hop = 0; this.squash = 0; this.served = -1; this.endT = 0; this.hearts = [];
+    this.reach = -1;                     // the chef's paw going out to put the food down (seconds in)
+    this.steam = [];                     // the patty sizzling as it lands
   }
   // a layer's art/cooklayers.png frame: the first bun is the bottom, the last the top
   layerOf(k) { const f = this.recipe[k]; return f === 'bun' ? (k ? CookBurger.LAYER.top : CookBurger.LAYER.bun) : CookBurger.LAYER[f]; }
@@ -6204,6 +6207,9 @@ class CookBurger extends Microgame {
   }
   update(dt, input) {
     this.hop = Math.max(0, this.hop - dt); this.squash = Math.max(0, this.squash - dt);
+    if (this.reach >= 0 && (this.reach += dt) > 0.3) this.reach = -1;
+    for (const p of this.steam) { p.t += dt; p.y -= 22 * dt; p.x += Math.sin(p.t * 9 + p.k) * 10 * dt; }
+    this.steam = this.steam.filter(p => p.t < 0.7);
     for (const b of this.bins) b.press = Math.max(0, b.press - dt);
     for (const h of this.hearts) { h.t += dt; h.y -= 26 * dt; }
     this.hearts = this.hearts.filter(h => h.t < 0.9);
@@ -6235,6 +6241,7 @@ class CookBurger extends Microgame {
     const x = b.x + b.w / 2, y = b.y + 14;
     if (b.f === this.recipe[k]) {
       this.fly.push({ f: b.f, layer: this.layerOf(k), x0: x, y0: y, t: 0, dur: 0.16 });
+      this.reach = 0;   // the chef reaches out and puts it down
       Sfx.whoosh();
       if (k + 1 >= this.recipe.length) this.playingOut = true;   // the last one gets to land
       return;
@@ -6249,6 +6256,10 @@ class CookBurger extends Microgame {
     this.i++; this.hop = 0.14; this.squash = 0.1;
     Sfx.step(Math.min(7, this.i)); buzz(10);
     FX.burst(this.plateX, this.stackTop(), PAL.accent, 6, 40);
+    if (this.recipe[this.i - 1] === 'patty') {   // hot off the grill: it sizzles
+      for (let n = 0; n < 5; n++) this.steam.push({ x: this.plateX - 18 + n * 9, y: this.stackTop() - 2, t: -n * 0.05, k: n * 2 });
+      Sfx.hiss({ dur: 0.35, vol: 0.03, hp: 3600 });   // the sizzle
+    }
     if (this.i >= this.recipe.length) { this.served = 0; Sfx.bark(); this.playingOut = true; }
   }
   // the burger so far on its plate, the plate's middle at x, y
@@ -6265,13 +6276,14 @@ class CookBurger extends Microgame {
   draw(g) {
     g.clear();
     const t = this.t, served = this.served >= 0, lost = this.endT > 0 || (this.finished && !this.won);
-    // the chef at the stove end and the customer waiting at the other, both
-    // sitting behind the counter, which hides their legs
+    // the chef at the stove end, turned to the customer waiting at the other,
+    // both sitting behind the counter, which hides their legs. art/chefmove.png:
+    // 0-3 sitting, tail going; 4-10 a paw reaching out to put the food down
     const cy = 238 - (this.hop > 0 ? 3 : 0);
-    if (Assets.get('fullidle')) {
-      const f = g.IDLE[lost ? 'sad' : 'happy'] + Math.floor(t * 5) % 4;
-      g.sprite('fullidle', 40, cy - 64, { w: 128, h: 128, frame: f });
-      Closet.dress('fullidle', f, 40, cy - 64, 128, 128, Closet.item('chef'));   // beat it and the hat's yours
+    const chefF = this.reach >= 0 ? 4 + Math.min(6, Math.floor(this.reach / 0.04)) : Math.floor(t * 6) % 4, f = chefF;
+    if (Assets.get('chefmove')) {
+      g.sprite('chefmove', 40, cy - 64, { w: 128, h: 128, frame: f });
+      Closet.dress('chefmove', f, 40, cy - 64, 128, 128, Closet.item('chef'));   // beat it and the hat's yours
     }
     if (Assets.get('custidle')) {
       // served: up it jumps, cheering, so it's seen over the burger
@@ -6287,6 +6299,11 @@ class CookBurger extends Microgame {
     // the burger, sliding down to the customer once it's done
     const k = served ? Math.min(1, this.served / 0.3) : 0, ease = k * k * (3 - 2 * k);
     this.drawBurger(g, Math.round(this.plateX + (104 - this.plateX) * ease), this.plateY);
+    if (this.reach >= 0 && Assets.get('chefmove')) {   // reaching out, the chef leans in over the food it's putting down (the counter still hides its legs)
+      ctx.save(); ctx.beginPath(); ctx.rect(0, TOP, W, 196 - TOP); ctx.clip();
+      g.sprite('chefmove', 40, cy - 64, { w: 128, h: 128, frame: chefF }); ctx.restore();
+      Closet.dress('chefmove', chefF, 40, cy - 64, 128, 128, Closet.item('chef'));
+    }
     for (const b of this.bins) {
       const dn = b.press > 0 ? 2 : 0;
       g.nine('buttons', 0, b.x, b.y + dn, b.w, b.h, 6) || g.rect(b.x, b.y + dn, b.w, b.h, PAL.mid);
@@ -6300,6 +6317,11 @@ class CookBurger extends Microgame {
         const p = Math.min(1, f.t / f.dur), tx = this.plateX, ty = this.stackTop() - 6;
         g.sprite('cooklayers', Math.round(f.x0 + (tx - f.x0) * p), Math.round(f.y0 + (ty - f.y0) * p - Math.sin(p * Math.PI) * 30), { w: 32 * this.K, h: 10 * this.K, frame: f.layer });
       }
+    }
+    for (const p of this.steam) {   // white puffs curling up off the patty
+      if (p.t < 0) continue;
+      ctx.globalAlpha = Math.max(0, 0.95 - p.t / 0.7); const r = p.t < 0.2 ? 1 : 2, x = Math.round(p.x), y = Math.round(p.y);
+      g.rect(x - r - 1, y - r - 1, r * 2 + 3, r * 2 + 3, '#9aa3b4'); g.rect(x - r, y - r, r * 2 + 1, r * 2 + 1, '#ffffff'); ctx.globalAlpha = 1;
     }
     for (const h of this.hearts) { ctx.globalAlpha = Math.max(0, 1 - h.t / 0.9); PatShiba.prototype.heart(Math.round(h.x), Math.round(h.y), PAL.bad); ctx.globalAlpha = 1; }
     this.drawTicket(g);
@@ -6604,7 +6626,7 @@ const Closet = {
   EARS: 8,   // the hat sits this far below the ear tips, down over them (but see dress: never over the eyes)
   // where the eyes are in frame 0 of each sheet a shiba wears things on (the
   // middle between them, the top of their row): the sunglasses go here
-  EYES: { shiba: { x: 13.5, y: 13 }, fullshiba: { x: 16.5, y: 23 }, breakjump: { x: 25.5, y: 54 }, fullidle: { x: 24.5, y: 23 } },
+  EYES: { shiba: { x: 13.5, y: 13 }, fullshiba: { x: 16.5, y: 23 }, breakjump: { x: 25.5, y: 54 }, fullidle: { x: 24.5, y: 23 }, chefmove: { x: 45.5, y: 25 } },
 
   // Draw the equipped hat on a sheet's frame drawn centred at cx, cy at w x h
   // (as g.sprite does). Its scale is the sprite's, so a 2x shiba wears it 2x.

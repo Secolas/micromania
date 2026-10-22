@@ -85,6 +85,9 @@ SLED's rider wears. The crown reuses `art/crown.png`. See `Closet.ITEMS`.
 COOK!'s art: `art/kitchen.png` (PixelLab backdrop), `art/cookfood.png` (the
 bins' and ticket's pictures: bun, patty, cheese, lettuce, tomato),
 `art/cooklayers.png` (the burger's layers from the side), `art/plate.png`,
+`art/chefmove.png` (the chef turned to the customer: RUN & FREEZE's watcher
+frame 4 flipped, then PixelLab's `animate_image` from it for a sitting loop and
+a paw reaching out to put the food down),
 `art/custidle.png` / `art/custfull.png` (the black-and-tan customer: the
 shiba's own sheets recoloured), and the chef hat at `art/hats.png` frame 14
 (pixelled by hand; beat COOK! and it's yours in the closet).
