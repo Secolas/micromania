@@ -22,6 +22,14 @@ export default async function ({ url, launch }) {
     Run.best = 3; Closet.check(); out.world2 = Closet.owns('propeller');
     Run.wins = 1; Closet.check(); out.runWon = Closet.owns('wizard');
     out.all = Closet.stats.owned.length === Closet.ITEMS.length;
+    // coats: earned like the rest, and wearing one recolours your shiba's sheets (not the watcher, not the art as drawn)
+    for (let i = 0; i < 15; i++) Closet.won('tap', false);   // 25 wins in all: cream
+    Run.wins = 3; Closet.check();                            // 3 runs won: sesame
+    out.coats = Closet.stats.coats.slice().sort();
+    Closet.wearCoat('blacktan');
+    const px = (a) => { const c = document.createElement('canvas'); c.width = a.img.width || a.img.naturalWidth; c.height = a.img.height || a.img.naturalHeight; const x = c.getContext('2d'); x.drawImage(a.img, 0, 0); const d = x.getImageData(0, 0, c.width, c.height).data; let o = 0; for (let i = 0; i < d.length; i += 4) if (d[i + 3] > 40 && d[i] > 200 && d[i + 1] > 100 && d[i + 1] < 160 && d[i + 2] < 90) o++; return o; };
+    out.coatOrange = [px(Assets.get('fullshiba')), px(Assets.raw('fullshiba')), px(Assets.get('watcher')) === px(Assets.raw('watcher'))];
+    Closet.wearCoat('red'); out.redSame = Assets.get('fullshiba') === Assets.raw('fullshiba');
     // the crown in a real Classic game: every boss beaten in one
     Closet.resetAll(); Engine.reset(); Engine.mode = 'classic';
     for (const C of BOSSES) { Engine.startRound(C, 3, true); Engine.state = 'PLAYING'; Engine.game.succeed(); Input.beginStep(); Engine.update(STEP); }
@@ -60,6 +68,9 @@ export default async function ({ url, launch }) {
   eq(r.start, ['party'], 'only the party hat to start');
   eq(r.classic, ['party'], 'a Classic best of 10 alone earns nothing now');
   assert(r.wins && r.sled && r.jump && r.rock && !r.cookBefore && r.cook && r.crown && r.halo && r.photos && r.world2 && r.runWon && r.all, 'each item is earned: ' + JSON.stringify(r));
+  eq(r.coats, ['blacktan', 'cream', 'red', 'sesame'], 'every coat earned: ' + r.coats);
+  assert(r.coatOrange[0] < r.coatOrange[1] / 20 && r.coatOrange[2], 'black and tan recolours the shiba, not the watcher: ' + r.coatOrange);
+  eq(r.redSame, true, 'the red coat is the art as drawn');
   eq(r.bossesOverTime, false, 'every boss over different games is not the crown');
   eq(r.crownInGame, true, 'every boss in one Classic game earns the crown');
   eq(r.dev, true, 'the dev menu can unlock everything');
