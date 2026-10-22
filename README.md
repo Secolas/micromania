@@ -20,6 +20,22 @@ skipped when the browser says both are already granted.
 says NEW GAME! and waits for TAP WHEN READY instead of counting down. After
 that it's remembered.
 
+**iPhone (Safari)**: works on iOS 14.5 and later, over HTTPS (the Vercel link).
+Sound starts on the first tap; it is unlocked on the finger lifting too, which
+is when iOS allows it, and asks for the "playback" audio session so the ringer
+switch on silent doesn't mute the game (Safari 16.4+). Tilt and shake ask for
+motion permission inside a tap, as iOS requires. iPhones have no vibration for
+websites, so the buzzes are skipped there; install is Share > Add to Home
+Screen (the SETTINGS screen says so).
+
+**Camera check**: before the first camera game of a session, a CAMERA CHECK
+screen shows your live picture with an oval to put your face in, and three
+readings: LIGHT (too dark?), YOU (anyone in the middle of the picture: a
+skin-colour hint, not face recognition) and MOVEMENT (wave to test), each OK
+or what to do. It never blocks: the button says PLAY ANYWAY until all three
+pass, then LOOKS GOOD!, and the game's prompt carries on. SETTINGS > CAMERA
+CHECK opens it any time.
+
 **Replay**: camera games quietly record a short clip of you (about three
 seconds, plus half a second of your reaction to the result). At GAME OVER,
 WATCH REPLAY plays the last five back on a little TV, with numbered dots to
@@ -82,7 +98,7 @@ with notched corners, and no mascot in the corner.
 | FREEZE | the *absence* of movement — don't wake the sleeping shiba | don't tap |
 | SWAT | where the movement is | move your finger, tap |
 | HIDE | frame brightness — a hand over the lens | hold the screen |
-| HEADBANG | bang your head hard to fill the ROCK meter, to a hard-rock riff | tap fast |
+| HEADBANG | nod your head hard, up and down, to fill the ROCK meter, to a hard-rock riff | tap fast |
 | SQUID | move on green, freeze on red (red-light/green-light) | hold on green, release on red |
 
 While a camera game is on, the shelf at the bottom-left shows the **live
@@ -232,11 +248,20 @@ A game opts in with `this.fakeOut(chance, prompt, how)` in `init()`.
 
 `Sfx` has a small kit beyond the blips — `bark`, `growl`, `boop`, `squeak`,
 `crunch`, `chomp`, `splash`, `whoosh`, `thud`, `fizz`, `roll`, `sniff`,
-`heart`, `poof`, `step` (a rising scale for progress) and the SPEED UP
-fanfare — all synthesised, no samples. Every game makes a sound while you play:
+`heart`, `poof`, `step` (a rising scale for progress), `smack`, `clap`,
+`tissue`, `boing`, `clunk`, `bonk`, `fly`, `hum`, `creak`, `foot`, `goal` and
+the SPEED UP fanfare — all synthesised, no samples. HEADBANG plays its own
+hard-rock band instead of the game music: a distorted power-chord guitar
+(`chug`), bass, kick, snare and hi-hat (`hat`), louder and brighter the harder
+you rock. A browser plays no sound before the first tap, so on a fresh visit
+the title says TAP FOR SOUND, and that first tap replays the intro with the
+title tune and the shiba's bark. Every game makes a sound while you play:
 the sensor games say what is happening (the soda fizzes harder, the sleeping
 shiba snores and goes "huh?" when you twitch, the shiba sniffing for you while HIDE's lens
-is uncovered).
+is uncovered). RUN & FREEZE has footsteps while you run, a creak as the dog
+turns, a heartbeat while it watches and a growl when it catches you; SWAT's fly
+buzzes and the swat smacks; the counting games (IN ORDER, GRAB, SWIPE, LEAN)
+climb a scale with each right one and clunk on a wrong one.
 
 Sound is synthesised live (no audio files), WarioWare Touched-style:
 
@@ -291,6 +316,7 @@ Chromium against the real page (served over http by `tests/run.mjs`).
 | `album`, `settings` | saving, paging, opening, sharing and deleting photos; every switch, saved across a reload |
 | `camera` | live frames from a fake camera, and recovery when the feed stalls |
 | `pwa` | manifest, icons, the service worker, and starting with the network off |
+| `camcheck` | the first camera game of a session opens the check; the three readings; the button returns to the prompt with its clock; not twice a session; SETTINGS opens it |
 | `replay` | camera games keep a clip, WATCH REPLAY plays them back, forward / pause / DONE work, a new run starts with no clips |
 | `reverse` | REVERSE mirrors a drag about where it went down and only applies to drag/tilt games; a new game's prompt waits for READY, then remembers |
 | `tutorial`, `pause` | the first-time tutorial (practice costs nothing, a miss replays, SKIP, replay from SETTINGS); pausing on leaving the app, RESUME's 3-2-1 with the clock intact, QUIT |
