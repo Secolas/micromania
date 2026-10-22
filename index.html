@@ -275,6 +275,8 @@ const Assets = {
     highfive: { src: 'art/highfive.png', fw: 64,  fh: 64,  frames: 14, fps: 1  },
     breakjump:{ src: 'art/breakjump.png', fw: 64, fh: 96,  frames: 8,  fps: 1  },
     hats:     { src: 'art/hats.png',     fw: 32,  fh: 32,  frames: 11, fps: 1  },
+    runcowboy:{ src: 'art/runcowboy.png', fw: 120, fh: 120, frames: 9, fps: 1  },
+    jumpcowboy:{ src: 'art/jumpcowboy.png', fw: 120, fh: 120, frames: 5, fps: 1 },
     walkstone:{ src: 'art/walkstone.png', fw: 36, fh: 36,  frames: 1,  fps: 1  },
     fullidle: { src: 'art/fullidle.png', fw: 64,  fh: 64,  frames: 22, fps: 1  },
     leanmove: { src: 'art/leanmove.png', fw: 64,  fh: 64,  frames: 7,  fps: 1  },
@@ -3909,13 +3911,12 @@ class DinoRun extends Microgame {
     // down while falling.
     const drawY = this.ground - this.dogH / 2 - this.y;
     if (this.onGround) {
-      const f = Math.floor(this.legT * 14) % 9;
-      g.sprite('swiperight', this.px, drawY, { w: this.dogW * 2, h: this.dogH * 2, frame: f });
-      Closet.pin('swiperight', f, this.px, drawY, this.dogW * 2, this.dogH * 2, 10, 2);   // its cowboy hat: beat JUMP! and the closet's is yours
+      // in its cowboy hat (art/runcowboy.png, jumpcowboy.png: the run and jump with a
+      // side-on hat drawn in): beat JUMP! and the closet's is yours
+      g.sprite(Assets.get('runcowboy') ? 'runcowboy' : 'swiperight', this.px, drawY, { w: this.dogW * 2, h: this.dogH * 2, frame: Math.floor(this.legT * 14) % 9 });
     } else {
       const jf = this.vy > 60 ? 2 : this.vy < -60 ? 4 : 3;   // rising / falling / peak
-      g.sprite('runjump', this.px, drawY, { w: this.dogW * 2, h: this.dogH * 2, frame: jf });
-      Closet.pin('runjump', jf, this.px, drawY, this.dogW * 2, this.dogH * 2, 10, 2);
+      g.sprite(Assets.get('jumpcowboy') ? 'jumpcowboy' : 'runjump', this.px, drawY, { w: this.dogW * 2, h: this.dogH * 2, frame: jf });
     }
     // progress pips
     for (let i = 0; i < this.need; i++) g.rect(W - 8 - i * 8, TOP + 4, 5, 5, i < this.cleared ? PAL.accent : PAL.mid);
@@ -6217,7 +6218,7 @@ const Wipe = {
 const Closet = {
   KEY: 'micromania.closet',
   // f: hats.png frame (the crown uses art/crown.png; frame 9 is a mini beanie,
-  // 10 the side-on cowboy hat JUMP!'s runner wears, both prompt icons too). game: won by beating that game, where you see it (the SLED
+  // 10 the side-on cowboy hat JUMP!'s runner wears: prompt icons). game: won by beating that game, where you see it (the SLED
   // rider's beanie, the HEADBANG rocker's shades). face: worn on the eyes
   // (the sunglasses), not on top. sit: how far the hat's
   // bottom comes down past the top of the head (kept clear of the eyes on
@@ -6316,10 +6317,8 @@ const Closet = {
       let ey = -1, ex0 = 1e9, ex1 = -1;
       for (let py = top + 3; py < Math.min(a.fh, top + 30) && ey < 0; py++) for (let px = x0; px < x1; px++) if (dark(px, py) && inside(px, py)) { ey = py; ex0 = Math.min(ex0, px); ex1 = Math.max(ex1, px); }
       const E = this.EYES[name];   // measured: the fur has dark markings a search can mistake for eyes
-      const M = this.HEADS[name];
-      if (M) { lo = M.box[0]; hi = M.box[2]; top = M.box[1]; }
-      const base = M ? { x: M.x, y: M.y, ex: M.x, ey: M.box[3] - 8 }
-        : { x: (lo + hi) / 2, y: top + this.EARS, ex: E ? E.x : ey < 0 ? (lo + hi) / 2 : (ex0 + ex1) / 2, ey: E ? E.y : ey < 0 ? top + 12 : ey };
+
+      const base = { x: (lo + hi) / 2, y: top + this.EARS, ex: E ? E.x : ey < 0 ? (lo + hi) / 2 : (ex0 + ex1) / 2, ey: E ? E.y : ey < 0 ? top + 12 : ey };
       // the head patch to look for: the ears down past the eyes, across the head
       const px0 = Math.max(0, Math.round(lo - 2)), px1 = Math.min(a.fw, Math.round(hi + 3)), py0 = top, py1 = Math.min(a.fh, Math.round(base.ey + 8));
       const R = Math.round(a.fh * 0.4);   // how far the head can have moved
@@ -6350,19 +6349,11 @@ const Closet = {
     }
     return H[frame] || null;
   },
-  EARS: 6,   // the hat sits this far below the ear tips, between them
+  EARS: 8,   // the hat sits this far below the ear tips, down over them (but see dress: never over the eyes)
   // where the eyes are in frame 0 of each sheet a shiba wears things on (the
   // middle between them, the top of their row): the sunglasses go here
   EYES: { shiba: { x: 13.5, y: 13 }, fullshiba: { x: 16.5, y: 23 }, breakjump: { x: 25.5, y: 54 }, fullidle: { x: 24.5, y: 23 } },
-  // the side-on runner (JUMP!): where a hat sits in frame 0, and the head to follow (x0, y0, x1, y1)
-  HEADS: { swiperight: { x: 74, y: 40, box: [62, 31, 87, 52] }, runjump: { x: 74, y: 40, box: [62, 31, 87, 52] } },
-  // a hats.png frame pinned to a sheet's head at 1:1, for a sprite drawn at any
-  // size (JUMP!'s runner is drawn at half size; the hat stays crisp)
-  pin(name, frame, cx, cy, w, h, f, sit = 0) {
-    const a = Assets.get(name), hd = this.head(name, frame); if (!a || !hd) return;
-    const kx = w / a.fw, ky = h / a.fh;
-    this.drawItem({ f }, cx - w / 2 + hd.x * kx, cy - h / 2 + hd.y * ky + sit, 1);
-  },
+
   // Draw the equipped hat on a sheet's frame drawn centred at cx, cy at w x h
   // (as g.sprite does). Its scale is the sprite's, so a 2x shiba wears it 2x.
   dress(name, frame, cx, cy, w, h) {
@@ -6370,7 +6361,9 @@ const Closet = {
     const a = Assets.get(name), hd = this.head(name, frame); if (!a || !hd) return;
     const k = w / a.fw;
     if (it.face) { this.drawItem(it, cx - w / 2 + (hd.ex + 0.5) * k, cy - h / 2 + (hd.ey + 4) * k, k); return; }   // over the eyes
-    const hx = cx - w / 2 + hd.x * k + (it.dx || 0) * k, hy = cy - h / 2 + hd.y * k + it.sit * k;
+    // as low as it sits, down over the ears, but its bottom stays above this frame's eyes
+    const bottom = Math.min(hd.y + it.sit, hd.ey - 1);
+    const hx = cx - w / 2 + hd.x * k + (it.dx || 0) * k, hy = cy - h / 2 + bottom * k;
     this.drawItem(it, hx, hy, k);
   },
   // an item with its bottom middle at x, y, at scale k (also the closet's cards)
@@ -7943,12 +7936,13 @@ const Engine = {
     }
     // CLOSET: a mirror with your shiba in it, head and shoulders at 2x, wearing
     // what you've picked (its frame drawn over the edge of the glass)
-    const M = { x: CX - 46, y: TOP + 48, w: 92, h: 94 }, fy = M.y + 152;
+    const M = { x: CX - 46, y: TOP + 48, w: 92, h: 94 }, fy = M.y + M.h - 3;   // feet near the bottom of the glass
     g.nine('buttons', 0, M.x - 4, M.y - 4, M.w + 8, M.h + 8, 6);   // the mirror's wooden frame
     g.rect(M.x, M.y, M.w, M.h, MENU_PANEL_DARK);                   // the glass
     g.rect(M.x + 5, M.y + 5, 3, 16, '#3d64a8'); g.rect(M.x + 10, M.y + 5, 2, 9, '#3d64a8');   // a glint
     ctx.save(); ctx.beginPath(); ctx.rect(M.x, M.y, M.w, M.h); ctx.clip();
-    g.fullShiba(CX, fy, 0); Closet.dress('fullshiba', 0, CX, fy - 64, 96, 128);
+    // the whole shiba 1:1 (art/fullshiba.png, 48x64), so its hat and body show together
+    g.sprite('fullshiba', CX, fy - 32, { w: 48, h: 64, frame: 0 }); Closet.dress('fullshiba', 0, CX, fy - 32, 48, 64);
     ctx.restore();
     const own = Closet.stats.owned;
     if (DEBUG) { const D = this.TOY_DEV; g.button(D, false); g.text('ALL', D.x + D.w / 2, D.y + 11, 7, PAL.accent); }   // ?dev: unlock everything
