@@ -29,6 +29,7 @@ then `alert-turn-end`, `alert-scan` and `tail-wag`.
 | --- | --- | --- |
 | `sled-bounce.png` | 4 | 40×40. The whole sled hops over bumps. Not used: PixelLab redrew the dog and sled a little differently each frame, so it wobbled sideways. |
 | `sled-still-try.png` | 4 | 40×40. A second try asking for only the tail and ears to move; the body still drifted. |
+| `sled-no-beanie.png` | 4 | 40×40. The rider before it got its beanie (PixelLab drew it on the base frame; the tails were swapped back in). |
 
 The game's `art/sledmove.png` is `art/sledder.png` padded to 40×40 with only
 the tail swapped in from `sled-bounce` (lined up on the head and back), so the
@@ -58,3 +59,17 @@ dog and sled never move.
 `art/demo.png` (32×40 cells): phone, tapping paw, open paw, shiba head blowing
 (the BIG LUNGS icon), barking (the same head with its jaw opened by hand),
 gripping paw, and the game's calm shiba face; each at its cell's top-left (see `g.demoArt`).
+
+## closet/ (the toy room's things to wear, 2026-10-21)
+
+| File | Size | What it is |
+| --- | --- | --- |
+| `halo-ring.png` | 32×32 | PixelLab's halo, a ring seen face-on; it looked like a hoop on a head. The halo in `art/hats.png` is a flat ellipse pixelled by hand. |
+| `viking-helmet.png`, `headphones.png` | 32×32 | Taken out of the closet (the user's call). |
+| `chef-hat.png` | 32×32 | Taken out of the closet, kept for a future cooking game. |
+| `hats-big.png` | 32×32 cells | The first, head-sized hats. `art/hats.png` now has small ones (PixelLab redrew each shrunk to about 12-17px) that sit between the ears. |
+
+`art/hats.png` (32×32 cells, each on its cell's bottom middle): party hat,
+bow (small, by an ear), beanie, cowboy hat, wizard hat, halo, propeller cap,
+flower (small, by an ear), sunglasses (worn on the eyes), and the mini beanie
+SLED's rider wears. The crown reuses `art/crown.png`. See `Closet.ITEMS`.

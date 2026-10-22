@@ -1,5 +1,5 @@
 // The title: the first tap of a fresh visit replays the intro with sound, a
-// tap mid-intro only skips it; then the four menu options work
+// tap mid-intro only skips it; then the five menu options work
 // (checked with real pointer clicks on the canvas); coming back doesn't replay
 // the intro. Win/fail juice fires the same in every mode.
 import { eq, assert, openGame } from './lib.mjs';
@@ -8,7 +8,7 @@ export default async function ({ url, launch }) {
   const { page, done } = await openGame(launch, url, { live: true, wait: 300 });
   const clip = await page.locator('#game').boundingBox();
   const click = (vx, vy) => page.mouse.click(clip.x + vx / 180 * clip.width, clip.y + vy / 320 * clip.height);
-  const B = await page.evaluate(() => ({ run: Engine.BTN_RUN, classic: Engine.BTN_CLASSIC, album: Engine.BTN_ALBUM, set: Engine.BTN_SET }));
+  const B = await page.evaluate(() => ({ run: Engine.BTN_RUN, classic: Engine.BTN_CLASSIC, album: Engine.BTN_ALBUM, toy: Engine.BTN_TOY, set: Engine.BTN_SET }));
   await page.evaluate(() => { Engine.sensors = false; Input.camDenied = Input.micDenied = true; Prefs.set('tutorial', true); Engine._lastState = null; Engine.state = 'TITLE'; });
   await page.waitForTimeout(200);
   // a fresh visit is silent until the first tap, so that tap plays the intro again, now with sound
@@ -17,7 +17,7 @@ export default async function ({ url, launch }) {
   eq([fresh, ...await page.evaluate(() => [Engine.state, Engine.titleT < 1, Engine.introHeard])], [false, 'TITLE', true, true], 'the first tap replays the intro with sound');
   await click(90, B.run.y + 12); await page.waitForTimeout(100);
   eq(await page.evaluate(() => [Engine.state, Engine.titleT > 2]), ['TITLE', true], 'a tap mid-intro skips it and stays on the title');
-  for (const [k, want] of [['album', 'ALBUM'], ['set', 'SETTINGS']]) {
+  for (const [k, want] of [['album', 'ALBUM'], ['toy', 'TOYROOM'], ['set', 'SETTINGS']]) {
     await page.evaluate(() => { Engine.state = Engine._lastState = 'TITLE'; Engine.timer = 0; Engine.titleT = 9; }); await page.waitForTimeout(100);
     await click(90, B[k].y + 12); await page.waitForTimeout(150);
     eq(await page.evaluate(() => Engine.state), want, k + ' opens ' + want);

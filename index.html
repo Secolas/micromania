@@ -274,6 +274,9 @@ const Assets = {
     demo:     { src: 'art/demo.png',     fw: 32,  fh: 40,  frames: 7,  fps: 1  },
     highfive: { src: 'art/highfive.png', fw: 64,  fh: 64,  frames: 14, fps: 1  },
     breakjump:{ src: 'art/breakjump.png', fw: 64, fh: 96,  frames: 8,  fps: 1  },
+    hats:     { src: 'art/hats.png',     fw: 32,  fh: 32,  frames: 14, fps: 1  },
+    runcowboy:{ src: 'art/runcowboy.png', fw: 120, fh: 120, frames: 9, fps: 1  },
+    jumpcowboy:{ src: 'art/jumpcowboy.png', fw: 120, fh: 120, frames: 5, fps: 1 },
     walkstone:{ src: 'art/walkstone.png', fw: 36, fh: 36,  frames: 1,  fps: 1  },
     fullidle: { src: 'art/fullidle.png', fw: 64,  fh: 64,  frames: 22, fps: 1  },
     leanmove: { src: 'art/leanmove.png', fw: 64,  fh: 64,  frames: 7,  fps: 1  },
@@ -504,6 +507,12 @@ const Sfx = {
   twang() { this.tone({ f: 220, f1: 90, dur: 0.18, type: 'sawtooth', vol: 0.08, lp: 1200, vib: 0.08, vibRate: 40 }); this.whoosh(); },
   tap()  { this.tone({ f: 880, f1: 1320, dur: 0.05, type: 'sine', vol: 0.16 }); this.tone({ f: 1760, dur: 0.015, type: 'square', vol: 0.025 }); },
   tick() { this.tone({ f: 1700, dur: 0.03, type: 'sine', vol: 0.14 }); this.hiss({ dur: 0.02, vol: 0.07, bp: 2500 }); },   // a woodblock
+  // something new in the closet: three quick notes up and a high sparkle
+  unlockItem() {
+    if (!this.ac) return; const t = this.ac.currentTime;
+    [784, 988, 1175].forEach((f, i) => this.tone({ f, dur: 0.09, type: 'square', vol: 0.05, t: t + i * 0.08 }));
+    this.tone({ f: 2349, dur: 0.25, type: 'sine', vol: 0.06, t: t + 0.24 });
+  },
   // ── one game's own sounds ──
   smack()  { this.hiss({ dur: 0.07, vol: 0.22, bp: 1800, q: 0.6 }); this.tone({ f: 180, f1: 70, dur: 0.08, type: 'sine', vol: 0.16 }); },   // a swatter landing
   clap()   { const t = this.now(); this.hiss({ t, dur: 0.05, vol: 0.2, bp: 1400, q: 0.9 }); this.hiss({ t: t + 0.012, dur: 0.07, vol: 0.14, bp: 2400, q: 0.7 }); },   // paw meets hand
@@ -729,7 +738,7 @@ const Input = {
       // the engine's own buttons (mute, the sensors screen) eat their press the
       // same way, so a microgame never sees it
       this._uiPress = Engine.press(p);
-      this._shelfPress = p.y > BOT || this._uiPress;
+      this._shelfPress = (p.y > BOT && Engine.hasShelf()) || this._uiPress;   // menus have no shelf: their whole screen is theirs
       this._justDownRaw = !this._shelfPress;
       this._sx = p.x; this._sy = p.y; this._st = performance.now(); this._travel = 0;
       Sfx.unlock();
@@ -2001,6 +2010,7 @@ const Album = {
 ─────────────────────────────────────────────────────────────────────────────── */
 // the inside of the menu panels: a friendly deep blue that white and yellow text read on
 const MENU_PANEL = '#2f5597';
+const MENU_PANEL_DARK = '#24447a';   // a shadow on the panel (the closet's floor)
 const SCENE = {
   sky0: '#5fb6ee', sky1: '#b5e2fb', cloud: '#ffffff', star: '#d9f1ff',
   hill: '#4aa356', grass: '#6cc664', grassHi: '#8fdc85', grassLo: '#5cb856',
@@ -3973,10 +3983,12 @@ class DinoRun extends Microgame {
     // down while falling.
     const drawY = this.ground - this.dogH / 2 - this.y;
     if (this.onGround) {
-      g.sprite('swiperight', this.px, drawY, { w: this.dogW * 2, h: this.dogH * 2, frame: Math.floor(this.legT * 14) % 9 });
+      // in its cowboy hat (art/runcowboy.png, jumpcowboy.png: the run and jump with a
+      // side-on hat drawn in): beat JUMP! and the closet's is yours
+      g.sprite(Assets.get('runcowboy') ? 'runcowboy' : 'swiperight', this.px, drawY, { w: this.dogW * 2, h: this.dogH * 2, frame: Math.floor(this.legT * 14) % 9 });
     } else {
       const jf = this.vy > 60 ? 2 : this.vy < -60 ? 4 : 3;   // rising / falling / peak
-      g.sprite('runjump', this.px, drawY, { w: this.dogW * 2, h: this.dogH * 2, frame: jf });
+      g.sprite(Assets.get('jumpcowboy') ? 'jumpcowboy' : 'runjump', this.px, drawY, { w: this.dogW * 2, h: this.dogH * 2, frame: jf });
     }
     // progress pips
     for (let i = 0; i < this.need; i++) g.rect(W - 8 - i * 8, TOP + 4, 5, 5, i < this.cleared ? PAL.accent : PAL.mid);
@@ -5085,7 +5097,9 @@ class SteerRun extends Microgame {
     }
     for (const p of this.spray) { ctx.globalAlpha = 1 - p.t / 0.3; g.rect(p.x, p.y, 2, 2, PAL.ink); ctx.globalAlpha = 1; }
     // the sled under the shiba, leaning into the turn
-    if (Assets.get('sledmove')) g.sprite('sledmove', Math.round(this.px), this.runY - 7, { frame: Math.floor(this.t * 8) % 4 });   // art/sledmove.png: sledder.png padded to 40x40, only its tail wagging
+    if (Assets.get('sledmove')) {
+      g.sprite('sledmove', Math.round(this.px), this.runY - 7, { frame: Math.floor(this.t * 8) % 4 });   // art/sledmove.png: the rider in its beanie (beat SLED and the closet's is yours), only its tail wagging
+    }
     else if (Assets.get('sledder')) g.sprite('sledder', Math.round(this.px), this.runY - 4);   // art/sledder.png: the shiba from behind, sat in its sled
     else { g.sprite('sled', this.px, this.runY + 8); g.sprite('hero', this.px, this.runY - 2, { w: 22, h: 27, frame: 0 }); }
     for (let i = 0; i < this.need; i++) g.rect(W - 8 - i * 8, TOP + 4, 5, 5, i < this.passed ? PAL.accent : PAL.mid);
@@ -6271,6 +6285,206 @@ const Wipe = {
   }
 };
 
+/* ── CLOSET ──────────────────────────────────────────────────────────────────
+   Things your shiba can wear, earned by playing, and what you've done to earn
+   them (kept on this phone). The equipped one is drawn on the shiba wherever
+   it's yours: the mascot on the shelf, the break between Classic games, the
+   closet's mirror. Hats are art/hats.png, one 32x32 cell each, the hat sat on
+   the cell's bottom middle; each sheet a hat can go on has its head found
+   frame by frame (the top of the head between the ears), so it rides along
+   with every bob, cheer and droop. */
+const Closet = {
+  KEY: 'micromania.closet',
+  // f: hats.png frame (small, to sit between the ears; the wizard hat and halo
+  // are the big ones, 12 and 13, by choice; frame 9 is a mini beanie,
+  // 10 the side-on cowboy hat JUMP!'s runner wears: prompt icons). game: won by beating that game, where you see it (the SLED
+  // rider's beanie, the HEADBANG rocker's shades). face: worn on the eyes
+  // (the sunglasses), not on top. sit: how far the hat's
+  // bottom comes down past the top of the head (kept clear of the eyes on
+  // every shiba it goes on); dx: off to one side (the bow and flower, by an ear);
+  // between: worn between the ears, which stand in front of it
+  ITEMS: [
+    { id: 'party',   name: 'PARTY HAT',     f: 0,  sit: 2, how: 'FREE TO WEAR',            got: s => true },
+    { id: 'bow',     name: 'BOW',           f: 1,  sit: 3, dx: 5, how: 'WIN 10 GAMES',     got: s => s.wins >= 10 },
+    { id: 'beanie',  name: 'BEANIE',        f: 2,  icon: 9, sit: 5, game: 'steer', how: 'BEAT SLED',  got: s => !!s.beat.steer },
+    { id: 'cowboy',  name: 'COWBOY HAT',    f: 3,  icon: 10, sit: 2, between: true, game: 'run', how: 'BEAT JUMP!', got: s => !!s.beat.run },
+    { id: 'shades',  name: 'SUNGLASSES',    f: 8,  face: true, game: 'rock', how: 'BEAT HEADBANG', got: s => !!s.beat.rock },
+    { id: 'wizard',  name: 'WIZARD HAT',    f: 12, sit: 5, how: 'WIN A RUN',               got: s => s.runWins >= 1 },
+    { id: 'halo',    name: 'HALO',          f: 13, sit: -5, how: 'SCORE 30 IN CLASSIC',    got: s => s.classic >= 30 },
+    { id: 'propeller', name: 'PROPELLER CAP', f: 6, sit: 3, how: 'REACH WORLD 2 IN RUN',   got: s => s.runWorld >= 2 },
+    { id: 'flower',  name: 'FLOWER',        f: 7,  sit: 3, dx: -6, how: 'TAKE 5 SELFIES',  got: s => s.photos >= 5 },
+    { id: 'crown',   name: 'CROWN',         f: 11, sit: 3, between: true, how: 'ALL 7 BOSSES IN ONE CLASSIC GAME', got: s => !!s.allBosses },
+  ],
+  item(id) { return this.ITEMS.find(i => i.id === id); },
+
+  // what you've done, kept across runs
+  _s: null,
+  get stats() {
+    if (this._s) return this._s;
+    let s = {};
+    try { s = JSON.parse(localStorage.getItem(this.KEY) || '{}'); } catch (e) {}
+    this._s = Object.assign({ wins: 0, bosses: [], photos: 0, met: [], toy: {}, owned: [], hat: null, beat: {}, allBosses: false }, s);
+    return this._s;
+  },
+  save() { try { localStorage.setItem(this.KEY, JSON.stringify(this.stats)); } catch (e) {} },
+  // the parts of progress the game already keeps elsewhere, folded in
+  view() {
+    const s = this.stats;
+    return Object.assign({}, s, {
+      classic: Engine.best || 0,
+      runWins: Run.wins || 0,
+      runWorld: Math.max(Math.floor((Run.best || 0) / 3) + 1, Engine.mode === 'run' && Engine.state !== 'TITLE' ? Run.world : 1),
+    });
+  },
+  met(id) { const s = this.stats; if (!s.met.includes(id)) { s.met.push(id); this.save(); } },
+  won(id, boss) {
+    const s = this.stats; s.wins++;
+    if (boss && !s.bosses.includes(id)) s.bosses.push(id);
+    if (this.ITEMS.some(i => i.game === id)) s.beat[id] = true;   // a game with something to win in it
+    this.save(); this.check();
+  },
+  // every boss beaten in one Classic game: the crown
+  allBosses() { if (!this.stats.allBosses) { this.stats.allBosses = true; this.save(); this.check(); } },
+  // the thing a game has to win, if you haven't got it yet (for its prompt)
+  prize(gameId) { return this.ITEMS.find(i => i.game === gameId && !this.owns(i.id)) || null; },
+  // dev menu: everything, or a fresh start
+  unlockAll() { const s = this.stats; s.owned = this.ITEMS.map(i => i.id); s.met = [...POOL, ...BOSSES].map(C => C.meta.id); this.save(); },   // every game in the toy room too
+  resetAll() { this._s = null; try { localStorage.removeItem(this.KEY); } catch (e) {} this.check(); },
+  photo() { this.stats.photos++; this.save(); this.check(); },
+  toyBest(id, lv) { const s = this.stats; if ((s.toy[id] || 0) < lv) { s.toy[id] = lv; this.save(); } },
+
+  owns(id) { return this.stats.owned.includes(id); },
+  // anything newly earned goes in the closet, with a NEW! for each
+  check() {
+    const v = this.view(), s = this.stats;
+    for (const it of this.ITEMS) {
+      if (s.owned.includes(it.id) || !it.got(v)) continue;
+      s.owned.push(it.id);
+      if (it.id !== 'party') Toast.show('NEW! ' + it.name, it);   // the free one is just there
+    }
+    this.save();
+  },
+  get hat() { const h = this.stats.hat; return h && this.owns(h) ? this.item(h) : null; },
+  wear(id) { this.stats.hat = id; this.save(); },
+
+  // Where the head is in each frame of a sheet, found once from its pixels.
+  // In frame 0 it's measured: the top of the head between the ear tips (where
+  // a hat sits) and the eye line (the topmost dark pixels inside the face, for
+  // glasses). Every other frame finds that same head by matching frame 0's
+  // picture of it (ears, eyes, cheeks) at each nearby offset and keeping the
+  // best fit, so the hat follows the head through a jump or a cheer even while
+  // the ears squash and the paws come up beside it.
+  _heads: {},
+  head(name, frame) {
+    const a = Assets.get(name); if (!a) return null;
+    let H = this._heads[name];
+    if (!H) {
+      H = this._heads[name] = [];
+      const c = document.createElement('canvas'); c.width = a.fw * a.frames; c.height = a.fh;
+      const x = c.getContext('2d'); x.drawImage(a.img, 0, 0);
+      let d; try { d = x.getImageData(0, 0, c.width, c.height).data; } catch (e) { return null; }
+      const at = (px, py) => (py * c.width + px) * 4;
+      const op = (px, py) => px >= 0 && py >= 0 && px < c.width && py < a.fh && d[at(px, py) + 3] > 40;
+      const dark = (px, py) => { const i = at(px, py); return d[i + 3] > 40 && d[i] + d[i + 1] + d[i + 2] < 150; };
+      const inside = (px, py) => { for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) if (!op(px + dx, py + dy)) return false; return true; };
+      // frame 0: the ear tips, the head's middle across them, the eye line
+      const x0 = Math.floor(a.fw * 0.2), x1 = Math.ceil(a.fw * 0.8);
+      let top = -1;
+      for (let py = 0; py < a.fh && top < 0; py++) for (let px = x0; px < x1; px++) if (op(px, py)) { top = py; break; }
+      if (top < 0) return null;
+      let lo = 1e9, hi = -1;
+      for (let py = top; py < Math.min(a.fh, top + 8); py++) for (let px = x0; px < x1; px++) if (op(px, py)) { lo = Math.min(lo, px); hi = Math.max(hi, px); }
+      let ey = -1, ex0 = 1e9, ex1 = -1;
+      for (let py = top + 3; py < Math.min(a.fh, top + 30) && ey < 0; py++) for (let px = x0; px < x1; px++) if (dark(px, py) && inside(px, py)) { ey = py; ex0 = Math.min(ex0, px); ex1 = Math.max(ex1, px); }
+      // the dip between the ears: the head's top at its middle column (above it is only ear)
+      let dip = top; const mc = Math.round((lo + hi) / 2);
+      for (let py = top; py < a.fh; py++) if (op(mc, py) && op(mc - 1, py) && op(mc + 1, py)) { dip = py; break; }
+      const E = this.EYES[name];   // measured: the fur has dark markings a search can mistake for eyes
+
+      const base = { x: (lo + hi) / 2, y: top + this.EARS, ex: E ? E.x : ey < 0 ? (lo + hi) / 2 : (ex0 + ex1) / 2, ey: E ? E.y : ey < 0 ? top + 12 : ey, dip };
+      // the head patch to look for: the ears down past the eyes, across the head
+      const px0 = Math.max(0, Math.round(lo - 2)), px1 = Math.min(a.fw, Math.round(hi + 3)), py0 = top, py1 = Math.min(a.fh, Math.round(base.ey + 8));
+      const R = Math.round(a.fh * 0.4);   // how far the head can have moved
+      for (let f = 0; f < a.frames; f++) {
+        if (f === 0) { H.push(base); continue; }
+        let best = 1e18, bx = 0, by = 0;
+        for (let oy = -R; oy <= R; oy++) for (let ox = -R; ox <= R; ox++) {
+          let cost = 0;
+          for (let py = py0; py < py1 && cost < best; py++) {
+            const qy = py + oy; if (qy < 0 || qy >= a.fh) { cost += 1e6; continue; }
+            for (let px = px0; px < px1; px++) {
+              const qx = px + ox; const i = at(px, py);
+              if (qx < 0 || qx >= a.fw) { cost += d[i + 3] > 40 ? 900 : 0; continue; }
+              const j = at(f * a.fw + qx, qy), A = d[i + 3] > 40, B = d[j + 3] > 40;
+              cost += A !== B ? 900 : A ? Math.abs(d[i] - d[j]) + Math.abs(d[i + 1] - d[j + 1]) + Math.abs(d[i + 2] - d[j + 2]) : 0;
+            }
+          }
+          if (cost < best || (cost === best && Math.abs(ox) + Math.abs(oy) < Math.abs(bx) + Math.abs(by))) { best = cost; bx = ox; by = oy; }
+        }
+        // and the eyes themselves near where the match puts them: the hat never comes down past them
+        let fey = -1;
+        const black = (px, py) => { const i = at(px, py); return d[i + 3] > 40 && d[i] + d[i + 1] + d[i + 2] < 60; };
+        for (let py = Math.max(0, Math.round(base.ey + by - 3)); py <= Math.min(a.fh - 1, Math.round(base.ey + by + 3)) && fey < 0; py++)
+          for (let px = Math.max(0, Math.round(base.ex + bx - 7)); px <= Math.min(a.fw - 1, Math.round(base.ex + bx + 7)); px++) if (black(f * a.fw + px, py) && inside(f * a.fw + px, py)) { fey = py; break; }
+        const ey = fey < 0 ? base.ey + by : fey;
+        H.push({ x: base.x + bx, y: Math.min(base.y + by, ey - (base.ey - base.y)), ex: base.ex + bx, ey, dip: base.dip + by });
+      }
+    }
+    return H[frame] || null;
+  },
+  FACE_DX: -1,   // the sunglasses sit this far left of the eyes' middle, so both lenses cover them
+  FACE_DY: 1,    // and this far below the top of the eyes, resting just above the nose
+  EARS: 8,   // the hat sits this far below the ear tips, down over them (but see dress: never over the eyes)
+  // where the eyes are in frame 0 of each sheet a shiba wears things on (the
+  // middle between them, the top of their row): the sunglasses go here
+  EYES: { shiba: { x: 13.5, y: 13 }, fullshiba: { x: 16.5, y: 23 }, breakjump: { x: 25.5, y: 54 }, fullidle: { x: 24.5, y: 23 } },
+
+  // Draw the equipped hat on a sheet's frame drawn centred at cx, cy at w x h
+  // (as g.sprite does). Its scale is the sprite's, so a 2x shiba wears it 2x.
+  dress(name, frame, cx, cy, w, h) {
+    const it = this.hat; if (!it) return;
+    const a = Assets.get(name), hd = this.head(name, frame); if (!a || !hd) return;
+    const k = w / a.fw;
+    if (it.face) { this.drawItem(it, cx - w / 2 + (hd.ex + 0.5 + this.FACE_DX) * k, cy - h / 2 + (hd.ey + 4 + this.FACE_DY) * k, k); return; }   // over the eyes
+    // as low as it sits, down over the ears, but its bottom stays above this frame's eyes
+    const bottom = Math.min(hd.y + it.sit, hd.ey - 1);
+    const hx = cx - w / 2 + hd.x * k + (it.dx || 0) * k, hy = cy - h / 2 + bottom * k;
+    this.drawItem(it, hx, hy, k);
+    // between the ears (the cowboy hat, the crown): the ears go back on top,
+    // everything of the sprite above the dip between them, so they stand in front
+    if (it.between) {
+      ctx.save(); ctx.beginPath(); ctx.rect(cx - w / 2, cy - h / 2, w, hd.dip * k); ctx.clip();
+      ctx.drawImage(a.img, frame * a.fw, 0, a.fw, a.fh, cx - w / 2, cy - h / 2, w, h);
+      ctx.restore();
+    }
+  },
+  // an item with its bottom middle at x, y, at scale k (also the closet's cards)
+  drawItem(it, x, y, k = 1) {
+    if (it.crown) { const c = Assets.get('crown'); if (c) ctx.drawImage(c.img, Math.round(x - c.fw * k / 2), Math.round(y - c.fh * k), c.fw * k, c.fh * k); return; }
+    const a = Assets.get('hats'); if (!a) return;
+    ctx.drawImage(a.img, it.f * a.fw, 0, a.fw, a.fh, Math.round(x - a.fw * k / 2), Math.round(y - a.fh * k), a.fw * k, a.fh * k);
+  },
+};
+
+// A short wooden note sliding down from the top: NEW! COWBOY HAT, with the hat.
+const Toast = {
+  q: [], t: 0,
+  show(text, item) { this.q.push({ text, item }); if (this.q.length === 1) { this.t = 0; Sfx.unlockItem && Sfx.unlockItem(); } },
+  update(dt) {
+    if (!this.q.length) return;
+    this.t += dt;
+    if (this.t > 2.6) { this.q.shift(); this.t = 0; if (this.q.length && Sfx.unlockItem) Sfx.unlockItem(); }
+  },
+  draw() {
+    if (!this.q.length) return;
+    const n = this.q[0], t = this.t, k = t < 0.25 ? t / 0.25 : t > 2.3 ? 1 - (t - 2.3) / 0.3 : 1;
+    const y = Math.round(-40 + k * (TOP + 46));
+    g.nine('buttons', 1, 10, y, W - 20, 38, 6) || g.rect(10, y, W - 20, 38, PAL.accent);
+    if (n.item) Closet.drawItem(n.item, 34, y + 34, 1);
+    g.text(n.text, CX + 14, y + 23, 9, PAL.bg);
+  }
+};
+
 const Mascot = {
   SW: 35, SH: 37,
   x: W - 20,
@@ -6297,6 +6511,7 @@ const Mascot = {
   draw(g) {
     g.rect(0, BOT, W, 1, PAL.mid);                                      // shelf divider
     g.sprite('shiba', this.x, this.y, { w: this.SW, h: this.SH, frame: this.frame() });   // never moves: the art is cut flat at its feet
+    Closet.dress('shiba', this.frame(), this.x, this.y, this.SW, this.SH);   // whatever it's wearing
   }
 };
 
@@ -6370,6 +6585,7 @@ const Run = {
   clock(sec) { sec = Math.round(sec); return Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0'); },
 
   beginStage() {
+    Closet.check();   // reaching world 2 earns the propeller cap
     this.score = 0; this.left = this.games(); this.played = 0; this.streak = 0;
     this.freeFail = this.has('good');
     // a touch faster every stage, a step faster every world
@@ -6444,7 +6660,7 @@ const Run = {
   // the shop with the bones just paid out.
   win() {
     this.won = true; this.winTime = Engine.time - this.startT;
-    this.wins++;
+    this.wins++; Closet.check();
     if (!this.bestTime || this.winTime < this.bestTime) { this.bestTime = this.winTime; this.newBestTime = true; } else this.newBestTime = false;
     try { localStorage.setItem('micromania.runWins', String(this.wins)); localStorage.setItem('micromania.bestRunTime', String(Math.round(this.bestTime))); } catch (e) {}
     Engine.state = 'RUNWIN'; Engine.timer = 1.0; this.confT = 0;
@@ -6762,6 +6978,7 @@ const Engine = {
 
   reset() {
     this.lives = 4; this.score = 0; this.round = 0; this.combo = 0; this.speed = 1;
+    this.bossesBeaten = [];   // this Classic game's, for the crown
     this.lastId = null;
   },
 
@@ -6806,6 +7023,7 @@ const Engine = {
     const only = L => this.forceSurprise === 'reverse' ? L.filter(G => this.canReverse(G.meta)) : L;
     const C = forceClass || this.pick(only(this.isBoss ? BOSSES : POOL));
     this.lastId = C.meta.id;
+    if (!this.tut && !this.testClass) Closet.met(C.meta.id);   // the toy room lists the games you've met
     const diff = forceDiff || (this.isBoss ? 3 : this.difficulty());
     this.game = new C(diff);
     this.game.meta = C.meta;
@@ -6821,12 +7039,12 @@ const Engine = {
     Sfx.prompt(this.isBoss);
     // the first time ever you meet a game, its prompt waits for you to tap READY
     const learned = Prefs.get('learned.' + C.meta.id, false);
-    this.waitReady = !learned && !this.tut && !this.testClass && Prefs.get('readyGate', true);
+    this.waitReady = !learned && !this.tut && !this.testClass && !this.toy && Prefs.get('readyGate', true);
     // a surprise now and then: REVERSE controls, or DOUBLE points
     const F = this.forceSurprise;
     // ?double means each mode's own bonus: DOUBLE BONUS in RUN, +1 LIFE in CLASSIC
     this.surprise = F ? (F === 'reverse' ? (this.canReverse(C.meta) ? 'reverse' : null) : this.mode === 'run' ? 'double' : 'life')
-      : learned && !this.tut && !this.testClass ? this.rollSurprise(C.meta) : null;
+      : learned && !this.tut && !this.testClass && !this.toy ? this.rollSurprise(C.meta) : null;
     this.reverse = this.surprise === 'reverse';
     this.promptT = 0;
     if (this.surprise) this.timer += 0.9;   // a beat longer to take it in
@@ -6951,13 +7169,15 @@ const Engine = {
 
   update(dt) {
     this.time += dt;
+    Toast.update(dt);
+    if (!this.closetReady && this.state === 'TITLE') { this.closetReady = true; Closet.check(); }   // progress from before the closet existed counts too
     Input.rev = this.reverse && this.state === 'PLAYING';
     // a PLAYING game may request a pause (e.g. blow waiting on mic permission);
     // freeze the round clock so it can't be lost while blocked
     Wipe.update(dt); Juice.update(dt);
     // the title plays its intro every time you arrive (not back from the album)
     if (this.state !== this._lastState) {
-      if (this.state === 'TITLE') { this.titleT = ['ALBUM', 'SETTINGS'].includes(this._lastState) ? 9 : 0; this.titleSfx = 0; this.introHeard = !!Sfx.ac; }
+      if (this.state === 'TITLE') { this.titleT = ['ALBUM', 'SETTINGS', 'TOYROOM'].includes(this._lastState) ? 9 : 0; this.titleSfx = 0; this.introHeard = !!Sfx.ac; }
       this._lastState = this.state;
     }
     if (this.state === 'TITLE') this.titleIntro(dt);
@@ -7054,6 +7274,12 @@ const Engine = {
         if (this.game.won) {
           if (this.surprise === 'life' && this.mode === 'classic' && this.lives < 4) { this.lives++; this.gotLife = true; } else this.gotLife = false;
           this.score++; this.combo++; this.result = 'WIN'; Sfx.win(); buzz(20); Mascot.set('cheer');
+          if (!this.tut && !this.testClass) Closet.won(this.game.meta.id, !this.toy && (this.isBoss || BOSSES.includes(this.game.constructor)));   // a boss counts when it's for real, not practice
+          if (this.isBoss && this.mode === 'classic' && !this.toy && !this.tut && !this.testClass) {
+            const b = this.bossesBeaten || (this.bossesBeaten = []), id = this.game.meta.id;
+            if (!b.includes(id)) b.push(id);
+            if (b.length >= BOSSES.length) Closet.allBosses();
+          }
           // the action shot: the best moment caught while playing, stamped
           this.snap = null;
           if (this.game.meta.photo && this.shootsNow()) {
@@ -7063,6 +7289,7 @@ const Engine = {
               this.snap = Engine.lastPhoto = shot;
               this.album.push(shot); if (this.album.length > 4) this.album.shift();
               Album.add(shot, this.game.meta.photoCap || 'NICE MOVES!', this.game.meta.prompt);
+              if (!this.tut) Closet.photo();
             }
           }
           FX.burst(Mascot.x, Mascot.y - 8, PAL.accent, 12 + Math.min(12, this.combo * 2), 80);
@@ -7071,14 +7298,14 @@ const Engine = {
           const touch = ['TAP', 'DRAG'].includes(Run.group(this.game.meta)) && Input.y > TOP && Input.y < BOT;
           Juice.start(true, this.mode === 'run' ? 0 : this.combo, touch ? Input.x : CX, touch ? Input.y : CY);
         } else {
-          if (!this.testClass && !this.tut && this.mode === 'classic') this.lives--;
+          if (!this.testClass && !this.toy && !this.tut && this.mode === 'classic') this.lives--;
           this.snap = null;
           this.combo = 0; this.result = 'FAIL'; Sfx.fail(); buzz(120); Mascot.set('sad');
           FX.flash(PAL.bad, 0.55); FX.shake(5);
           Juice.start(false, 0, CX, CY);
         }
-        if (this.score > this.best && !this.testClass && !this.tut && this.mode === 'classic') {
-          this.best = this.score;
+        if (this.score > this.best && !this.testClass && !this.toy && !this.tut && this.mode === 'classic') {
+          this.best = this.score; Closet.check();
           try { localStorage.setItem('micromania.best', String(this.best)); } catch (e) {}
         }
         this.state = 'RESULT'; this.timer = 0.9;
@@ -7131,7 +7358,7 @@ const Engine = {
   // The countdown, SPEED UP, STAGE CLEAR and GAME OVER have their own stings.
   musicTrack() {
     const s = this.state;
-    if (['TITLE', 'SETTINGS', 'ALBUM', 'PERMS', 'REPLAY', 'RUNWIN', 'CAMCHECK'].includes(s)) return 'menu';
+    if (['TITLE', 'SETTINGS', 'ALBUM', 'PERMS', 'REPLAY', 'RUNWIN', 'CAMCHECK', 'TOYROOM'].includes(s)) return 'menu';
     if (s === 'SHOP') return 'shop';
     if (!['STAGE', 'PROMPT', 'PLAYING', 'RESULT', 'PHOTO', 'BREAK'].includes(s)) return null;
     const how = this.game && this.game.meta.how;
@@ -7190,7 +7417,8 @@ const Engine = {
   BTN_RUN:     { x: CX - 50, y: 182, w: 100, h: 24 },
   BTN_CLASSIC: { x: CX - 50, y: 206, w: 100, h: 24 },
   BTN_ALBUM:   { x: CX - 50, y: 230, w: 100, h: 24 },
-  BTN_SET:     { x: CX - 50, y: 254, w: 100, h: 24 },
+  BTN_TOY:     { x: CX - 50, y: 254, w: 100, h: 24 },
+  BTN_SET:     { x: CX - 50, y: 278, w: 100, h: 24 },
   // SETTINGS: one switch per row, BACK like the album's
   SET_ROWS: [
     { k: 'sound', label: 'SOUND', y: TOP + 40 },
@@ -7212,7 +7440,7 @@ const Engine = {
   ALB_NEXT:    { x: W - 46, y: BOT - 26, w: 30, h: 20 },
   // the menu-style screens: black with drifting paw prints and a pixel frame,
   // and no mascot on the shelf
-  MENU_SCREENS: ['SETTINGS', 'ALBUM', 'PERMS', 'GAMEOVER', 'TUTORIAL', 'TUTCAT', 'TUTDONE', 'REPLAY', 'RUNWIN', 'CAMCHECK'],
+  MENU_SCREENS: ['SETTINGS', 'ALBUM', 'PERMS', 'GAMEOVER', 'TUTORIAL', 'TUTCAT', 'TUTDONE', 'REPLAY', 'RUNWIN', 'CAMCHECK', 'TOYROOM'],
   groupLabel(gr) { return { TAP: 'TAP', DRAG: 'DRAG', CAMERA: 'CAMERA', BLOW: 'SOUND', SHAKE: 'TILT/SHAKE' }[gr] || gr; },
   menuBg() {
     const mt = Assets.get('menutile');
@@ -7274,6 +7502,8 @@ const Engine = {
       return;
     }
     if (s === 'ALBUM') { this.albumRelease(p); return; }
+    if (s === 'TITLE' && this.timer <= 0 && this.hit(this.BTN_TOY, p)) { Sfx.unlock(); Sfx.tap(); Closet.check(); this.openToy('games'); return; }
+    if (s === 'TOYROOM') { this.toyRelease(p); return; }
     if (s === 'TITLE' && this.timer <= 0 && this.hit(this.BTN_SET, p)) { Sfx.unlock(); Sfx.tap(); this.state = 'SETTINGS'; return; }
     if (s === 'SETTINGS') { this.settingsRelease(p); return; }
     if (s === 'TUTORIAL' && this.timer <= 0) { Sfx.unlock(); Sfx.tap(); this.tutCard(0); return; }
@@ -7388,7 +7618,7 @@ const Engine = {
     const R = this.BTN_RUN, C = this.BTN_CLASSIC, A = this.BTN_ALBUM;
     const up = (i) => (1 - back((t - 1.3 - i * 0.08) / 0.45)) * 150;   // from below the bottom edge
     // the menu: white outlined words, all alike
-    const opts = [[R, 'RUN'], [C, 'CLASSIC'], [A, 'ALBUM'], [this.BTN_SET, 'SETTINGS']];
+    const opts = [[R, 'RUN'], [C, 'CLASSIC'], [A, 'ALBUM'], [this.BTN_TOY, 'TOY ROOM'], [this.BTN_SET, 'SETTINGS']];
     opts.forEach(([b, label], i) => {
       if (Assets.get('button')) g.sprite('button', CX, b.y + up(i) + b.h / 2);   // art/button.png
       g.outline(label, CX, b.y + up(i) + b.h / 2 + 5, 14, PAL.ink);
@@ -7396,8 +7626,9 @@ const Engine = {
     const best = [];
     if (Run.best) best.push('RUN ' + Run.label(Run.best));
     if (this.best) best.push('CLASSIC ' + this.best);
-    if (best.length && t > this.TITLE_INTRO) g.outline('BEST  ' + best.join('  ·  '), CX, H - 24, 8, PAL.ink);
-    if (!this.introHeard && t > this.TITLE_INTRO && Math.floor(this.time * 2) % 2) g.outline('TAP FOR SOUND', CX, H - 10, 8, PAL.accent);   // a fresh visit, still silent
+    // one line under the five buttons: TAP FOR SOUND on a fresh, silent visit, then BEST
+    if (!this.introHeard && t > this.TITLE_INTRO) { if (Math.floor(this.time * 2) % 2) g.outline('TAP FOR SOUND', CX, H - 8, 8, PAL.accent); }
+    else if (best.length && t > this.TITLE_INTRO) g.outline('BEST  ' + best.join('  ·  '), CX, H - 8, 8, PAL.ink);
   },
 
   // ── SHARE ──────────────────────────────────────────────────────────────────
@@ -7763,9 +7994,13 @@ const Engine = {
     // the shiba on the stage: a real happy jump (art/breakjump.png: crouch,
     // spring up legs out, tuck, land; 64x96 drawn 2x, feet on the floor), or teary
     const fy = sy + sh - 18;
-    if (won && Assets.get('breakjump')) g.sprite('breakjump', CX, fy - 96, { w: 128, h: 192, frame: Math.floor(t / this.BREAK_JUMP * 8) % 8 });
-    else if (won) g.fullShiba(CX, fy, Math.floor(t * 8) % 2 ? g.FULL.cheer : g.FULL.cheer2);
-    else g.fullIdle(CX, fy, 'teary', t);
+    ctx.save(); ctx.beginPath(); ctx.rect(sx + 3, sy + 3, sw - 6, sh - 6); ctx.clip();   // a big hat at the top of a jump stays on the stage
+    if (won && Assets.get('breakjump')) {
+      const f = Math.floor(t / this.BREAK_JUMP * 8) % 8;
+      g.sprite('breakjump', CX, fy - 96, { w: 128, h: 192, frame: f }); Closet.dress('breakjump', f, CX, fy - 96, 128, 192);
+    } else if (won) { const f = Math.floor(t * 8) % 2 ? g.FULL.cheer : g.FULL.cheer2; g.fullShiba(CX, fy, f); Closet.dress('fullshiba', f, CX, fy - 64, 96, 128); }
+    else { g.fullIdle(CX, fy, 'teary', t); Closet.dress('fullidle', g.IDLE.teary + Math.floor(t * 5) % 4, CX, fy - 64, 128, 128); }
+    ctx.restore();
     // the score in the stage's corner (clear of the jump), the point you just earned popping in
     const pop = won ? Math.max(0, 1 - t * 4) : 0, scx = sx + 26;
     g.outline(String(this.score), scx, sy + 30 + Math.round(pop * -4), 18 + Math.round(pop * 8), won ? PAL.accent : PAL.ink);
@@ -7778,15 +8013,148 @@ const Engine = {
     }
   },
 
+  // ── TOY ROOM ────────────────────────────────────────────────────────────
+  // Off the title: GAMES, every microgame you've met, to play again any time at
+  // level 1, 2 or 3 (the best level you've cleared shows as pips), and CLOSET,
+  // where your shiba wears what you've earned. A toy-room game is practice: no
+  // lives, no best score, no surprises, and it comes straight back here.
+  TOY_BACK: { x: 16, y: TOP + 2, w: 40, h: 16 },
+  TOY_TABS: [{ id: 'games', label: 'GAMES', x: 20, y: TOP + 24, w: 68, h: 20 }, { id: 'closet', label: 'CLOSET', x: 92, y: TOP + 24, w: 68, h: 20 }],
+  TOY_PER: 12,
+  toyLvBtn(i) { return { x: CX - 14 + i * 26, y: TOP + 50, w: 22, h: 16 }; },
+  toyCard(i) { const c = i % 2, r = (i / 2) | 0; return { x: 18 + c * 73, y: TOP + 72 + r * 24, w: 71, h: 22 }; },
+  TOY_PREV: { x: 18, y: TOP + 220, w: 32, h: 18 },
+  TOY_DEV: { x: W - 42, y: TOP + 52, w: 26, h: 16 },   // ?dev only: unlock everything
+  TOY_NEXT: { x: W - 50, y: TOP + 220, w: 32, h: 18 },
+  closetCard(i) { const c = i % 5, r = (i / 5) | 0; return { x: 16 + c * 30, y: TOP + 164 + r * 32, w: 28, h: 30 }; },
+  toyGames() { return [...POOL, ...BOSSES]; },
+  openToy(tab) {
+    this.state = 'TOYROOM'; this.timer = 0.2;
+    if (tab) this.toyTab = tab;
+    this.toyTab = this.toyTab || 'games'; this.toyPage = this.toyPage || 0; this.toyLv = this.toyLv || 1;
+    this.toySel = null;
+  },
+  playToy(C) {
+    Sfx.unlock(); Input.enableMotion(); Input.enableTilt();
+    if (this.sensors === null) this.sensors = true;
+    this.reset(); this.mode = 'classic'; this.tut = null; this.testClass = null;
+    this.toy = { C, lv: this.toyLv };
+    this.startRound(C, this.toyLv);
+  },
+  // a toy game's over: note a cleared level, and back to the list
+  toyDone() {
+    const t = this.toy, won = this.result === 'WIN';
+    if (won) Closet.toyBest(t.C.meta.id, t.lv);
+    this.toy = null; this.reset();
+    this.toyMsg = won ? ['LEVEL ' + t.lv + ' CLEARED!', PAL.accent] : ['TRY AGAIN!', PAL.bad]; this.toyMsgT = 2.2;
+    this.openToy('games');
+  },
+  toyRelease(p) {
+    if (this.hit(this.TOY_BACK, p)) { Sfx.tap(); this.state = 'TITLE'; this.timer = 0.2; return; }
+    for (const tb of this.TOY_TABS) if (this.hit(tb, p)) { Sfx.tap(); this.toyTab = tb.id; this.toySel = null; return; }
+    if (this.toyTab === 'games') {
+      for (let i = 0; i < 3; i++) if (this.hit(this.toyLvBtn(i), p)) { Sfx.tap(); this.toyLv = i + 1; return; }
+      const L = this.toyGames(), pages = Math.ceil(L.length / this.TOY_PER);
+      if (this.hit(this.TOY_PREV, p)) { Sfx.tap(); this.toyPage = (this.toyPage + pages - 1) % pages; return; }
+      if (this.hit(this.TOY_NEXT, p)) { Sfx.tap(); this.toyPage = (this.toyPage + 1) % pages; return; }
+      for (let i = 0; i < this.TOY_PER; i++) {
+        const C = L[this.toyPage * this.TOY_PER + i];
+        if (!C || !this.hit(this.toyCard(i), p)) continue;
+        if (!Closet.stats.met.includes(C.meta.id)) { Sfx.fail(); this.toyMsg = ['PLAY IT IN A RUN FIRST', PAL.mid]; this.toyMsgT = 1.6; return; }
+        Sfx.tap(); this.playToy(C); return;
+      }
+      return;
+    }
+    if (DEBUG && this.hit(this.TOY_DEV, p)) { Sfx.tap(); Closet.unlockAll(); return; }
+    // the closet: tap something you own to wear it (again to take it off); a locked one says how to earn it
+    Closet.ITEMS.forEach((it, i) => {
+      if (!this.hit(this.closetCard(i), p)) return;
+      this.toySel = it.id;
+      if (!Closet.owns(it.id)) { Sfx.fail(); return; }
+      Sfx.tap(); Closet.wear(Closet.stats.hat === it.id ? null : it.id);
+    });
+  },
+  drawToyRoom() {
+    const B = this.TOY_BACK;
+    g.button(B, false); g.text('BACK', B.x + B.w / 2, B.y + 11, 7, PAL.ink);
+    g.text('TOY ROOM', CX + 18, TOP + 16, 12, PAL.accent);
+    for (const tb of this.TOY_TABS) { const on = this.toyTab === tb.id; g.button(tb, on); g.text(tb.label, tb.x + tb.w / 2, tb.y + 14, 9, on ? PAL.bg : PAL.ink); }
+    if (this.toyMsgT > 0) this.toyMsgT -= STEP;
+    if (this.toyTab === 'games') {
+      g.text('LEVEL', CX - 30, TOP + 62, 8, PAL.ink, 'right');
+      for (let i = 0; i < 3; i++) { const L = this.toyLvBtn(i), on = this.toyLv === i + 1; g.button(L, on); g.text(String(i + 1), L.x + L.w / 2, L.y + 12, 9, on ? PAL.bg : PAL.ink); }
+      const L = this.toyGames(), met = Closet.stats.met, best = Closet.stats.toy, pages = Math.ceil(L.length / this.TOY_PER);
+      for (let i = 0; i < this.TOY_PER; i++) {
+        const C = L[this.toyPage * this.TOY_PER + i]; if (!C) continue;
+        const c = this.toyCard(i), id = C.meta.id, known = met.includes(id), boss = BOSSES.includes(C);
+        if (!known) {   // not met yet: a dimmed card
+          if (Assets.get('buttons')) { ctx.globalAlpha = 0.45; g.nine('buttons', 0, c.x, c.y, c.w, c.h, 6); ctx.globalAlpha = 1; } else g.box(c.x, c.y, c.w, c.h, PAL.mid);
+          g.text('???', c.x + c.w / 2, c.y + 14, 8, PAL.mid); continue;
+        }
+        g.nine('buttons', 0, c.x, c.y, c.w, c.h, 6) || g.box(c.x, c.y, c.w, c.h, PAL.mid);
+        const name = C.meta.prompt.replace(/!$/, '');
+        g.text(name, c.x + c.w / 2, c.y + 11, name.length > 11 ? 6 : 7, boss ? PAL.bad : PAL.ink);
+        for (let k = 0; k < 3; k++) g.rect(c.x + c.w / 2 - 9 + k * 7, c.y + 15, 4, 3, k < (best[id] || 0) ? PAL.accent : PAL.mid);   // levels cleared
+      }
+      const P = this.TOY_PREV, N = this.TOY_NEXT;
+      g.button(P, false); g.text('<', P.x + P.w / 2, P.y + 13, 10, PAL.ink);
+      g.button(N, false); g.text('>', N.x + N.w / 2, N.y + 13, 10, PAL.ink);
+      g.text((this.toyPage + 1) + ' / ' + pages, CX, P.y + 13, 8, PAL.ink);
+      const n = L.filter(C => met.includes(C.meta.id)).length;
+      g.text(n + ' OF ' + L.length + ' GAMES MET', CX, TOP + 254, 7, PAL.mid);
+      if (this.toyMsgT > 0) g.outline(this.toyMsg[0], CX, TOP + 270, 9, this.toyMsg[1]);
+      return;
+    }
+    // CLOSET: a mirror with your shiba in it, head and shoulders at 2x, wearing
+    // what you've picked (its frame drawn over the edge of the glass)
+    const M = { x: CX - 46, y: TOP + 50, w: 92, h: 106 }, fy = M.y + M.h - 3;   // feet near the bottom of the glass
+    g.nine('buttons', 0, M.x - 4, M.y - 4, M.w + 8, M.h + 8, 6);   // the mirror's wooden frame
+    g.rect(M.x, M.y, M.w, M.h, MENU_PANEL_DARK);                   // the glass
+    g.rect(M.x + 5, M.y + 5, 3, 16, '#3d64a8'); g.rect(M.x + 10, M.y + 5, 2, 9, '#3d64a8');   // a glint
+    ctx.save(); ctx.beginPath(); ctx.rect(M.x, M.y, M.w, M.h); ctx.clip();
+    // the whole shiba 1:1, moving, so you see how it wears it: two of the break's
+    // happy jumps (art/breakjump.png), then a cheering wiggle (art/fullshiba.png)
+    const ct = this.time % 2.8;
+    if (ct < 1.4 && Assets.get('breakjump')) {
+      const f = Math.floor(ct / this.BREAK_JUMP * 8) % 8;
+      g.sprite('breakjump', CX, fy - 48, { frame: f }); Closet.dress('breakjump', f, CX, fy - 48, 64, 96);
+    } else {
+      const f = Math.floor(ct * 8) % 2 ? g.FULL.cheer : g.FULL.cheer2;
+      g.sprite('fullshiba', CX, fy - 32, { w: 48, h: 64, frame: f }); Closet.dress('fullshiba', f, CX, fy - 32, 48, 64);
+    }
+    ctx.restore();
+    const own = Closet.stats.owned;
+    if (DEBUG) { const D = this.TOY_DEV; g.button(D, false); g.text('ALL', D.x + D.w / 2, D.y + 11, 7, PAL.accent); }   // ?dev: unlock everything
+    Closet.ITEMS.forEach((it, i) => {
+      const c = this.closetCard(i), has = own.includes(it.id), on = Closet.stats.hat === it.id;
+      if (on) g.button(c, true); else if (has) g.nine('buttons', 0, c.x, c.y, c.w, c.h, 6);
+      else if (Assets.get('buttons')) { ctx.globalAlpha = 0.45; g.nine('buttons', 0, c.x, c.y, c.w, c.h, 6); ctx.globalAlpha = 1; }
+      const iy = c.y + c.h - (it.face ? 10 : 5);   // small things sat in the middle of the card
+      if (has) Closet.drawItem(it, c.x + c.w / 2, iy, 1);
+      else { ctx.globalAlpha = 0.25; Closet.drawItem(it, c.x + c.w / 2, iy, 1); ctx.globalAlpha = 1; g.text('?', c.x + c.w / 2, c.y + 20, 11, PAL.ink); }
+    });
+    const sel = this.toySel ? Closet.item(this.toySel) : Closet.hat;
+    const y = TOP + 246;
+    if (sel) {
+      g.text(sel.name, CX, y, 9, PAL.accent);
+      g.text(Closet.owns(sel.id) ? (Closet.stats.hat === sel.id ? 'WEARING IT  ·  TAP TO TAKE OFF' : 'TAP TO WEAR') : sel.how, CX, y + 12, 7, Closet.owns(sel.id) ? PAL.ink : PAL.mid);
+    } else g.text('TAP SOMETHING TO WEAR IT', CX, y + 6, 7, PAL.mid);
+    g.text(own.length + ' OF ' + Closet.ITEMS.length + ' COLLECTED', CX, y + 26, 7, PAL.mid);
+  },
+
+  // the mascot's shelf is below the play field in the games, not on the title or the menus
+  hasShelf() { return this.state !== 'TITLE' && !this.MENU_SCREENS.includes(this.state); },
+
   // After a round's result (and its photo, if any): game over, a speed-up, or
   // straight on. Shared so a photo win can't skip the speed-up — SQUID is a
   // boss on a multiple of SPEEDUP_EVERY, so that used to happen every run.
-  advance() { Wipe.run(() => this.advanceNow(), this.mode === 'classic' && !this.tut && !this.testClass ? 0.7 : 1); },   // into Classic's break a little quicker
+  advance() { Wipe.run(() => this.advanceNow(), this.mode === 'classic' && !this.tut && !this.testClass && !this.toy ? 0.7 : 1); },   // into Classic's break a little quicker
   advanceNow() {
     this.lastPhoto = null;   // only now: the wipe was still drawing the photo screen on its way shut
     if (this.tut) { this.tutAdvance(); return; }
     // test mode: replay the same game forever, never lose lives or advance
     if (this.testClass) { this.lives = 4; this.startRound(this.testClass, this.testDiff); return; }
+    if (this.toy) { this.toyDone(); return; }   // back to the toy room
     if (this.mode === 'run') { Run.after(); return; }
     // Classic: the break between games (see drawBreak), then game over, or the
     // next prompt; a speed-up is announced on the break instead of a stop of its own
@@ -7803,8 +8171,9 @@ const Engine = {
   draw() {
     FX.pre();
     this.drawScene();
-    if (this.state !== 'TITLE' && this.state !== 'BREAK' && !this.MENU_SCREENS.includes(this.state)) Mascot.draw(g);   // the title has its own shiba; menu screens have none
+    if (this.hasShelf() && this.state !== 'BREAK') Mascot.draw(g);   // the title has its own shiba; menu screens have none
     Juice.drawConfetti();
+    Toast.draw();
     if (this.state === 'PLAYING') {
       this.drawFuse(Math.max(0, this.timer / this.duration));
       // DEBUG: what the camera is actually reading, for tuning thresholds on a
@@ -7843,7 +8212,7 @@ const Engine = {
   pauseRelease(p) {
     if (this.resumeT > 0) return;   // counting back in
     if (this.hit(this.PAUSE_RESUME, p)) { Sfx.tap(); this.resumeT = ['PLAYING', 'PROMPT'].includes(this.state) ? 1.5 : 0.01; this.resumeN = 4; }
-    else if (this.hit(this.PAUSE_QUIT, p)) { Sfx.tap(); this.paused = false; this.tut = null; this.reset(); this.state = 'TITLE'; this.timer = 0.2; Input.flush(); }
+    else if (this.hit(this.PAUSE_QUIT, p)) { Sfx.tap(); this.paused = false; this.tut = null; this.reset(); if (this.toy) { this.toy = null; this.openToy(); } else { this.state = 'TITLE'; this.timer = 0.2; } Input.flush(); }
   },
   pauseTick(dt) {
     if (this.resumeT <= 0) return;
@@ -7991,6 +8360,7 @@ const Engine = {
     if (s === 'TITLE') { this.drawTitle(); return; }
 
     if (s === 'ALBUM') { this.drawAlbumScreen(); return; }
+    if (s === 'TOYROOM') { this.drawToyRoom(); return; }
     if (s === 'SETTINGS') { this.drawSettings(); return; }
     if (s === 'TUTORIAL' || s === 'TUTCAT' || s === 'TUTDONE') { this.drawTutorialCard(); return; }
 
@@ -8070,6 +8440,11 @@ const Engine = {
       // a camera / sound / tilt game playing its touch backup (no sensor here)
       // is labelled by what you'll actually do
       const gr = Run.group(m), backup = m.how && typeof m.how === 'object' && !['TAP', 'DRAG'].includes(gr) && this.howTo(m) === m.how.touch;
+      const prize = !this.tut && !this.testClass && Closet.prize(m.id);
+      if (prize) {   // WIN: BEANIE, with a small one of the thing, above the kind of game
+        g.outline('WIN: ' + prize.name, CX + 8, ty - 16, 8, PAL.accent);
+        Closet.drawItem(prize.icon != null ? { f: prize.icon } : prize, CX - 6 - (prize.name.length + 5) * 3, ty - 13, 1);
+      }
       g.text((backup ? (this.demoKind(m) === 'rub' ? 'DRAG' : 'TAP') : this.groupLabel(gr)) + ' GAME' + (b.length ? '  ·  ' + b.map(t => t.name).join(' + ') + '!' : ''), CX, ty, 8, b.length ? PAL.accent : PAL.ink);
       // A surprise: the prompt starts out normal, then a stamp slams down on
       // the game's title a moment later (see REVEAL_AT)
@@ -8281,6 +8656,14 @@ else {
     lbtn.onclick = () => { loop = !loop; rebuild(); };
     lrow.appendChild(lbtn);
     list.appendChild(lrow);
+
+    // the closet, for testing what you wear
+    const crow = mk('div', null, 'devrow');
+    crow.appendChild(mk('span', 'CLOSET', 'devlab'));
+    const ua = mk('button', 'UNLOCK ALL'); ua.onclick = () => { Closet.unlockAll(); ua.textContent = 'UNLOCKED'; };
+    const rs = mk('button', 'RESET'); rs.onclick = () => { Closet.resetAll(); rs.textContent = 'RESET!'; };
+    crow.appendChild(ua); crow.appendChild(rs);
+    list.appendChild(crow);
 
     list.appendChild(mk('div', 'MICROGAMES', 'devhead'));
     const launch = (C) => {
