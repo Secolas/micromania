@@ -3163,8 +3163,10 @@ class FollowDot extends Microgame {
     this.off = 0; this.grace = 0.7;     // time to get your finger there
     this.pingT = 0; this.warned = false;
     this.dx = CX; this.dy = BOT - 20; this.face = 1;   // the shiba chasing the dot
+    this.trail = [];                                    // where the dot just was, for its streak
   }
   update(dt, input) {
+    this.trail.unshift({ x: this.x, y: this.y }); if (this.trail.length > 7) this.trail.pop();
     this.x += this.vx * dt; this.y += this.vy * dt;
     if (this.x < 16 || this.x > W - 16) this.vx *= -1;
     if (this.y < TOP + 16 || this.y > BOT - 16) this.vy *= -1;
@@ -3188,10 +3190,26 @@ class FollowDot extends Microgame {
     const held = this.off === 0 && this.grace <= 0;
     // where your finger has to stay, and the laser dot itself
     ctx.globalAlpha = held ? 0.35 : 0.2; g.circle(this.x, this.y, this.r, held ? PAL.accent : PAL.mid); ctx.globalAlpha = 1;
-    g.sprite('laser', this.x, this.y);   // art/laser.png
+    this.laserDot(this.x, this.y);
     if (this.off > 0 && this.grace <= 0) g.bar(30, BOT - 14, W - 60, 5, 1 - this.off / 0.42, PAL.bad, PAL.mid);
   }
 }
+
+// the laser pointer's dot on the floor: a hot white core in a small red dot,
+// a soft red glow that flickers, and a fading streak where it's just been
+FollowDot.prototype.laserDot = function (x, y) {
+  for (let i = this.trail.length - 1; i >= 0; i--) {   // the streak, thinning out behind it
+    const p = this.trail[i], k = 1 - (i + 1) / (this.trail.length + 1);
+    ctx.globalAlpha = 0.45 * k; g.circle(p.x, p.y, 1 + 2 * k, '#ff2a2a');
+  }
+  ctx.globalAlpha = 1;
+  const fl = 0.85 + Math.sin(this.t * 47) * 0.1 + Math.sin(this.t * 23) * 0.05, r = 11 * fl;
+  const glow = ctx.createRadialGradient(x, y, 0, x, y, r);
+  glow.addColorStop(0, 'rgba(255,70,70,0.75)'); glow.addColorStop(0.35, 'rgba(255,30,30,0.32)'); glow.addColorStop(1, 'rgba(255,0,0,0)');
+  ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(x, y, r, 0, 6.2832); ctx.fill();
+  g.circle(x, y, 3.2, '#ff2020');
+  g.circle(x, y, 1.6, '#fff4f0');
+};
 
 // 13. SEQUENCE — tap the targets in numbered order
 class TapOrder extends Microgame {
@@ -8352,7 +8370,7 @@ const Engine = {
   // where your shiba wears what you've earned. A toy-room game is practice: no
   // lives, no best score, no surprises, and it comes straight back here.
   TOY_BACK: { x: 16, y: TOP + 2, w: 40, h: 16 },
-  TOY_TABS: [{ id: 'games', label: 'GAMES', x: 6, y: TOP + 24, w: 40, h: 20 }, { id: 'closet', label: 'CLOSET', x: 49, y: TOP + 24, w: 40, h: 20 },
+  TOY_TABS: [{ id: 'games', label: 'GAMES', x: 6, y: TOP + 24, w: 40, h: 20 }, { id: 'closet', label: 'HATS', x: 49, y: TOP + 24, w: 40, h: 20 },
     { id: 'neck', label: 'NECK', x: 92, y: TOP + 24, w: 40, h: 20 }, { id: 'coats', label: 'COATS', x: 135, y: TOP + 24, w: 40, h: 20 }],
   TOY_PER: 12,
   toyLvBtn(i) { return { x: CX - 14 + i * 26, y: TOP + 50, w: 22, h: 16 }; },
@@ -8387,7 +8405,7 @@ const Engine = {
   },
   toyRelease(p) {
     if (this.hit(this.TOY_BACK, p)) { Sfx.tap(); this.state = 'TITLE'; this.timer = 0.2; return; }
-    for (const tb of this.TOY_TABS) if (this.hit(tb, p)) { Sfx.tap(); this.toyTab = tb.id; this.toySel = null; return; }
+    for (const tb of this.TOY_TABS) if (this.hit(tb, p)) { Sfx.tap(); this.toyTab = tb.id; this.toySel = null; this.toyLock = null; return; }
     if (this.toyTab === 'games') {
       for (let i = 0; i < 3; i++) if (this.hit(this.toyLvBtn(i), p)) { Sfx.tap(); this.toyLv = i + 1; return; }
       const L = this.toyGames(), pages = Math.ceil(L.length / this.TOY_PER);
@@ -8396,7 +8414,7 @@ const Engine = {
       for (let i = 0; i < this.TOY_PER; i++) {
         const C = L[this.toyPage * this.TOY_PER + i];
         if (!C || !this.hit(this.toyCard(i), p)) continue;
-        if (!Closet.stats.met.includes(C.meta.id)) { Sfx.fail(); this.toyMsg = ['PLAY IT IN A RUN FIRST', PAL.mid]; this.toyMsgT = 1.6; return; }
+        if (!Closet.stats.met.includes(C.meta.id)) { Sfx.fail(); this.locked('THIS GAME', 'PLAY IT IN A RUN FIRST'); return; }
         Sfx.tap(); this.playToy(C); return;
       }
       return;
@@ -8406,7 +8424,7 @@ const Engine = {
       Closet.NECK.forEach((it, i) => {
         if (!this.hit(this.neckCard(i), p)) return;
         this.toySel = it.id;
-        if (!Closet.stats.necks.includes(it.id)) { Sfx.fail(); return; }
+        if (!Closet.stats.necks.includes(it.id)) { Sfx.fail(); this.locked(it.name, it.how); return; }
         Sfx.tap(); Closet.wearNeck(Closet.stats.neck === it.id ? null : it.id);
       });
       return;
@@ -8415,7 +8433,7 @@ const Engine = {
       Coat.LIST.forEach((c, i) => {
         if (!this.hit(this.coatCard(i), p)) return;
         this.toySel = c.id;
-        if (!Closet.stats.coats.includes(c.id)) { Sfx.fail(); return; }
+        if (!Closet.stats.coats.includes(c.id)) { Sfx.fail(); this.locked(c.name + ' COAT', c.how); return; }
         Sfx.tap(); Closet.wearCoat(c.id);
       });
       return;
@@ -8424,9 +8442,21 @@ const Engine = {
     Closet.ITEMS.forEach((it, i) => {
       if (!this.hit(this.closetCard(i), p)) return;
       this.toySel = it.id;
-      if (!Closet.owns(it.id)) { Sfx.fail(); return; }
+      if (!Closet.owns(it.id)) { Sfx.fail(); this.locked(it.name, it.how); return; }
       Sfx.tap(); Closet.wear(Closet.stats.hat === it.id ? null : it.id);
     });
+  },
+  // a locked thing tapped: a note over the mirror saying how to unlock it
+  locked(name, how) { this.toyLock = { name, how, t: 2.4 }; },
+  drawToyLock() {
+    const L = this.toyLock; if (!L || L.t <= 0) return;
+    L.t -= STEP;
+    const k = Math.min(1, (2.4 - L.t) / 0.12, L.t / 0.25), w = 156, h = 50, x = CX - w / 2, y = Math.round(TOP + 92 + (1 - k) * 8);
+    ctx.globalAlpha = Math.max(0, k);
+    g.nine('buttons', 1, x, y, w, h, 6) || g.rect(x, y, w, h, PAL.accent);
+    g.text('LOCKED: ' + L.name, CX, y + 17, 8, PAL.bg);
+    g.text(L.how.startsWith('PLAY') ? L.how : 'TO UNLOCK: ' + L.how, CX, y + 33, L.how.length > 22 ? 6 : 7, PAL.bg);
+    ctx.globalAlpha = 1;
   },
   drawToyRoom() {
     const B = this.TOY_BACK;
@@ -8457,6 +8487,7 @@ const Engine = {
       const n = L.filter(C => met.includes(C.meta.id)).length;
       g.text(n + ' OF ' + L.length + ' GAMES MET', CX, TOP + 254, 7, PAL.mid);
       if (this.toyMsgT > 0) g.outline(this.toyMsg[0], CX, TOP + 270, 9, this.toyMsg[1]);
+      this.drawToyLock();
       return;
     }
     // CLOSET: a mirror with your shiba in it, head and shoulders at 2x, wearing
@@ -8479,8 +8510,8 @@ const Engine = {
     ctx.restore();
     const own = Closet.stats.owned;
     if (DEBUG) { const D = this.TOY_DEV; g.button(D, false); g.text('ALL', D.x + D.w / 2, D.y + 11, 7, PAL.accent); }   // ?dev: unlock everything
-    if (this.toyTab === 'coats') { this.drawCoats(); return; }
-    if (this.toyTab === 'neck') { this.drawNecks(); return; }
+    if (this.toyTab === 'coats') { this.drawCoats(); this.drawToyLock(); return; }
+    if (this.toyTab === 'neck') { this.drawNecks(); this.drawToyLock(); return; }
     Closet.ITEMS.forEach((it, i) => {
       const c = this.closetCard(i), has = own.includes(it.id), on = Closet.stats.hat === it.id;
       if (on) g.button(c, true); else if (has) g.nine('buttons', 0, c.x, c.y, c.w, c.h, 6);
@@ -8496,6 +8527,7 @@ const Engine = {
       g.text(Closet.owns(sel.id) ? (Closet.stats.hat === sel.id ? 'WEARING IT  ·  TAP TO TAKE OFF' : 'TAP TO WEAR') : sel.how, CX, y + 12, 7, Closet.owns(sel.id) ? PAL.ink : PAL.mid);
     } else g.text('TAP SOMETHING TO WEAR IT', CX, y + 6, 7, PAL.mid);
     g.text(own.length + ' OF ' + Closet.ITEMS.length + ' COLLECTED', CX, y + 26, 7, PAL.mid);
+    this.drawToyLock();
   },
   // NECK: one card each; worn with whatever hat you have on
   drawNecks() {
