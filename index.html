@@ -6178,7 +6178,6 @@ class CookBurger extends Microgame {
   static FOOD = ['bun', 'patty', 'cheese', 'lettuce', 'tomato'];
   static LAYER = { bun: 0, top: 1, patty: 2, cheese: 3, lettuce: 4, tomato: 5 };
   static LH = [6, 9, 5, 5, 5, 4];
-  static CHEF_HAT = { f: 14, sit: 2 };   // art/hats.png frame 14
   init() {
     const shuffle = a => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
     // the middle of the burger: just a patty, then patty and cheese in either
@@ -6272,7 +6271,7 @@ class CookBurger extends Microgame {
     if (Assets.get('fullidle')) {
       const f = g.IDLE[lost ? 'sad' : 'happy'] + Math.floor(t * 5) % 4;
       g.sprite('fullidle', 40, cy - 64, { w: 128, h: 128, frame: f });
-      Closet.dress('fullidle', f, 40, cy - 64, 128, 128, CookBurger.CHEF_HAT);
+      Closet.dress('fullidle', f, 40, cy - 64, 128, 128, Closet.item('chef'));   // beat it and the hat's yours
     }
     if (Assets.get('custidle')) {
       // served: up it jumps, cheering, so it's seen over the burger
@@ -6465,7 +6464,7 @@ const Closet = {
   // f: hats.png frame (small, to sit between the ears; the wizard hat and halo
   // are the big ones, 12 and 13, by choice; frame 9 is a mini beanie,
   // 10 the side-on cowboy hat JUMP!'s runner wears: prompt icons). game: won by beating that game, where you see it (the SLED
-  // rider's beanie, the HEADBANG rocker's shades). face: worn on the eyes
+  // rider's beanie, the HEADBANG rocker's shades, COOK!'s chef hat, frame 14). face: worn on the eyes
   // (the sunglasses), not on top. sit: how far the hat's
   // bottom comes down past the top of the head (kept clear of the eyes on
   // every shiba it goes on); dx: off to one side (the bow and flower, by an ear);
@@ -6476,6 +6475,7 @@ const Closet = {
     { id: 'beanie',  name: 'BEANIE',        f: 2,  icon: 9, sit: 5, game: 'steer', how: 'BEAT SLED',  got: s => !!s.beat.steer },
     { id: 'cowboy',  name: 'COWBOY HAT',    f: 3,  icon: 10, sit: 2, between: true, game: 'run', how: 'BEAT JUMP!', got: s => !!s.beat.run },
     { id: 'shades',  name: 'SUNGLASSES',    f: 8,  face: true, game: 'rock', how: 'BEAT HEADBANG', got: s => !!s.beat.rock },
+    { id: 'chef',    name: 'CHEF HAT',      f: 14, sit: 2, game: 'cook', how: 'BEAT COOK!',  got: s => !!s.beat.cook },
     { id: 'wizard',  name: 'WIZARD HAT',    f: 12, sit: 5, how: 'WIN A RUN',               got: s => s.runWins >= 1 },
     { id: 'halo',    name: 'HALO',          f: 13, sit: -5, how: 'SCORE 30 IN CLASSIC',    got: s => s.classic >= 30 },
     { id: 'propeller', name: 'PROPELLER CAP', f: 6, sit: 3, how: 'REACH WORLD 2 IN RUN',   got: s => s.runWorld >= 2 },
@@ -8193,7 +8193,7 @@ const Engine = {
   TOY_PREV: { x: 18, y: TOP + 220, w: 32, h: 18 },
   TOY_DEV: { x: W - 42, y: TOP + 52, w: 26, h: 16 },   // ?dev only: unlock everything
   TOY_NEXT: { x: W - 50, y: TOP + 220, w: 32, h: 18 },
-  closetCard(i) { const c = i % 5, r = (i / 5) | 0; return { x: 16 + c * 30, y: TOP + 164 + r * 32, w: 28, h: 30 }; },
+  closetCard(i) { const c = i % 6, r = (i / 6) | 0; return { x: 7 + c * 28, y: TOP + 164 + r * 32, w: 27, h: 30 }; },
   toyGames() { return [...POOL, ...BOSSES]; },
   openToy(tab) {
     this.state = 'TOYROOM'; this.timer = 0.2;
