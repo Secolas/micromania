@@ -7969,7 +7969,7 @@ const Engine = {
     const R = this.BTN_RUN, C = this.BTN_CLASSIC, A = this.BTN_ALBUM;
     const up = (i) => (1 - back((t - 1.3 - i * 0.08) / 0.45)) * 150;   // from below the bottom edge
     // the menu: white outlined words, all alike
-    const opts = [[R, 'RUN'], [C, 'CLASSIC'], [A, 'ALBUM'], [this.BTN_TOY, 'TOY ROOM'], [this.BTN_SET, 'SETTINGS']];
+    const opts = [[R, 'RUN'], [C, 'CLASSIC'], [A, 'ALBUM'], [this.BTN_TOY, 'DOGHOUSE'], [this.BTN_SET, 'SETTINGS']];
     opts.forEach(([b, label], i) => {
       if (Assets.get('button')) g.sprite('button', CX, b.y + up(i) + b.h / 2);   // art/button.png
       g.outline(label, CX, b.y + up(i) + b.h / 2 + 5, 14, PAL.ink);
@@ -8364,7 +8364,7 @@ const Engine = {
     }
   },
 
-  // ── TOY ROOM ────────────────────────────────────────────────────────────
+  // ── THE DOGHOUSE (the toy room) ────────────────────────────────────────────────────────────
   // Off the title: GAMES, every microgame you've met, to play again any time at
   // level 1, 2 or 3 (the best level you've cleared shows as pips), and CLOSET,
   // where your shiba wears what you've earned. A toy-room game is practice: no
@@ -8462,7 +8462,7 @@ const Engine = {
   drawToyRoom() {
     const B = this.TOY_BACK;
     g.button(B, false); g.text('BACK', B.x + B.w / 2, B.y + 11, 7, PAL.ink);
-    g.text('TOY ROOM', CX + 18, TOP + 16, 12, PAL.accent);
+    g.text('DOGHOUSE', CX + 18, TOP + 16, 12, PAL.accent);
     for (const tb of this.TOY_TABS) { const on = this.toyTab === tb.id; g.button(tb, on); g.text(tb.label, tb.x + tb.w / 2, tb.y + 14, 7, on ? PAL.bg : PAL.ink); }
     if (this.toyMsgT > 0) this.toyMsgT -= STEP;
     if (this.toyTab === 'games') {
