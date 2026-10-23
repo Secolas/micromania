@@ -3404,23 +3404,30 @@ class OddOneOut extends Microgame {
   }
 }
 
-// 15. DRAG TO TARGET — get the treat to the dog
+// 15. DRAG TO TARGET — get the treat to the dog while its mouth is open: it
+// opens and shuts, and bumping the treat into a shut mouth loses
 class FeedDog extends Microgame {
-  static meta = { id: 'feed', env: 'lawn', prompt: 'FEED!', hint: 'drag', duration: 4.4,
+  static meta = { id: 'feed', env: 'lawn', prompt: 'FEED!', hint: 'drag', duration: 4.6, minDuration: 4.0,
     how: 'DRAG THE TREAT\nTO THE DOG' };
   init() {
     this.dx = CX; this.dy = TOP + 42;
     this.sway = this.byD(0, 26, 42);
     this.tx = 26 + Math.random() * (W - 52); this.ty = BOT - 30;
     this.held = false;
+    // the mouth: open so long, shut so long, starting at a random point of it
+    this.open = this.byD(1.1, 0.75, 0.55); this.shut = this.byD(0.5, 0.65, 0.75); this.ph = Math.random() * (this.open + this.shut);
   }
+  isOpen() { return (this.t + this.ph) % (this.open + this.shut) < this.open; }
   update(dt, input) {
     this.dx = CX + Math.sin(this.t * 1.9) * this.sway;
     if (input.down) {
       if (!this.held && Math.hypot(input.x - this.tx, input.y - this.ty) < 22) this.held = true;
       if (this.held) { this.tx = input.x; this.ty = input.y; }
     } else { this.held = false; }
-    if (this.ateAt == null && Math.hypot(this.tx - this.dx, this.ty - (this.dy + 6)) < 16) { this.ateAt = this.t; Sfx.chomp(); }
+    if (this.ateAt == null && Math.hypot(this.tx - this.dx, this.ty - (this.dy + 6)) < 16) {
+      if (!this.isOpen()) { Sfx.thud(); buzz(60); FX.hit(this.tx, this.ty, PAL.bad); this.lose(); return; }   // bonk: its mouth was shut
+      this.ateAt = this.t; Sfx.chomp();
+    }
     // it chews for a moment (art/feed.png), then the round is won
     this.playingOut = this.ateAt != null && !this.finished;
     if (this.ateAt != null && (this.t - this.ateAt >= 0.4 || !Assets.get('feed')) && !this.finished) this.succeed();
@@ -3428,7 +3435,8 @@ class FeedDog extends Microgame {
   draw(g) {
     g.clear();
     // (art/feed.png, 1x: mouth open on dx, dy + 6, then 4 frames chewing)
-    if (Assets.get('feed')) g.sprite('feed', Math.round(this.dx) + 8, this.dy + 4, { frame: this.ateAt == null ? 0 : 1 + Math.min(3, Math.floor((this.t - this.ateAt) * 10)) });
+    // mouth open (0) or shut (2) while it waits; chewing (1-4) once fed
+    if (Assets.get('feed')) g.sprite('feed', Math.round(this.dx) + 8, this.dy + 4, { frame: this.ateAt == null ? (this.isOpen() ? 0 : 2) : 1 + Math.min(3, Math.floor((this.t - this.ateAt) * 10)) });
     else g.sprite('face', this.dx, this.dy, { w: 36, h: 37, frame: Math.floor(this.t * 6) % 9 });
     if (this.ateAt == null) g.bone(this.tx, this.ty, 22);     // the treat
     if (!this.held) g.text('GRAB', this.tx, this.ty + 18, 7, PAL.mid);

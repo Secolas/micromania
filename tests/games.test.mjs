@@ -156,6 +156,16 @@ export default async function ({ url, launch }) {
   out.wins.pull = play(PullTissue, 3, (gm, i) => { if (i % 10 === 5 && !gm.red) pull(gm); });
   out.pullIdle = play(PullTissue, 1, () => {});
   out.pullRed = play(PullTissue, 3, (gm, i) => { if (i % 10 === 5) { if (gm.pulled && !gm.red) { gm.red = 1; gm.redT = 1; } pull(gm); } });
+  // FEED: bring the bone up under the dog, then in while its mouth is open; shoving it in regardless bonks a shut mouth
+  out.wins.feed = play(FeedDog, 3, (gm, i) => {
+    if (i < 2) { tapAt(gm.tx, gm.ty); hold(gm.tx, gm.ty); return; }
+    const under = Math.abs(gm.ty - (gm.dy + 40)) < 4, go = gm.isOpen() && ((gm.t + gm.ph) % (gm.open + gm.shut)) < gm.open - 0.25;
+    hold(gm.dx, under && go ? gm.dy + 6 : gm.ty + Math.max(-5, Math.min(5, gm.dy + 40 - gm.ty)));
+  });
+  out.feedShoved = 0;
+  for (let k = 0; k < 20; k++) { Engine.startRound(FeedDog, 2); Engine.state = 'PLAYING'; Engine.timer = Engine.duration; const f = Engine.game;
+    f.ph = f.open + 0.1 - f.t;   // its mouth is shut now
+    f.tx = f.dx; f.ty = f.dy + 6; Input.beginStep(); Engine.update(STEP); if (f.finished && !f.won) out.feedShoved++; }
   // DRY OFF with no sensors: rubbing fast dries the shiba; leaving it wet loses
   out.wins.dry = play(DryShiba, 3, (gm, i) => hold(90 + Math.cos(i * 0.7) * 45, 180));
   { let idleWins = 0; for (let k = 0; k < 5; k++) { Engine.startRound(DryShiba, 1); Engine.state = 'PLAYING'; Engine.timer = Engine.duration; const d = Engine.game;
@@ -196,6 +206,7 @@ export default async function ({ url, launch }) {
   assert(out.shhPoke === '0/20', 'SHH: poking the dog should wake it: ' + out.shhPoke);
   assert(out.pullIdle === '0/20', 'PULL DOWN: doing nothing should lose: ' + out.pullIdle);
   assert(out.pullRed === '0/20', 'PULL DOWN: pulling the red one should lose: ' + out.pullRed);
+  assert(out.feedShoved === 20, 'FEED: a bone into a shut mouth should lose, lost ' + out.feedShoved + '/20');
   assert(out.dryIdle === 0, 'DRY OFF: leaving the shiba wet should lose, won ' + out.dryIdle + '/5');
   assert(out.highfiveWrong >= 5, 'HIGH FIVE: tapping the wrong paw should lose, lost ' + out.highfiveWrong + '/10');
   await done();
