@@ -6629,7 +6629,7 @@ const Closet = {
     return Object.assign({}, s, {
       classic: Engine.best || 0,
       runWins: Run.wins || 0,
-      runWorld: Math.max(Math.floor((Run.best || 0) / 3) + 1, Engine.mode === 'run' && Engine.state !== 'TITLE' ? Run.world : 1),
+      runWorld: Math.max(Run.at(Run.best || 0).world,Engine.mode === 'run' && Engine.state !== 'TITLE' ? Run.world : 1),
     });
   },
   met(id) { const s = this.stats; if (!s.met.includes(id)) { s.met.push(id); this.save(); } },
@@ -6876,8 +6876,39 @@ const Mascot = {
 ─────────────────────────────────────────────────────────────────────────────── */
 const Run = {
   GAMES: 5,          // games per stage — CHONK adds one
-  WORLDS: 3,         // beat the boss of world 3 and the run is won (then ENDLESS, if you like)
   SLOTS: 5,          // treat slots — CHONK takes one
+  // ── THE WORLDS ───────────────────────────────────────────────────────────
+  // A run goes through these in order, and the world map is drawn from them,
+  // one band per world, the first at the bottom. Add a world or a stage, or
+  // change which games a world plays, here: the map, the stage labels (2-3),
+  // the targets and the end of the run all follow. Beating the last stage of
+  // the last world wins the run; ENDLESS then goes round them again, faster.
+  //   name     on the map
+  //   ground   the band's scenery, one of Run.GROUNDS (park, beach, snow)
+  //   games    ids of the games its stages pick from (default: all of POOL)
+  //   bosses   ids of the bosses a boss stage opens on (default: all of BOSSES)
+  //   stages   one per stop on the map, in play order. Each may set
+  //              boss: true  open on a boss (and ask for a bigger score)
+  //              target      the score to hit in world 1 (default: by its place, see target())
+  //              games       its own game ids, instead of the world's
+  //              x           where its stop sits across the band, 0 (left) .. 1 (right);
+  //                          by default the stops spread out, left to right on
+  //                          the 1st, 3rd ... world and right to left on the others
+  WORLDS: [
+    { name: 'PARK',  ground: 'park',  stages: [{}, {}, { boss: true }] },
+    { name: 'BEACH', ground: 'beach', stages: [{}, {}, { boss: true }] },
+    { name: 'SNOW',  ground: 'snow',  stages: [{}, {}, { boss: true }] },
+  ],
+  // world w's entry (ENDLESS goes round the list again) and the stage on now
+  worldDef(w = this.world) { return this.WORLDS[(w - 1) % this.WORLDS.length]; },
+  stageDef() { return this.worldDef().stages[this.stage]; },
+  lastStage() { return this.stage === this.worldDef().stages.length - 1; },
+  // game ids to classes; unknown ids are skipped, and none at all means the whole pool
+  classes(ids, all) {
+    if (!ids) return all;
+    const L = [...POOL, ...BOSSES].filter(C => ids.includes(C.meta.id));
+    return L.length ? L : all;
+  },
   // art is [sprite, frame, scale?] — scale for sheets with roomy frames, like
   // the 120px runners; GOLDEN BONE draws its own bone
   TREATS: [
@@ -6922,11 +6953,17 @@ const Run = {
   treat(id) { return this.TREATS.find(t => t.id === id); },
   games() { return this.GAMES + (this.has('chonk') ? 1 : 0); },
   slots() { return this.SLOTS - (this.has('chonk') ? 1 : 0); },
-  bossStage() { return this.stage === 2; },
-  // a 5-game stage with a few misses still makes it; the bosses ask for a streak
-  target() { return Math.round([120, 190, 280][this.stage] * Math.pow(1.4, this.world - 1) / 10) * 10; },
-  reached() { return (this.world - 1) * 3 + this.stage; },
-  label(i = this.reached()) { return (Math.floor(i / 3) + 1) + '-' + (i % 3 + 1); },
+  bossStage() { return !!this.stageDef().boss; },
+  // a 5-game stage with a few misses still makes it; the bosses ask for a
+  // streak. 120, 190, 260 ... along a world, +20 on a boss; x1.4 a world.
+  target() {
+    const st = this.stageDef(), base = st.target || 120 + 70 * this.stage + (st.boss ? 20 : 0);
+    return Math.round(base * Math.pow(1.4, this.world - 1) / 10) * 10;
+  },
+  // stages are counted 0 = 1-1, 1 = 1-2, ... across the worlds (the best run is kept that way)
+  reached() { let i = this.stage; for (let w = 1; w < this.world; w++) i += this.worldDef(w).stages.length; return i; },
+  at(i) { let w = 1; while (i >= this.worldDef(w).stages.length) i -= this.worldDef(w++).stages.length; return { world: w, stage: i }; },
+  label(i = this.reached()) { const p = this.at(i); return p.world + '-' + (p.stage + 1); },
 
   start() { this.world = 1; this.stage = 0; this.bones = 4; this.treats = []; this.endless = false; this.won = false; this.startT = Engine.time; },
   endless: false, won: false, startT: 0, winTime: 0,
@@ -6944,10 +6981,12 @@ const Run = {
     Engine.state = 'STAGE'; Engine.timer = 1.8;
   },
 
-  // the boss stage opens on a boss; every other game comes from the pool
+  // the boss stage opens on a boss; every other game comes from the world's
+  // games (or the stage's own)
   nextGame() {
-    const boss = this.bossStage() && this.played === 0;
-    Engine.startRound(Engine.pick(boss ? BOSSES : POOL), boss ? 3 : Math.min(3, this.world), boss);
+    const boss = this.bossStage() && this.played === 0, wd = this.worldDef();
+    const list = boss ? this.classes(wd.bosses, BOSSES) : this.classes(this.stageDef().games || wd.games, POOL);
+    Engine.startRound(Engine.pick(list), boss ? 3 : Math.min(3, this.world), boss);
   },
 
   // Score a finished game. remain is the share of the round clock left over,
@@ -7003,7 +7042,7 @@ const Run = {
     this.payout = rows;
     this.bones += rows.reduce((n, r) => n + r[1], 0);
     this.saveBest(this.reached() + 1);
-    if (this.bossStage() && this.world === this.WORLDS && !this.endless) { this.win(); return; }
+    if (this.lastStage() && this.world === this.WORLDS.length && !this.endless) { this.win(); return; }
     Engine.state = 'CLEAR'; Engine.timer = 2.4;
     Sfx.clear(); FX.flash(PAL.accent, 0.4); Juice.confetti(60);
   },
@@ -7058,7 +7097,7 @@ const Run = {
 
   nextStage() {
     this.stage++;
-    if (this.stage > 2) { this.stage = 0; this.world++; }
+    if (this.stage >= this.worldDef().stages.length) { this.stage = 0; this.world++; }
     this.beginStage();
   },
 
@@ -7084,7 +7123,7 @@ const Run = {
   },
 
   // ── YOUR TREATS: tap one to read it; in the shop, to sell it ─────────────
-  ownedY() { return Engine.state === 'SHOP' ? TOP + 44 : CY + 66; },
+  ownedY() { return Engine.state === 'SHOP' ? TOP + 44 : BOT - 38; },
   ownedHit(p) {
     const y = this.ownedY();
     for (let i = 0; i < this.treats.length; i++) if (Engine.hit({ x: 8 + i * 33, y, w: 30, h: 34 }, p)) return i;
@@ -7186,17 +7225,158 @@ const Run = {
     g.rect(0, TOP - 2, W * Math.min(1, this.score / this.target()), 2, PAL.accent);
   },
 
-  drawStage() {
-    const boss = this.bossStage();
-    g.text((this.endless ? 'ENDLESS · ' : '') + 'WORLD ' + this.world + (this.endless ? '' : ' / ' + this.WORLDS), CX, CY - 56, 11, PAL.mid);
-    g.text(boss ? 'BOSS STAGE' : 'STAGE ' + (this.stage + 1) + ' / 3', CX, CY - 32, 16, boss ? PAL.bad : PAL.ink);
-    g.text('TARGET', CX, CY - 4, 9, PAL.mid);
-    g.text(String(this.target()), CX, CY + 24, 26, PAL.accent);
-    g.text(this.games() + ' GAMES TO SCORE IT', CX, CY + 46, 8, PAL.ink);
-    if (this.treats.length) {
-      g.text('YOUR TREATS  ·  TAP TO SEE', CX, CY + 61, 6, PAL.mid);
-      this.drawOwned(CY + 66);
+  // ── THE WORLD MAP: the stage card ────────────────────────────────────────
+  // One band of scenery per world in WORLDS, the first at the bottom, with a
+  // path through its stops. The shiba hops from the stop it last cleared (or
+  // its doghouse) to the next while the target is read out below. More worlds
+  // than fit and the map scrolls to follow the shiba.
+  MAP: { x: 14, y: TOP + 12, w: 152, h: 162 },
+  BAND: 54,          // each world's band, tall
+  PATH_Y: 40,        // where the path runs, down from a band's top
+  WALK: 0.8,         // seconds from stop to stop
+  // the scenery under each kind of world. d.tiles fills the band with a
+  // scenetiles frame per tile; d.prop draws a sprite 1:1 with its feet at x, y
+  // (band coordinates), and skips it where the path climbs through.
+  GROUNDS: {
+    park(d) {
+      d.tiles(() => d.rnd() < 0.18 ? 11 + Math.floor(d.rnd() * 3) : 8 + Math.floor(d.rnd() * 2), SCENE.meadow);
+      for (const x of [10, 52, 98, 140]) d.prop('parktree', x, 30);
+      d.prop('bench', 76, 26); d.prop('hedge', 26, 54); d.prop('hedge', 128, 54);
+    },
+    beach(d) {
+      d.tiles(() => 0, SCENE.sand);
+      d.R(0, 0, d.w, 12, SCENE.sea0); d.R(0, 12, d.w, 2, SCENE.sea1); d.R(0, 14, d.w, 2, SCENE.wetSand);
+      for (let x = 0; x < d.w; x += 6) d.R(x + (x / 6 % 2) * 2, 11, 3, 1, SCENE.cloud);   // the surf
+      d.prop('umbrella', 98, 32); d.prop('towel', 12, 32);
+      d.prop('sandpile', 92, 54, 0); d.prop('sandpile', 14, 54, 1);
+    },
+    snow(d) {
+      d.tiles(() => 1 + Math.floor(d.rnd() * 4), SCENE.snow);
+      d.prop('mountains', d.w / 2, 20);
+      for (const [x, f] of [[8, 0], [30, 1], [64, 0], [100, 1], [132, 0], [148, 1]]) d.prop('pine', x, 32, f);
+      d.prop('pine', 52, 54, 1); d.prop('pine', 116, 54, 0);
+    },
+  },
+  bandTop(b) { return (this.WORLDS.length - 1 - b) * this.BAND; },   // map coordinates, 0 at the top
+  // stop j of world band b, in map coordinates; j = -1 is home, the doghouse
+  stopAt(b, j) {
+    const st = this.WORLDS[b].stages, n = st.length, M = this.MAP, pad = 34;
+    const y = this.bandTop(b) + this.PATH_Y;
+    if (j < 0) return { x: 12, y };
+    let k = st[j].x != null ? st[j].x : n > 1 ? j / (n - 1) : 0.5;
+    if (st[j].x == null && b % 2) k = 1 - k;
+    return { x: Math.round(pad + k * (M.w - 2 * pad)), y };
+  },
+  // the path walked to stop j of band b: from the stop before it, round the
+  // corner when it climbs to the next band
+  leg(b, j) {
+    const to = this.stopAt(b, j), from = j > 0 ? this.stopAt(b, j - 1) : b > 0 ? this.stopAt(b - 1, this.WORLDS[b - 1].stages.length - 1) : this.stopAt(0, -1);
+    return from.y === to.y ? [from, to] : [from, { x: from.x, y: to.y }, to];
+  },
+  // the map's scenery, painted once
+  mapArt: null, mapFor: null,
+  buildMap() {
+    const need = ['scenetiles', 'parktree', 'pine', 'umbrella', 'mountains', 'doghouse'];
+    const M = this.MAP, BH = this.BAND, n = this.WORLDS.length;
+    const c = document.createElement('canvas'); c.width = M.w; c.height = n * BH;
+    const x = c.getContext('2d');
+    let seed = 4321;
+    const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    for (let b = n - 1; b >= 0; b--) {   // top band first, so a tree's crown can reach up over the band above
+      const top = this.bandTop(b), stops = this.WORLDS[b].stages.map((s, j) => this.stopAt(b, j));
+      const up = b < n - 1 ? stops[stops.length - 1].x : null, from = b > 0 ? this.leg(b, 0)[0].x : null;   // where the path climbs out and in
+      const R = (a, y, w, h, col) => { x.fillStyle = col; x.fillRect(Math.round(a), Math.round(top + y), Math.round(w), Math.round(h)); };
+      const d = {
+        w: M.w, h: BH, rnd, R,
+        tiles(pick, flat) {
+          const a = Assets.get('scenetiles');
+          if (!a) { R(0, 0, M.w, BH, flat); return; }
+          x.save(); x.beginPath(); x.rect(0, top, M.w, BH); x.clip();
+          for (let ty = 0; ty < BH; ty += a.fh) for (let tx = 0; tx < M.w; tx += a.fw) x.drawImage(a.img, pick() * a.fw, 0, a.fw, a.fh, tx, top + ty, a.fw, a.fh);
+          x.restore();
+        },
+        prop(name, px, py, f = 0) {
+          const a = Assets.get(name); if (!a) return;
+          const above = py <= Run.PATH_Y, gap = a.fw / 2 + 4;
+          if (above && up != null && Math.abs(px - up) < gap) return;
+          if (!above && from != null && Math.abs(px - from) < gap) return;
+          x.drawImage(a.img, f * a.fw, 0, a.fw, a.fh, Math.round(px - a.fw / 2), Math.round(top + py - a.fh), a.fw, a.fh);
+        },
+      };
+      (this.GROUNDS[this.WORLDS[b].ground] || this.GROUNDS.park)(d);
     }
+    if (need.every(k => Assets.get(k))) { this.mapArt = c; this.mapFor = this.WORLDS; }   // keep it once the art is in (for this list of worlds)
+    return c;
+  },
+  // world band and stop now, and the one walked from
+  here() {
+    const b = (this.world - 1) % this.WORLDS.length;
+    return { b, j: this.stage, lap: this.world > this.WORLDS.length };
+  },
+  // the shiba's place on the walk: k is 0..1 along the leg
+  walker(b, j, k) {
+    const pts = this.leg(b, j);
+    if (b === 0 && j === 0 && this.world > 1) pts.splice(0, pts.length - 1);   // a new ENDLESS lap starts at the first stop
+    const lens = pts.slice(1).map((p, i) => Math.hypot(p.x - pts[i].x, p.y - pts[i].y)), total = lens.reduce((a, l) => a + l, 0);
+    let s = k * total, i = 0;
+    while (i < lens.length - 1 && s > lens[i]) s -= lens[i++];
+    const a = pts[i], z = pts[i + 1] || a, t = lens[i] ? s / lens[i] : 1;
+    const hops = Math.max(1, Math.round(total / 18)), hk = (k * hops) % 1;
+    return { x: a.x + (z.x - a.x) * t, y: a.y + (z.y - a.y) * t, lift: k < 1 ? Math.sin(hk * Math.PI) * 5 : 0, hk, moving: k < 1 && total > 0 };
+  },
+  drawMap() {
+    const M = this.MAP, BH = this.BAND, n = this.WORLDS.length, art = this.mapArt && this.mapFor === this.WORLDS ? this.mapArt : this.buildMap();
+    const { b, j } = this.here();
+    const k = Math.max(0, Math.min(1, (1.8 - Engine.timer - 0.15) / this.WALK));
+    const dog = this.walker(b, j, k);
+    // scroll to keep the shiba in view
+    const oy = Math.round(Math.max(0, Math.min(n * BH - M.h, dog.y - M.h / 2)));
+    ctx.save(); ctx.beginPath(); ctx.rect(M.x, M.y, M.w, M.h); ctx.clip();
+    ctx.translate(M.x, M.y - oy);
+    ctx.drawImage(art, 0, 0);
+    // the path: dots, bright up to the shiba, dim beyond
+    const passed = (bb, jj) => bb < b || bb === b && jj < j;
+    for (let bb = 0; bb < n; bb++) for (let jj = 0; jj < this.WORLDS[bb].stages.length; jj++) {
+      const pts = this.leg(bb, jj), lit = passed(bb, jj) || bb === b && jj === j;
+      for (let i = 1; i < pts.length; i++) {
+        const p = pts[i - 1], q = pts[i], L = Math.hypot(q.x - p.x, q.y - p.y);
+        for (let s = 4; s < L; s += 5) {
+          const px = Math.round(p.x + (q.x - p.x) * s / L), py = Math.round(p.y + (q.y - p.y) * s / L);
+          g.rect(px - 1, py, 3, 2, SCENE.woodLo); g.rect(px - 1, py - 1, 3, 2, lit ? '#fff3c4' : SCENE.wood);
+        }
+      }
+    }
+    // home, and every stop: gold when cleared, a crown on the bosses
+    const home = this.stopAt(0, -1);
+    g.sprite('doghouse', home.x, home.y - 9);
+    for (let bb = 0; bb < n; bb++) this.WORLDS[bb].stages.forEach((st, jj) => {
+      const p = this.stopAt(bb, jj), done = passed(bb, jj);
+      if (!g.nine('buttons', done ? 1 : 0, p.x - 8, p.y - 7, 16, 14, 6)) g.rect(p.x - 8, p.y - 7, 16, 14, done ? PAL.accent : SCENE.woodLo);
+      if (st.boss) { if (bb !== b || jj !== j) g.sprite('crown', p.x, p.y - 16); }
+      else if (!done) g.text(String(jj + 1), p.x, p.y + 4, 8, PAL.ink);
+    });
+    // the world names, in the corner the path leaves free
+    for (let bb = 0; bb < n; bb++) {
+      const right = bb % 2 === 0;
+      g.text(this.WORLDS[bb].name, right ? M.w - 3 : 3, this.bandTop(bb) + BH - 4, 8, bb === b ? PAL.accent : PAL.ink, right ? 'right' : 'left');
+    }
+    // the shiba, hopping along (art hopdog: 0-2 crouch, 3-5 spring, 6-8 up)
+    const fr = dog.moving ? (dog.hk < 0.15 || dog.hk > 0.85 ? 1 : dog.hk < 0.3 || dog.hk > 0.7 ? 4 : 7) : Math.floor(Engine.time * 3) % 2;
+    g.sprite('hopdog', dog.x, dog.y - 12 - dog.lift, { frame: fr });
+    ctx.restore();
+    g.nine('titlesign', 0, 4, TOP + 2, W - 8, H - TOP - 6, 22);   // the frame again, over the map's corners
+    // the boss stop's crown floats over the shiba's head, out over the frame if it must
+    if (this.bossStage()) { const p = this.stopAt(b, j); g.sprite('crown', M.x + p.x, M.y - oy + p.y - 33 + Math.round(Math.sin(Engine.time * 4) * 1.5)); }
+  },
+
+  drawStage() {
+    const boss = this.bossStage(), M = this.MAP;
+    this.drawMap();
+    const y = M.y + M.h + 11;
+    g.text((this.endless ? 'ENDLESS ' : '') + (boss ? 'BOSS STAGE ' : 'STAGE ') + this.label(), CX, y, 8, boss ? PAL.bad : PAL.ink);
+    g.text('TARGET ' + this.target(), CX, y + 14, 12, PAL.accent);
+    g.text(this.games() + ' GAMES TO SCORE IT', CX, y + 25, 8, PAL.ink);
+    if (this.treats.length) this.drawOwned(this.ownedY());
     this.drawInfo();
   },
 
@@ -7255,7 +7435,7 @@ const Run = {
   },
 
   drawClear() {
-    g.text(this.stage === 2 ? 'WORLD ' + this.world : 'STAGE', CX, CY - 64, 18, PAL.accent);
+    g.text(this.lastStage() ? 'WORLD ' + this.world : 'STAGE', CX, CY - 64, 18, PAL.accent);
     g.text('CLEAR!', CX, CY - 42, 18, PAL.accent);
     this.payout.forEach(([a, v], i) => {
       g.text(a, 20, CY - 12 + i * 13, 8, PAL.mid, 'left');
