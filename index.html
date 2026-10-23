@@ -8165,7 +8165,7 @@ const Engine = {
       this.titleSfx++;
     }
     // the runner: the world scrolls past and the shiba jumps what's in its
-    // way (the games' own crates, fences, hurdles, pots, bushes), and for the
+    // way (the games' own crates, cactus, fence, pots, duck and more: RUN_PROPS), and for the
     // bones floating about, and for a cowboy hat now and then, which it puts on
     const R = this.runner || (this.runner = { scroll: 0, y: 0, vy: 0, legT: 0, got: new Set(), pops: [], hat: false });
     R.scroll += this.RUN_SPEED * dt; R.legT += dt;
@@ -8197,18 +8197,22 @@ const Engine = {
     R.pops = R.pops.filter(p => p.t < 0.6);
   },
   // What's along the run: slot i sits a little unevenly past the last. Most
-  // slots are something to jump, from the games' own art, some with a bone
+  // slots are something to jump, from the games' own art (RUN_PROPS), some with a bone
   // over them; the others are a bone on its own, low, mid-air or high; and
   // every so often the cowboy hat floats by. kind, x, and h (how tall a thing
   // to jump is) or lift (how high a bone or the hat floats)
-  RUN_PROPS: [['bush', 0], ['crate', 0], ['crates', 0], ['fence', 0], ['hurdle', 0], ['pot', 0], ['cactus', 0]],
+  // the props, each as its game draws it: [kind, how tall, from]
+  RUN_PROPS: [
+    ['crate', 12, 'KNOCK IT'], ['crates', 24, 'KNOCK IT'], ['cactus', 31, 'JUMP!'], ['fence', 12, 'SQUEEZE, WALKIES'],
+    ['pot', 20, 'DODGE'], ['duck', 24, 'BATH TIME'], ['speaker', 29, 'HEADBANG'], ['ball', 14, 'JUGGLE'],
+    ['bowl', 24, 'FEED'], ['hurdle', 25, 'BARK JUMP'], ['doghouse', 23, 'the doghouse'], ['bush', 22, 'the title'],
+  ],
   runThing(i) {
     const r = k => (((i + 1) * 2654435761 + k * 40503) >>> 0) % 1000 / 1000;   // the same every time for slot i
     const x = 220 + i * 92 + Math.round(r(1) * 30);
     if (i % 11 === 5) return { i, x, kind: 'hat', lift: 44 };
     if (r(2) < 0.34) return { i, x, kind: 'bone', lift: [20, 38, 48][Math.floor(r(3) * 3)] };
-    const [name] = this.RUN_PROPS[Math.floor(r(4) * this.RUN_PROPS.length)];
-    const h = { bush: 22, crate: 12, crates: 24, fence: 12, hurdle: 25, pot: 20, cactus: 30 }[name];
+    const [name, h] = this.RUN_PROPS[Math.floor(r(4) * this.RUN_PROPS.length)];
     return { i, x, kind: name, h, lift: r(5) < 0.5 && h < 25 ? h + 30 : 0 };   // a bone over it, half the time (not the tall ones: it would touch the sign)
   },
   runThingAfter(wx) { let i = Math.max(0, Math.floor((wx - 260) / 92)); while (this.runThing(i).x < wx) i++; return i; },
@@ -8242,9 +8246,9 @@ const Engine = {
       else if (th.kind === 'crates') { prop('crate', gy); prop('crate', gy - 12); }
       else if (th.kind === 'longcrate') prop('longcrate', gy);
       else if (th.kind === 'fence') g.fence(bx - 10, bx + 11, gy - 6);
-      else if (th.kind === 'hurdle') prop('hurdle', gy);
       else if (th.kind === 'pot') g.pot(bx, gy - 5, 1);
       else if (th.kind === 'cactus') prop('cactus', gy + 1);
+      else prop(th.kind, gy);   // duck, speaker, ball, bowl, hurdle, doghouse: 1:1, standing on the grass
       if (!th.lift || Rn.got && Rn.got.has(i)) continue;
       const by = gy - th.lift + Math.sin(this.time * 4 + i) * 1.5;
       if (th.kind === 'hat') { if (!Rn.hat) Closet.drawItem({ f: 15 }, bx, by + 12, 1); }   // hats.png's cowboy hat
