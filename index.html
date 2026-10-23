@@ -5883,49 +5883,80 @@ class HighFive extends Microgame {
 }
 
 // ── REGISTRY ─────────────────────────────────────────────────────────────────
-// 47. DIG — swipe to dig a hole in the sand until the bone turns up
+// 47. DIG — swipe on the X to dig until the bone turns up. On 2 and 3 there
+// are two, the second X somewhere else on the beach; a swipe off the X is a
+// miss, and three misses lose.
 class BeachDig extends Microgame {
-  static meta = { id: 'dig', env: 'beach@118', prompt: 'DIG!', hint: 'swipe', duration: 4.2, minDuration: 3.2,
-    how: 'SWIPE AGAIN AND AGAIN\nTO DIG UP THE BONE' };
+  static meta = { id: 'dig', env: 'beach@118', prompt: 'DIG!', hint: 'swipe', duration: 5.0, minDuration: 4.4,
+    how: 'SWIPE ON THE X\nTO DIG UP THE BONE' };
+  static AIM = 26;   // how near the X a swipe has to start
   init() {
-    this.need = this.byD(4, 5, 7); this.dug = 0;
+    this.bones = this.byD(1, 2, 2); this.need = this.byD(4, 3, 4);
+    this.got = 0; this.dug = 0; this.misses = 0; this.missT = 0;
     this.sand = []; this.pop = 0; this.found = 0;
-    this.hx = CX; this.hy = 192;                     // the hole
+    // where each bone is buried: apart from each other, on the dry sand
+    this.spots = [];
+    for (let i = 0; i < this.bones; i++) {
+      let x, y, k = 0;
+      do { x = 40 + Math.random() * (W - 80); y = 168 + Math.random() * 44; } while (k++ < 40 && this.spots.some(p => Math.abs(p.x - x) < 60));
+      this.spots.push({ x: Math.round(x), y: Math.round(y) });
+    }
+    if (this.bones === 1) this.spots[0] = { x: CX, y: 192 };
+    this.hx = this.spots[0].x; this.hy = this.spots[0].y; this.dogX = this.hx;
+    this.done = [];   // holes already dug
   }
   update(dt, input) {
     if (this.pop > 0) this.pop -= dt;
-    if (this.found > 0) { this.found += dt; if (this.found > 0.45 && !this.finished) this.succeed(); }
-    else if (input.swipe) {
-      // every swipe is a scoop: the hole gets deeper and sand flies back
-      this.dug++; this.pop = 0.18;
-      Sfx.noise(0.07, 0.06, 900); buzz(12);
-      for (let i = 0; i < 9; i++) this.sand.push({ x: this.hx + (Math.random() - 0.5) * 20, y: this.hy + 4, vx: (Math.random() - 0.5) * 120, vy: 40 + Math.random() * 90, t: 0 });
-      if (this.dug >= this.need) { this.found = 0.001; this.playingOut = true; Sfx.win(); FX.burst(this.hx, this.hy, PAL.accent, 12, 60); }   // found: the clock can't take it back
+    if (this.missT > 0) this.missT -= dt;
+    this.dogX += (this.hx - this.dogX) * Math.min(1, dt * 12);   // it runs over to the X
+    if (this.found > 0) {
+      this.found += dt;
+      if (this.found > 0.45) {
+        this.done.push({ x: this.hx, y: this.hy });
+        if (++this.got >= this.bones) { if (!this.finished) this.succeed(); return; }
+        const p = this.spots[this.got]; this.hx = p.x; this.hy = p.y; this.dug = 0; this.found = 0; this.playingOut = false;
+      }
+    } else if (input.swipe) {
+      const sw = input.swipe, on = sw.x0 == null || Math.hypot(sw.x0 - this.hx, sw.y0 - this.hy) < BeachDig.AIM;
+      if (!on) {   // dug in the wrong place: sand in the air, nothing found
+        this.misses++; this.missT = 0.4; Sfx.fail();
+        if (this.misses >= 3) { this.lose(); return; }
+      } else {
+        // every swipe is a scoop: the hole gets deeper and sand flies back
+        this.dug++; this.pop = 0.18;
+        Sfx.noise(0.07, 0.06, 900); buzz(12);
+        for (let i = 0; i < 9; i++) this.sand.push({ x: this.hx + (Math.random() - 0.5) * 20, y: this.hy + 4, vx: (Math.random() - 0.5) * 120, vy: 40 + Math.random() * 90, t: 0 });
+        if (this.dug >= this.need) { this.found = 0.001; this.playingOut = this.got + 1 >= this.bones; Sfx.win(); FX.burst(this.hx, this.hy, PAL.accent, 12, 60); }   // the last bone: the clock can't take it back
+      }
     }
     for (const p of this.sand) { p.t += dt; p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 160 * dt; }
     this.sand = this.sand.filter(p => p.t < 0.6);
   }
   draw(g) {
     g.clear();
-    const k = Math.min(1, this.dug / this.need), rw = 12 + k * 18, rh = 6 + k * 8;
+    const near = (ws, w) => ws.reduce((b, v, i) => Math.abs(v - w) < Math.abs(ws[b] - w) ? i : b, 0);
+    for (const h of this.done) g.sprite('hole', h.x, h.y + 1, { frame: near([30, 42, 54, 48], 48) });   // the holes already dug
+    const k = Math.min(1, this.dug / this.need), rw = 12 + k * 18;
     // the sand pile thrown up behind the dog, and the hole getting deeper
     // (art/sandpile.png, art/hole.png: the nearest size, 1:1)
-    const near = (ws, w) => ws.reduce((b, v, i) => Math.abs(v - w) < Math.abs(ws[b] - w) ? i : b, 0);
-    g.sprite('sandpile', this.hx + 30, this.hy + 10 - 12, { frame: near([17, 26, 40], 2 * (8 + k * 12)) });
-    g.sprite('hole', this.hx, this.hy + 1, { frame: near([30, 42, 54, 48], 2 * (rw + 3)) });
-    if (this.dug === 0) { g.line(this.hx - 7, this.hy - 7, this.hx + 7, this.hy + 7, PAL.bad, 3); g.line(this.hx + 7, this.hy - 7, this.hx - 7, this.hy + 7, PAL.bad, 3); }   // X marks the spot
+    if (this.dug) g.sprite('sandpile', this.hx + 30, this.hy + 10 - 12, { frame: near([17, 26, 40], 2 * (8 + k * 12)) });
+    if (this.dug) g.sprite('hole', this.hx, this.hy + 1, { frame: near([30, 42, 54, 48], 2 * (rw + 3)) });
+    else { g.line(this.hx - 7, this.hy - 7, this.hx + 7, this.hy + 7, PAL.bad, 3); g.line(this.hx + 7, this.hy - 7, this.hx - 7, this.hy + 7, PAL.bad, 3); }   // X marks the spot
     if (this.found > 0) {                                       // the bone rises out of the hole
       const up = Math.min(1, this.found / 0.25) * 16;
       g.bone(this.hx, this.hy - up, 26);
     }
     // the shiba from behind, paws going, bobbing on each scoop
-    const bob = this.pop > 0 ? -3 : 0;
+    const bob = this.pop > 0 ? -3 : 0, dx = Math.round(this.dogX);
     // between scoops it sniffs at the hole, tail going (art/digmove.png)
-    if (this.pop <= 0 && Assets.get('digmove')) g.sprite('digmove', this.hx, this.hy + 34 + bob, { w: 35, h: 42, frame: Math.floor(this.t * 6) % 4 });
-    else g.sprite('hero', this.hx, this.hy + 34 + bob, { w: 34, h: 42, frame: this.pop > 0 ? Math.floor(this.t * 30) % 9 : 0 });
+    if (this.pop <= 0 && Assets.get('digmove')) g.sprite('digmove', dx, this.hy + 34 + bob, { w: 35, h: 42, frame: Math.floor(this.t * 6) % 4 });
+    else g.sprite('hero', dx, this.hy + 34 + bob, { w: 34, h: 42, frame: this.pop > 0 ? Math.floor(this.t * 30) % 9 : 0 });
     for (const p of this.sand) { ctx.globalAlpha = 1 - p.t / 0.6; g.rect(p.x, p.y, 3, 3, SCENE.sandLo); ctx.globalAlpha = 1; }
     for (let i = 0; i < this.need; i++) g.rect(CX - this.need * 5 + i * 10, BOT - 14, 7, 7, i < this.dug ? PAL.accent : PAL.bg);
-    g.text(this.found > 0 ? 'FOUND IT!' : 'SWIPE TO DIG!', CX, TOP + 26, 9, PAL.ink);
+    // misses so far, as little red crosses
+    for (let i = 0; i < this.misses; i++) { const x = W - 14 - i * 10, y = TOP + 8; g.line(x - 3, y - 3, x + 3, y + 3, PAL.bad, 2); g.line(x + 3, y - 3, x - 3, y + 3, PAL.bad, 2); }
+    g.text(this.found > 0 ? 'FOUND IT!' : this.missT > 0 ? 'NOT THERE!' : 'SWIPE ON THE X!', CX, TOP + 26, 9, this.missT > 0 ? PAL.bad : PAL.ink);
+    if (this.bones > 1) g.text((this.got + (this.found > 0 ? 1 : 0)) + ' / ' + this.bones, 18, TOP + 12, 8, PAL.ink);
   }
 }
 

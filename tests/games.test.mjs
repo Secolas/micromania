@@ -166,6 +166,10 @@ export default async function ({ url, launch }) {
   for (let k = 0; k < 20; k++) { Engine.startRound(FeedDog, 2); Engine.state = 'PLAYING'; Engine.timer = Engine.duration; const f = Engine.game;
     f.ph = f.open + 0.1 - f.t;   // its mouth is shut now
     f.tx = f.dx; f.ty = f.dy + 6; Input.beginStep(); Engine.update(STEP); if (f.finished && !f.won) out.feedShoved++; }
+  // DIG: swipe on the X, then on the next X; swipes elsewhere are misses, and three lose
+  out.wins.dig = play(BeachDig, 3, (gm, i) => { if (i % 8 === 0 && Math.abs(gm.dogX - gm.hx) < 4) swipe(gm.hx, gm.hy - 10, gm.hx, gm.hy + 40); });
+  out.digMiss = play(BeachDig, 1, (gm, i) => { if (i % 8 === 0) swipe(gm.hx < 90 ? 160 : 20, 120, gm.hx < 90 ? 160 : 20, 200); });
+  out.digIdle = play(BeachDig, 1, () => {});
   // DRY OFF with no sensors: rubbing fast dries the shiba; leaving it wet loses
   out.wins.dry = play(DryShiba, 3, (gm, i) => hold(90 + Math.cos(i * 0.7) * 45, 180));
   { let idleWins = 0; for (let k = 0; k < 5; k++) { Engine.startRound(DryShiba, 1); Engine.state = 'PLAYING'; Engine.timer = Engine.duration; const d = Engine.game;
@@ -177,7 +181,7 @@ export default async function ({ url, launch }) {
   Engine.speed = 2.6;
   out.wins.wakeFast = play(WakeUp, 3, (gm, i) => { if (i % 5 === 0) tapAt(90, 150); });
   out.wins.bathFast = play(BathTime, 3, (gm, i) => hold(90 + Math.cos(i * 0.5) * 40, 150 + Math.sin(i * 0.5) * 40));
-  out.wins.digFast = play(BeachDig, 3, (gm, i) => { if (i % 6 === 0) swipe(90, 120, 90, 200); });
+  out.wins.digFast = play(BeachDig, 3, (gm, i) => { if (i % 6 === 0) swipe(gm.hx, gm.hy - 10, gm.hx, gm.hy + 40); });
   Engine.speed = 1;
   // HIGH FIVE on touch: tapping the paw that isn't up loses (it used to jam the round)
   let wrong = 0;
@@ -207,6 +211,7 @@ export default async function ({ url, launch }) {
   assert(out.pullIdle === '0/20', 'PULL DOWN: doing nothing should lose: ' + out.pullIdle);
   assert(out.pullRed === '0/20', 'PULL DOWN: pulling the red one should lose: ' + out.pullRed);
   assert(out.feedShoved === 20, 'FEED: a bone into a shut mouth should lose, lost ' + out.feedShoved + '/20');
+  assert(out.digMiss === '0/20' && out.digIdle === '0/20', 'DIG: digging off the X, or not at all, should lose: ' + out.digMiss + ', ' + out.digIdle);
   assert(out.dryIdle === 0, 'DRY OFF: leaving the shiba wet should lose, won ' + out.dryIdle + '/5');
   assert(out.highfiveWrong >= 5, 'HIGH FIVE: tapping the wrong paw should lose, lost ' + out.highfiveWrong + '/10');
   await done();
