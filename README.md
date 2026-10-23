@@ -213,8 +213,11 @@ The title is full-bleed (sky to the top edge, meadow to the bottom) and a
 little side-scroller. **SHIBA** and **MANIA** drop in letter by
 letter, and the menu slides up: RUN, CLASSIC, ALBUM and SETTINGS as alike white
 outlined words, like Super Mario's title menu. The shiba runs in and
-keeps running: the hills and meadow scroll past, and it hops every bush and
-snaps up the bone floating over it. A tap skips the intro. Coming back
+keeps running: far blue mountains, the hills and the meadow scroll past at
+their own speeds. It jumps whatever is in its way, the games' own crates,
+fences, hurdles, pots, cacti and bushes, and jumps for the bones floating about,
+low, mid-air or high. Now and then a cowboy hat floats by: grab it and the
+shiba wears it, as JUMP!'s runner does. A tap skips the intro. Coming back
 from the album shows the settled screen straight away.
 
 ## Photo album

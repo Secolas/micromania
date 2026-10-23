@@ -8164,23 +8164,54 @@ const Engine = {
       if (this.titleSfx === beats.length - 1) Sfx.bark(); else Sfx.tick();
       this.titleSfx++;
     }
-    // the runner: the world scrolls past, the shiba hops each bush and
-    // snaps up the bone floating over it
-    const R = this.runner || (this.runner = { scroll: 0, y: 0, vy: 0, legT: 0, got: -1, pops: [] });
+    // the runner: the world scrolls past and the shiba jumps what's in its
+    // way (the games' own crates, fences, hurdles, pots, bushes), and for the
+    // bones floating about, and for a cowboy hat now and then, which it puts on
+    const R = this.runner || (this.runner = { scroll: 0, y: 0, vy: 0, legT: 0, got: new Set(), pops: [], hat: false });
     R.scroll += this.RUN_SPEED * dt; R.legT += dt;
-    const next = this.runBush(this.runBushAfter(R.scroll + this.RUN_X - 12));
-    if (R.y === 0 && next.x - R.scroll - this.RUN_X < 26 && t > 1.0) R.vy = 190;
-    if (R.vy || R.y > 0) { R.vy -= 620 * dt; R.y = Math.max(0, R.y + R.vy * dt); if (R.y === 0) R.vy = 0; }
-    for (let i = this.runBushAfter(R.scroll - 20); ; i++) {
-      const b = this.runBush(i), bx = b.x - R.scroll; if (bx > W) break;
-      if (i > R.got && Math.abs(bx - this.RUN_X) < 10 && R.y > 18) { R.got = i; R.pops.push({ x: bx, y: this.RUN_GROUND - 42, t: 0 }); }
+    const G = 620, head = 24;   // gravity; the shiba's mouth, above its paws
+    if (R.y === 0 && t > 1.0) {   // on the ground: jump for the next thing worth it, timed to be at the top over it
+      for (let i = this.runThingAfter(R.scroll + this.RUN_X - 4); ; i++) {
+        const th = this.runThing(i), dx = th.x - R.scroll - this.RUN_X;
+        if (dx > 120) break;
+        if (R.got.has(i) && !th.h) continue;   // a bone already taken
+        if (th.kind === 'hat' && R.hat) continue;
+        const ph = th.h ? th.h + 5 : th.lift - head;   // clear it, or bring the mouth up to it
+        if (ph <= 2) continue;
+        const vy = Math.sqrt(2 * G * ph), lead = this.RUN_SPEED * vy / G;
+        if (dx <= lead) R.vy = vy;
+        break;
+      }
+    }
+    if (R.vy || R.y > 0) { R.vy -= G * dt; R.y = Math.max(0, R.y + R.vy * dt); if (R.y === 0) R.vy = 0; }
+    // snap up a bone, or the hat, the mouth goes past
+    for (let i = this.runThingAfter(R.scroll - 20); ; i++) {
+      const th = this.runThing(i), bx = th.x - R.scroll; if (bx > W) break;
+      if (!th.lift || R.got.has(i) || Math.abs(bx - this.RUN_X - 6) > 9 || Math.abs(R.y + head - th.lift) > 11) continue;
+      if (th.kind === 'hat' && R.hat) continue;
+      R.got.add(i);
+      R.pops.push({ x: bx, y: this.RUN_GROUND - th.lift, t: 0, hat: th.kind === 'hat' });
+      if (th.kind === 'hat') { R.hat = true; Sfx.win && Sfx.win(); }
     }
     for (const p of R.pops) { p.t += dt; p.x -= this.RUN_SPEED * dt; }
     R.pops = R.pops.filter(p => p.t < 0.6);
   },
-  // bushes sit along the run at a steady, slightly uneven spacing
-  runBush(i) { return { x: 200 + i * 130 + ((i * 47) % 60), i }; },
-  runBushAfter(wx) { let i = Math.max(0, Math.floor((wx - 260) / 130)); while (this.runBush(i).x < wx) i++; return i; },
+  // What's along the run: slot i sits a little unevenly past the last. Most
+  // slots are something to jump, from the games' own art, some with a bone
+  // over them; the others are a bone on its own, low, mid-air or high; and
+  // every so often the cowboy hat floats by. kind, x, and h (how tall a thing
+  // to jump is) or lift (how high a bone or the hat floats)
+  RUN_PROPS: [['bush', 0], ['crate', 0], ['crates', 0], ['fence', 0], ['hurdle', 0], ['pot', 0], ['cactus', 0]],
+  runThing(i) {
+    const r = k => (((i + 1) * 2654435761 + k * 40503) >>> 0) % 1000 / 1000;   // the same every time for slot i
+    const x = 220 + i * 92 + Math.round(r(1) * 30);
+    if (i % 11 === 5) return { i, x, kind: 'hat', lift: 44 };
+    if (r(2) < 0.34) return { i, x, kind: 'bone', lift: [20, 38, 48][Math.floor(r(3) * 3)] };
+    const [name] = this.RUN_PROPS[Math.floor(r(4) * this.RUN_PROPS.length)];
+    const h = { bush: 22, crate: 12, crates: 24, fence: 12, hurdle: 25, pot: 20, cactus: 30 }[name];
+    return { i, x, kind: name, h, lift: r(5) < 0.5 && h < 25 ? h + 30 : 0 };   // a bone over it, half the time (not the tall ones: it would touch the sign)
+  },
+  runThingAfter(wx) { let i = Math.max(0, Math.floor((wx - 260) / 92)); while (this.runThing(i).x < wx) i++; return i; },
   drawTitle() {
     const t = this.titleT == null ? 9 : this.titleT;
     const bounce = (k) => { if (k <= 0) return 0; if (k >= 1) return 1; const n = 7.5625, d = 2.75;
@@ -8192,6 +8223,8 @@ const Engine = {
     const Rn = this.runner || { scroll: 0, y: 0, legT: t, pops: [] }, sc = Rn.scroll, gy = this.RUN_GROUND;
     // the far hills drift by at half speed, the meadow at full speed
     g.rect(0, gy - 14, W, 14, SCENE.day1);
+    const mt = Assets.get('mountains');   // far blue mountains (art/mountains.png), slowest of all
+    if (mt) for (let x = -Math.round(sc * 0.2) % mt.fw; x < W; x += mt.fw) ctx.drawImage(mt.img, x, gy - 10 - mt.fh);
     for (let i = 0; i < W; i++) { const u = i + sc * 0.5, hh = 7 + Math.sin(u / 19) * 4 + Math.sin(u / 6) * 1.5; g.rect(i, gy - hh, 1, hh, SCENE.dayHill); }
     g.rect(0, gy, W, H - gy, SCENE.meadow); g.rect(0, gy, W, 2, SCENE.meadowHi);
     for (let i = 0; i < 18; i++) {
@@ -8200,21 +8233,25 @@ const Engine = {
       if (i % 4 === 0) g.rect(tx + 1, ty - 1, 2, 2, i % 8 ? PAL.ink : PAL.accent);
     }
     ctx.globalAlpha = 0.25; g.rect(0, 0, W, H, PAL.bg); ctx.globalAlpha = 1;
-    // bushes to hop, each with a bone floating over it until the shiba grabs it
-    for (let i = this.runBushAfter(sc - 20); ; i++) {
-      const bx = this.runBush(i).x - sc; if (bx > W + 12) break;
-      const bu = Assets.get('bush');
-      if (bu) g.sprite('bush', Math.round(bx), gy + 3 - bu.fh / 2);   // art/bush.png, its shadow on the grass
-      else {
-        for (const [col, d] of [[SCENE.grassLo, 1], [SCENE.leafHi, 0]]) {   // dark rim, then the leaves
-          ctx.fillStyle = col; for (const [ox, r] of [[-7, 6], [0, 9], [7, 6]]) { ctx.beginPath(); ctx.arc(bx + ox, gy + 1, r + d, Math.PI, 0); ctx.fill(); }
-        }
-        g.rect(bx - 4, gy - 6, 3, 2, SCENE.meadowHi); g.rect(bx + 5, gy - 3, 2, 2, SCENE.meadowHi);
-      }
-      if (i > (this.runner ? this.runner.got : -1)) g.bone(bx, gy - 42 + Math.sin(this.time * 4 + i) * 1.5, 14);
+    // what's along the run: the games' props to jump, bones floating, the cowboy hat
+    for (let i = this.runThingAfter(sc - 30); ; i++) {
+      const th = this.runThing(i), bx = Math.round(th.x - sc); if (bx > W + 30) break;
+      const prop = (name, y, f = 0) => { const a = Assets.get(name); if (a) g.sprite(name, bx, y - a.fh / 2, { frame: f }); };
+      if (th.kind === 'bush') prop('bush', gy + 3);
+      else if (th.kind === 'crate') prop('crate', gy);
+      else if (th.kind === 'crates') { prop('crate', gy); prop('crate', gy - 12); }
+      else if (th.kind === 'longcrate') prop('longcrate', gy);
+      else if (th.kind === 'fence') g.fence(bx - 10, bx + 11, gy - 6);
+      else if (th.kind === 'hurdle') prop('hurdle', gy);
+      else if (th.kind === 'pot') g.pot(bx, gy - 5, 1);
+      else if (th.kind === 'cactus') prop('cactus', gy + 1);
+      if (!th.lift || Rn.got && Rn.got.has(i)) continue;
+      const by = gy - th.lift + Math.sin(this.time * 4 + i) * 1.5;
+      if (th.kind === 'hat') { if (!Rn.hat) Closet.drawItem({ f: 15 }, bx, by + 12, 1); }   // hats.png's cowboy hat
+      else g.bone(bx, by, 14);
     }
-    for (const p of Rn.pops) {   // a grabbed bone pops up and fades, with a sparkle
-      ctx.globalAlpha = 1 - p.t / 0.6; g.bone(p.x, p.y - p.t * 30, 12);
+    for (const p of Rn.pops) {   // a grabbed bone pops up and fades, with a sparkle (the hat goes on: just the sparkle)
+      ctx.globalAlpha = 1 - p.t / 0.6; if (!p.hat) g.bone(p.x, p.y - p.t * 30, 12);
       const r = 6 + p.t * 18; g.rect(p.x - r, p.y, 3, 1, PAL.accent); g.rect(p.x + r - 3, p.y, 3, 1, PAL.accent); g.rect(p.x, p.y - r, 1, 3, PAL.accent);
       ctx.globalAlpha = 1;
     }
@@ -8236,10 +8273,12 @@ const Engine = {
     // the shiba runs in from the left, then keeps running: hop, grab, land
     const rx = t < 1.2 ? -30 + (this.RUN_X + 30) * (1 - Math.pow(1 - Math.max(0, (t - 0.3) / 0.9), 3)) : this.RUN_X;
     const ry = gy - 14 - (Rn.y || 0);
+    // in the cowboy hat once it's grabbed one: JUMP!'s runner (art/runcowboy.png, jumpcowboy.png)
+    const cow = Rn.hat && Assets.get('runcowboy') && Assets.get('jumpcowboy');
     if (!Rn.y) {
-      g.sprite('swiperight', rx, ry, { w: 60, h: 56, frame: Math.floor(Rn.legT * 14) % 9 });
+      g.sprite(cow ? 'runcowboy' : 'swiperight', rx, ry, { w: 60, h: 56, frame: Math.floor(Rn.legT * 14) % 9 });
       if (Math.floor(Rn.legT * 7) % 2) g.rect(rx - 18, gy - 3, 3, 2, PAL.mid);   // a puff of dust off the back foot
-    } else g.sprite('runjump', rx, ry, { w: 60, h: 56, frame: Rn.vy > 60 ? 2 : Rn.vy < -60 ? 4 : 3 });
+    } else g.sprite(cow ? 'jumpcowboy' : 'runjump', rx, ry, { w: 60, h: 56, frame: Rn.vy > 60 ? 2 : Rn.vy < -60 ? 4 : 3 });
     // sparkles around the logo once it has settled
     if (t > 1.6) for (let i = 0; i < 5; i++) {
       if ((Math.floor(this.time * 4) + i) % 3) continue;
