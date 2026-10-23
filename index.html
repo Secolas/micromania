@@ -234,7 +234,7 @@ const Coat = {
   ],
   SHEETS: ['shiba', 'fullshiba', 'fullidle', 'breakjump', 'catcher', 'hero', 'face', 'pump', 'dryshake', 'hopdog', 'ordersign',
     'flydog', 'swipeup', 'swipedown', 'runjump', 'swiperight', 'swipeleft', 'hidedog', 'facedir', 'rubdog', 'sleepdog', 'rocker',
-    'yesno', 'wag', 'feed', 'lean', 'leanmove', 'sledmove', 'sledder', 'digmove', 'highfive', 'demo', 'runcowboy', 'jumpcowboy', 'chefmove', 'worn', 'neckwear'],
+    'yesno', 'wag', 'feed', 'lean', 'leanmove', 'sledmove', 'sledder', 'digmove', 'highfive', 'demo', 'runcowboy', 'jumpcowboy', 'chefmove', 'worn', 'neckwear', 'wetidle'],
   // art/worn.png: the hats PixelLab drew on the shiba have its ears in them. Only
   // what's near a colour of the shiba's own fur (art/fullshiba.png) is fur; the
   // cowboy hat's browns, the crown's and halo's golds are further off.
@@ -361,6 +361,7 @@ const Assets = {
     runcowboy:{ src: 'art/runcowboy.png', fw: 120, fh: 120, frames: 9, fps: 1  },
     jumpcowboy:{ src: 'art/jumpcowboy.png', fw: 120, fh: 120, frames: 5, fps: 1 },
     bush:     { src: 'art/bush.png',     fw: 26,  fh: 16,  frames: 1,  fps: 1  },
+    wetidle:  { src: 'art/wetidle.png',  fw: 64,  fh: 64,  frames: 8,  fps: 1  },
     walkstone:{ src: 'art/walkstone.png', fw: 36, fh: 36,  frames: 1,  fps: 1  },
     fullidle: { src: 'art/fullidle.png', fw: 64,  fh: 64,  frames: 22, fps: 1  },
     leanmove: { src: 'art/leanmove.png', fw: 64,  fh: 64,  frames: 7,  fps: 1  },
@@ -4353,48 +4354,66 @@ class MoveCam extends Microgame {
 
 }
 
-// 31. DRY OFF — big separate shakes at the camera, like a wet dog (Snapped! homage)
+// 31. DRY OFF — a soaked shiba on the bath mat, dripping: shake it dry before
+// the clock runs out. Shake your body at the camera, shake the phone, or rub
+// the screen fast. It goes soaked and sad, then damp, then fluffy, with a
+// burst of spray at each; on 2 and 3 it soaks back up if you stop.
 class DryShiba extends Microgame {
-  static meta = { id: 'dry', env: 'bath', cam: true, prompt: 'DRY OFF!', hint: 'move', duration: 5.0, minDuration: 4.0, photo: true, photoCap: 'ALL FLUFFY!',
-    how: { cam: 'SHAKE YOUR BODY HARD,\nSTOP, THEN SHAKE AGAIN', touch: 'TAP, TAP, TAP\nTO SHAKE IT OFF' } };
+  static meta = { id: 'dry', env: 'bath', group: 'CAMERA', prompt: 'DRY OFF!', hint: 'move', duration: 5.0, minDuration: 4.0, photo: true, photoCap: 'ALL FLUFFY!',
+    how: { cam: 'SHAKE YOUR BODY\nTO SHAKE IT DRY', motion: 'SHAKE YOUR PHONE\nTO SHAKE IT DRY', touch: 'RUB THE SCREEN FAST\nTO SHAKE IT DRY' } };
+  static DAMP = 0.55;   // wetter than this it is soaked (art/wetidle.png 4-7); then damp (0-3); then dry
   init() {
-    // Not MOVE's steady wiggle: a wet dog shakes in big bursts. Each burst is a
-    // spike of motion that has to settle back down before the next one counts.
-    this.bursts = 0; this.need = this.byD(3, 4, 5); this.ready = true;
-    this.drops = [];
+    this.wet = 1;
+    this.need = this.byD(2.0, 2.6, 3.2);          // how much shaking dries it: about 1 / 1.2 / 1.5 s of the hardest shaking
+    this.soak = this.byD(0, 0.07, 0.13);          // what it soaks back up each second you stop
+    this.drops = []; this.drip = 0; this.done = 0; this.wob = 0; this.stage = 2;
     Input.enableCam();
     this.paused = Input.camPending; this.wait = 0;
-    this.wob = 0; this.pop = 0;
+  }
+  // how hard it's being shaken: your body on camera, else the phone, else rubbing
+  drive(input) { return Input.camReady ? Math.min(1, input.motion * 1.4) : input.shake; }
+  spray(n, sp) {
+    for (let i = 0; i < n; i++) { const a = Math.random() * Math.PI * 2; this.drops.push({ x: CX + Math.cos(a) * 22, y: 190 + Math.sin(a) * 26, vx: Math.cos(a) * sp * (0.6 + Math.random()), vy: Math.sin(a) * sp * 0.7 - 50, t: 0 }); }
   }
   update(dt, input) {
     if (this.paused) { this.wait += dt; if (!Input.camPending || this.wait > 1.5) this.paused = false; return; }
-    const m = input.motion;
-    this.wob = m;
-    if (this.pop > 0) this.pop -= dt;
-    if (m < 0.15) this.ready = true;
-    else if (m > 0.4 && this.ready) {
-      this.ready = false; this.bursts++; this.pop = 0.25;
-      Sfx.splash(); buzz(30); FX.shake(2);
-      for (let i = 0; i < 14; i++) this.drops.push({ x: CX + (Math.random() - 0.5) * 40, y: CY, vx: (Math.random() - 0.5) * 220, vy: -60 - Math.random() * 90, t: 0 });
-      if (this.bursts >= this.need && !this.finished) { this.succeed(); return; }
-    }
-    for (const d of this.drops) { d.t += dt; d.x += d.vx * dt; d.y += d.vy * dt; d.vy += 200 * dt; }
-    this.drops = this.drops.filter(d => d.t < 0.6);
+    for (const d of this.drops) { d.t += dt; d.x += d.vx * dt; d.y += d.vy * dt; d.vy += 260 * dt; }
+    this.drops = this.drops.filter(d => d.t < 0.7 && d.y < 236);
+    if (this.done) { this.done += dt; if (this.done > 0.5 && !this.finished) this.succeed(); return; }
+    const m = this.drive(input); this.wob = m;
+    if (m > 0.12) {
+      this.wet = Math.max(0, this.wet - m * dt * 2.2 / this.need);
+      if (Math.random() < m * this.wet * 0.9) this.spray(1, 140);   // water flying off as it shakes
+      this.buzzT = (this.buzzT || 0) - dt; if (this.buzzT <= 0) { buzz(Math.round(20 + m * 30)); this.buzzT = 0.08; }
+    } else this.wet = Math.min(1, this.wet + this.soak * dt);
+    // still wet: it drips onto the mat
+    if ((this.drip -= dt) <= 0 && this.wet > 0.05) { this.drip = 0.5 - this.wet * 0.3; this.drops.push({ x: CX + (Math.random() - 0.5) * 30, y: 206, vx: 0, vy: 10, t: 0 }); }
+    const stage = this.wet > DryShiba.DAMP ? 2 : this.wet > 0 ? 1 : 0;
+    if (stage < this.stage) { this.stage = stage; this.spray(16, 170); Sfx.splash(); FX.shake(2); }
+    if (this.wet <= 0) { this.done = 0.001; this.playingOut = true; Sfx.win(); Juice.confetti && Juice.confetti(18); }   // dry: the clock can't take it back
   }
   draw(g) {
     g.clear();
     if (this.paused) { g.text('ALLOW CAMERA…', CX, CY - 6, 11, PAL.ink); g.text('(then shake to dry)', CX, CY + 12, 7, PAL.mid); return; }
-    // wet shiba drying out: frame tracks the shakes (wet -> fluffy), and it
-    // jolts on each one
-    const prog = Math.min(1, this.bursts / this.need);
-    const fr = Math.max(0, Math.min(8, Math.floor(prog * 8.99)));
-    const j = (Math.random() - 0.5) * (this.wob * 6 + this.pop * 30);
-    BathTime.tubBack(162);   // shaking off IN the bath: its back rim and water behind
-    g.sprite('dryshake', Math.round(CX + j), CY + 2, { w: 76, h: 62, frame: fr });   // 2x, crisp; sat down in the water
-    BathTime.tubFront(162);
-    for (const d of this.drops) { const k = 1 - d.t / 0.6; ctx.globalAlpha = k; g.circle(d.x, d.y, 2, PAL.ink); ctx.globalAlpha = 1; }
-    g.text(this.ready ? (Input.camReady ? 'SHAKE!' : 'TAP!') : 'NOW STOP…', CX, TOP + 26, 10, this.ready ? PAL.accent : PAL.mid);
-    for (let i = 0; i < this.need; i++) g.rect(CX - this.need * 6 + i * 12, BOT - 20, 8, 8, i < this.bursts ? PAL.accent : PAL.mid);
+    const fy = 234;   // its paws, on the bath mat
+    // the floor: the same tiles in shadow, with a skirting line where the wall meets it
+    ctx.globalAlpha = 0.28; g.rect(0, fy - 16, W, BOT - fy + 16, PAL.bg); ctx.globalAlpha = 1;
+    g.rect(0, fy - 17, W, 2, SCENE.grout);
+    if (Assets.get('towel')) g.sprite('towel', 30, 112);                    // a towel on the wall, no use to a shiba
+    if (Assets.get('bathmat')) g.sprite('bathmat', CX, fy - 2); else g.rect(CX - 50, fy - 8, 100, 12, SCENE.tile);
+    // the puddle: what's been shaken off
+    ctx.globalAlpha = 0.6; g.rect(CX - 14 - (1 - this.wet) * 30, fy - 2, 28 + (1 - this.wet) * 60, 4, SCENE.sea1); ctx.globalAlpha = 1;
+    // the shiba, wobbling as it's shaken: soaked and sad, damp and happy, then fluffy
+    const t = this.t, wob = this.wob > 0.12 ? Math.sin(t * 40) * this.wob * 0.12 : 0;
+    const wa = Assets.get('wetidle'), f = Math.floor(t * 5) % 4;
+    ctx.save(); ctx.translate(CX, fy); ctx.rotate(wob); ctx.translate(-CX, -fy);
+    if (this.stage === 0 || !wa) g.fullIdle(CX, fy, this.stage === 0 ? 'happy' : 'sad', t);
+    else g.sprite('wetidle', CX, fy - 64, { w: 128, h: 128, frame: (this.stage === 2 ? 4 : 0) + f });
+    ctx.restore();
+    for (const d of this.drops) { ctx.globalAlpha = 1 - d.t / 0.7; g.rect(d.x - 1, d.y - 1, 2, 3, SCENE.sea0); g.rect(d.x - 1, d.y - 1, 1, 1, PAL.ink); ctx.globalAlpha = 1; }
+    // how wet: a bar of water draining
+    g.text(this.done ? 'ALL FLUFFY!' : Input.camReady ? 'SHAKE!' : Engine.howKey(this.meta) === 'motion' ? 'SHAKE THE PHONE!' : 'RUB FAST!', CX, TOP + 26, 10, this.done ? PAL.accent : PAL.ink);
+    g.bar(30, TOP + 34, W - 60, 6, this.wet, SCENE.sea1, PAL.mid);
   }
 }
 

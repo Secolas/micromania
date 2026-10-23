@@ -122,6 +122,11 @@ export default async function ({ url, launch }) {
   out.fakeIdleWins = gm.won;
   gm = forceFake(TapBug); Engine.state = 'PLAYING'; Engine.timer = Engine.duration; tapAt(gm.bug.x, gm.bug.y); Input.beginStep(); Engine.update(STEP);
   out.fakeTouchLoses = gm.finished && !gm.won;
+  // DRY OFF with no sensors: rubbing fast dries the shiba; leaving it wet loses
+  out.wins.dry = play(DryShiba, 3, (gm, i) => hold(90 + Math.cos(i * 0.7) * 45, 180));
+  { let idleWins = 0; for (let k = 0; k < 5; k++) { Engine.startRound(DryShiba, 1); Engine.state = 'PLAYING'; Engine.timer = Engine.duration; const d = Engine.game;
+      for (let i = 0; i < 900 && !d.finished && Engine.state === 'PLAYING'; i++) { Input.beginStep(); Engine.update(STEP); } if (d.won) idleWins++; }
+    out.dryIdle = idleWins; }
   // CANDLES with no mic: a tap is a puff, so tapping fast blows them all out
   out.wins.candles = play(BlowCandles, 3, (gm, i) => { if (i % 6 === 0) tapAt(90, 150); });
   // at top speed, the bosses and DIG can still be won, and a win isn't lost on the clock while it plays out
@@ -149,6 +154,7 @@ export default async function ({ url, launch }) {
   { const [w, n] = out.losses.cook.split('/').map(Number); assert(w === 0, 'COOK: tapping the wrong food should never win, won ' + out.losses.cook); }
   assert(out.fakeIdleWins, 'fake-out: leaving it alone should win');
   assert(out.fakeTouchLoses, 'fake-out: touching it should lose');
+  assert(out.dryIdle === 0, 'DRY OFF: leaving the shiba wet should lose, won ' + out.dryIdle + '/5');
   assert(out.highfiveWrong >= 5, 'HIGH FIVE: tapping the wrong paw should lose, lost ' + out.highfiveWrong + '/10');
   await done();
 }
