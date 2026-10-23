@@ -14,12 +14,15 @@ export default async function ({ url, launch }) {
       for (let c = 0; c < 2; c++) for (const v of buf.getChannelData(c)) peak = Math.max(peak, Math.abs(v));
       return peak;
     };
+    // the noisy sounds (a hi-hat, a hiss) are random noise, a little different
+    // every time, and the shortest sit near the floor: the loudest of a few tries
+    const best = async (secs, fn, floor) => { let p = 0; for (let k = 0; k < 3 && p < floor; k++) p = Math.max(p, await render(secs, fn)); return p; };
     const fx = ['tap', 'tick', 'boop', 'squeak', 'bark', 'growl', 'crunch', 'chomp', 'splash', 'whoosh', 'thud', 'sniff', 'heart', 'snore', 'poof',
                 'smack', 'clap', 'tissue', 'boing', 'clunk', 'creak', 'goal',
                 'win', 'fail', 'go', 'speedup', 'clear', 'gameover'];
-    for (const n of fx) { const p = await render(1.8, () => Sfx[n]()); if (p < 0.02) out.quiet.push(n + ' ' + p.toFixed(3)); if (p > 0.95) out.loud.push(n); }
+    for (const n of fx) { const p = await best(1.8, () => Sfx[n](), 0.02); if (p < 0.02) out.quiet.push(n + ' ' + p.toFixed(3)); if (p > 0.95) out.loud.push(n); }
     for (const [n, f] of [['prompt', () => Sfx.prompt(false)], ['promptBoss', () => Sfx.prompt(true)], ['step', () => Sfx.step(3)], ['fizz', () => Sfx.fizz(1)], ['roll', () => Sfx.roll(1)], ['bonk', () => Sfx.bonk(3)], ['fly', () => Sfx.fly(true)], ['hum', () => Sfx.hum(1)], ['foot', () => Sfx.foot(1)], ['chug', () => Sfx.chug(82, 0.06, 0.5)], ['hat', () => Sfx.hat()]]) {
-      const p = await render(1, f); if (p < 0.01) out.quiet.push(n); if (p > 0.95) out.loud.push(n);
+      const p = await best(1, f, 0.01); if (p < 0.01) out.quiet.push(n); if (p > 0.95) out.loud.push(n);
     }
     for (const [name, S] of Object.entries(Music.SONGS)) {
       const step = 15 / S.bpm;
