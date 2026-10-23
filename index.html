@@ -6053,6 +6053,9 @@ class BathTime extends Microgame {
             [motion ? 'SHAKE THE PHONE TO DRY IT' : 'RUB FAST TO DRY IT', ''],
             [Input.micReady ? 'BLOW TO SEND A KISS' : 'TAP THE HEARTS', Input.micReady ? '' : 'TO SEND A KISS']][st];
   }
+  // a win or a loss always counts, even with a card up (the round isn't paused then)
+  succeed() { this.paused = false; super.succeed(); }
+  lose() { this.paused = false; super.lose(); }
   next() {
     this.step++; this.k = 0; Sfx.clear(); FX.flash(PAL.accent, 0.25); buzz(30);
     if (this.step === 4) { this.done = 0.001; this.playingOut = true; this.paused = false; Sfx.win(); Juice.confetti(40); return; }   // happy: the clock can't take it back
@@ -6150,7 +6153,7 @@ class BathTime extends Microgame {
       const t = Input.tiltReady ? Input.tiltX : (Input.down && this.banner <= 0 && this.intro <= 0 ? 0.6 : 0), tip = Math.max(-1, Math.min(1, t)) * 0.7;
       ctx.save(); ctx.translate(CX - 4, TOP + 46); ctx.rotate(tip); g.sprite('jug', 1, -4); ctx.restore();
       if (this.pouring) { ctx.globalAlpha = 0.8; g.rect(CX - 2, TOP + 56, 3, 132 - TOP - 56, SCENE.sea1); ctx.globalAlpha = 1; }
-      const gx = W - 15, gy0 = 100, gh = 130, ok = this.fill >= BathTime.LO && this.fill <= BathTime.HI;
+      const gx = W - 24, gy0 = 100, gh = 130, ok = this.fill >= BathTime.LO && this.fill <= BathTime.HI;
       g.rect(gx - 1, gy0 - 1, 10, gh + 2, PAL.bg); g.rect(gx, gy0, 8, gh, SCENE.grout);
       g.rect(gx, gy0 + gh - Math.min(1, this.fill) * gh, 8, Math.min(1, this.fill) * gh, ok ? PAL.accent : SCENE.sea1);
       for (const v of [BathTime.LO, BathTime.HI]) g.rect(gx - 4, gy0 + gh - v * gh, 16, 1, PAL.accent);
