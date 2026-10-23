@@ -173,6 +173,18 @@ shake — a gentle waggle barely moves the meter. Accelerometer energy and fast
 pointer wiggling stand behind it, in that order. A short vibration re-fires every
 0.05s while you shake, so the motor hums the whole time you do.
 
+**Every game can be lost** (WarioWare's rule: one clear verb, a way to lose,
+and a new twist on levels 2 and 3):
+- TAP! has you tap the laughing shiba among sleepy ones, which you must not wake.
+- HOP!'s first step crumbles, its steps slide, and on 3 a cracked one breaks.
+- BALANCE! has crates dropping onto the see-saw (and a gust on 3) to lean against.
+- SHH! has flies to shoo off the sleeping shiba's nose without touching it.
+- PULL DOWN! has a sliding box, and a red LAST tissue you must leave.
+- RUB! has mud all over the shiba, and on 2 and 3 it splatters some back.
+- FEED! has a mouth that opens and shuts.
+- DRY OFF! has a soaked shiba on the bath mat to shake dry (your body at the
+  camera, the phone, or rubbing fast) before time runs out.
+
 **Tilt games** (`deviceorientation`, via `Input.tiltX/tiltY`): BALANCE keeps a
 ball on a see-saw, POUR fills a cup to a line then levels off, STEER drives the
 runner down a lane. **More blow games**: CANDLES snuffs a birthday cake (reusing
@@ -421,12 +433,19 @@ instant it turns red or you're caught, and sit through the reds), and SQUID
 (its camera twin — move your head to run to the goal while the doll's back is
 turned, freeze the instant it faces you), WAKE UP! (a giant shiba asleep in its
 bed — shout into the mic to wake it before time's up; quiet lets it drift back
-off; with no mic, tap as fast as you can) and BATH TIME! (shake the phone to
-fling the suds off a soapy shiba in the tub; stop and the bubble bath foams
-back up).
+off; with no mic, tap as fast as you can) and BATH TIME! (the whole bath in
+four goes, listed on a card first, each with its own card saying what to do;
+the clock waits while you read):
+1. POUR the bath: tilt the phone, or hold, to fill it to the line, as in POUR!
+   Overfill it and you lose.
+2. RUB the mud off.
+3. SHAKE it dry with the phone, or by rubbing fast. It goes wet, then
+   fluffy, with a puff of spray.
+4. Blow it a KISS into the mic, or tap the hearts floating up.
 
-BEACH DIG is a regular game on the beach: swipe again and again to dig where
-the X is until the bone turns up. WALKIES! is a pocket one-line path puzzle:
+BEACH DIG is a regular game on the beach: swipe on the X, again and again,
+until the bone turns up. On 2 and 3 there are two bones, the second X
+elsewhere on the beach; a swipe off the X is a miss, and three lose. WALKIES! is a pocket one-line path puzzle:
 drag one route from 1 through every square, fetching the numbered treat bones in order (the
 last number has to be the last square), and the shiba walks it, facing the way
 it's heading. 3x3 on easy, 4x4 after, with two walls on hard; each board is

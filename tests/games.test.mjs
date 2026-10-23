@@ -68,10 +68,21 @@ export default async function ({ url, launch }) {
     const k = gm.i + gm.fly.filter(f => !f.bad).length;
     if (i % 8 === 4 && k < gm.recipe.length) { const b = gm.bins.find(b => b.f === gm.recipe[k]); tapAt(b.x + b.w / 2, b.y + 20); }
   });
-  out.wins.shh = play(DontTap, 3, () => {});
+  // SHH: tap each fly as it comes in (never the dog); doing nothing lets one land on its nose
+  out.wins.shh = play(DontTap, 3, (gm, i) => { if (i % 8) return; const f = gm.flies.find(f => gm.t >= f.at && !f.shoo && f.x > 4 && f.x < W - 4 && !(Math.abs(f.x - 90) < 62 && f.y > 141 && f.y < 197)); if (f) tapAt(f.x, f.y); });
+  out.shhIdle = play(DontTap, 1, () => {});
+  out.shhPoke = play(DontTap, 1, (gm, i) => { if (i === 30) tapAt(90, 175); });
   out.wins.dodge = play(Dodge, 3, (gm) => { const danger = gm.blocks.filter(b => b.y > gm.py - 80 && b.y < gm.py + 10); let best = gm.px, bs = -1; for (let x = 12; x < W - 12; x += 4) { const s = Math.min(...danger.map(b => Math.abs(b.x - x) - b.w / 2), 999); if (s > bs) { bs = s; best = x; } } hold(best, 250); });
   out.wins.squeeze = play(Squeeze, 3, (gm) => { const w = gm.walls.filter(w => w.y < gm.py).sort((a, b) => b.y - a.y)[0]; hold(w ? w.gx : 90, 250); });
-  out.wins.crossy = play(Crossy, 3, (gm) => { const L = gm.row; const ok = L >= gm.lanes || gm.cars.filter(c => c.lane === L).every(c => Math.abs(c.x - gm.px) > 46 || (gm.px - c.x) * Math.sign(c.sp) < 0); if (ok && gm.hopping <= 0) tapAt(90, 150); });
+  // CROSS: hop when the next lane stays clear for a moment, or when a car is about to reach you where you stand
+  out.wins.crossy = play(Crossy, 3, (gm) => {
+    if (gm.hopping > 0) return;
+    const clear = (L, t0, t1) => L < 0 || L >= gm.lanes || gm.cars.filter(c => c.lane === L).every(c => {
+      for (let t = t0; t <= t1; t += 0.02) { let x = c.x + c.sp * t; if (x < -16) x += W + 32; if (x > W + 16) x -= W + 32; if (Math.abs(x - gm.px) < c.w / 2 + 4) return false; }
+      return true; });
+    const next = clear(gm.row, 0.1, 0.55), here = clear(gm.row - 1, 0, 0.3);
+    if (next || (!here && clear(gm.row, 0.1, 0.3))) tapAt(90, 150);
+  });
   out.wins.sled = play(SteerRun, 3, (gm) => { const g0 = gm.gates.filter(g => !g.done).sort((a, b) => b.y - a.y)[0]; const tx = g0 ? g0.x : gm.px; if (Math.abs(tx - gm.px) > 3) hold(tx > gm.px ? 180 : 0, 150); else release(); });
   out.wins.fetch = play(FlickShot, 3, (gm, i) => { if (i === 8) { const t = (gm.oy - gm.dy) / 280; const lead = gm.dx + gm.dvx * t; swipe(gm.ox, gm.oy, gm.ox + (lead - gm.ox) * 0.25, gm.oy - (gm.oy - gm.dy) * 0.25); } });
   out.wins.dry = play(DryShiba, 3, (gm, i) => { if (i % 14 === 0) tapAt(90, 150); });
@@ -114,6 +125,85 @@ export default async function ({ url, launch }) {
   out.fakeIdleWins = gm.won;
   gm = forceFake(TapBug); Engine.state = 'PLAYING'; Engine.timer = Engine.duration; tapAt(gm.bug.x, gm.bug.y); Input.beginStep(); Engine.update(STEP);
   out.fakeTouchLoses = gm.finished && !gm.won;
+  // TAP: follow the laughing face; tapping a calm or sleepy one loses, and doing nothing loses
+  Engine.seen.delete('tap');   // no fake-outs here
+  out.wins.tap = play(TapBug, 3, (gm, i) => { if (i % 12 === 6) tapAt(gm.bug.x, gm.bug.y); });
+  { let wrong = 0, idle = 0;
+    for (let k = 0; k < 10; k++) {
+      Engine.startRound(TapBug, 3); Engine.state = 'PLAYING'; Engine.timer = Engine.duration; let t = Engine.game;
+      const o = t.faces.find(f => f !== t.bug); tapAt(o.x, o.y); Input.beginStep(); Engine.update(STEP);
+      if (t.finished && !t.won) wrong++;   // (a fake-out loses on any face too)
+      Engine.startRound(TapBug, 1); Engine.state = 'PLAYING'; Engine.timer = Engine.duration; t = Engine.game;
+      for (let i = 0; i < 900 && !t.finished && Engine.state === 'PLAYING'; i++) { Input.beginStep(); Engine.update(STEP); }
+      if (t.won && !t.fake) idle++;   // a DON'T TAP! fake-out is won by waiting
+    }
+    out.tapWrong = wrong; out.tapIdle = idle; }
+  Engine.seen.add('tap');
+  // HOP: steer under the next step (the lowest one not yet landed on); doing nothing loses as the start crumbles
+  out.wins.hop = play(Doodle, 3, (gm) => { const p = gm.plats.find((p, k) => k && !p.used); if (p) hold(p.x, 150); });
+  out.wins.hop1 = play(Doodle, 1, (gm) => { const p = gm.plats.find((p, k) => k && !p.used); if (p) hold(p.x, 150); });
+  { let idle = 0; for (let k = 0; k < 6; k++) { Engine.startRound(Doodle, 1); Engine.state = 'PLAYING'; Engine.timer = Engine.duration; const d = Engine.game; release();
+      for (let i = 0; i < 900 && !d.finished && Engine.state === 'PLAYING'; i++) { Input.beginStep(); Engine.update(STEP); } if (d.won) idle++; }
+    out.hopIdle = idle; }
+  // BALANCE: lean against the crates and the roll (a steady hand); doing nothing lets it roll off
+  const steady = (gm) => { const want = Math.max(-1, Math.min(1, -gm.load() - gm.pos * 1.6 - gm.vel * 1.4)); hold(90 + want * 90, 150); };
+  out.wins.balance = play(BalanceBall, 3, steady);
+  { let idle = 0; for (let k = 0; k < 6; k++) { Engine.startRound(BalanceBall, 1); Engine.state = 'PLAYING'; Engine.timer = Engine.duration; const d = Engine.game; release();
+      for (let i = 0; i < 900 && !d.finished && Engine.state === 'PLAYING'; i++) { Input.beginStep(); Engine.update(STEP); } if (d.won) idle++; }
+    out.balanceIdle = idle; }
+  // PULL DOWN: swipe down from the sheet as the box slides, never on a red one
+  const pull = (gm) => { const S = gm.sheet(); swipe(S.x + S.w / 2, S.y + S.h / 2, S.x + S.w / 2, S.y + S.h / 2 + 60); };
+  out.wins.pull = play(PullTissue, 3, (gm, i) => { if (i % 10 === 5 && !gm.red) pull(gm); });
+  out.pullIdle = play(PullTissue, 1, () => {});
+  out.pullRed = play(PullTissue, 3, (gm, i) => { if (i % 10 === 5) { if (gm.pulled && !gm.red) { gm.red = 1; gm.redT = 1; } pull(gm); } });
+  // FEED: bring the bone up under the dog, then in while its mouth is open; shoving it in regardless bonks a shut mouth
+  out.wins.feed = play(FeedDog, 3, (gm, i) => {
+    if (i < 2) { tapAt(gm.tx, gm.ty); hold(gm.tx, gm.ty); return; }
+    const under = Math.abs(gm.ty - (gm.dy + 40)) < 4, go = gm.isOpen() && ((gm.t + gm.ph) % (gm.open + gm.shut)) < gm.open - 0.25;
+    hold(gm.dx, under && go ? gm.dy + 6 : gm.ty + Math.max(-5, Math.min(5, gm.dy + 40 - gm.ty)));
+  });
+  out.feedShoved = 0;
+  for (let k = 0; k < 20; k++) { Engine.startRound(FeedDog, 2); Engine.state = 'PLAYING'; Engine.timer = Engine.duration; const f = Engine.game;
+    f.ph = f.open + 0.1 - f.t;   // its mouth is shut now
+    f.tx = f.dx; f.ty = f.dy + 6; Input.beginStep(); Engine.update(STEP); if (f.finished && !f.won) out.feedShoved++; }
+  // DIG: swipe on the X, then on the next X; swipes elsewhere are misses, and three lose
+  out.wins.dig = play(BeachDig, 3, (gm, i) => { if (i % 8 === 0 && Math.abs(gm.dogX - gm.hx) < 4) swipe(gm.hx, gm.hy - 10, gm.hx, gm.hy + 40); });
+  out.digMiss = play(BeachDig, 1, (gm, i) => { if (i % 8 === 0) swipe(gm.hx < 90 ? 160 : 20, 120, gm.hx < 90 ? 160 : 20, 200); });
+  out.digIdle = play(BeachDig, 1, () => {});
+  // DRY OFF with no sensors: rubbing fast dries the shiba; leaving it wet loses
+  out.wins.dry = play(DryShiba, 3, (gm, i) => hold(90 + Math.cos(i * 0.7) * 45, 180));
+  { let idleWins = 0; for (let k = 0; k < 5; k++) { Engine.startRound(DryShiba, 1); Engine.state = 'PLAYING'; Engine.timer = Engine.duration; const d = Engine.game;
+      for (let i = 0; i < 900 && !d.finished && Engine.state === 'PLAYING'; i++) { Input.beginStep(); Engine.update(STEP); } if (d.won) idleWins++; }
+    out.dryIdle = idleWins; }
+  // CANDLES with no mic: a tap is a puff, so tapping fast blows them all out
+  out.wins.candles = play(BlowCandles, 3, (gm, i) => { if (i % 6 === 0) tapAt(90, 150); });
+  // at top speed, the bosses and DIG can still be won, and a win isn't lost on the clock while it plays out
+  Engine.speed = 2.6;
+  out.wins.wakeFast = play(WakeUp, 3, (gm, i) => { if (i % 5 === 0) tapAt(90, 150); });
+  // BATH TIME, all four goes on touch: fill the bath to the line, rub each splat, rub fast to dry, tap the hearts
+  const bath = (gm, i) => {
+    if (gm.intro > 0 || gm.banner > 0) { release(); return; }   // reading the cards
+    if (gm.step === 0) { if (gm.fill < (BathTime.LO + BathTime.HI) / 2) hold(90, 150); else release(); }
+    else if (gm.step === 1) { const m = gm.mud.find(m => m.dirt > 0); if (m) hold(m.x + Math.sin(i) * 6, m.y + Math.cos(i * 1.3) * 6); }
+    else if (gm.step === 2) hold(90 + Math.cos(i * 0.7) * 45, 180);
+    else { release(); if (i % 4 === 0) { const h = gm.hearts.find(h => !h.sent); if (h) tapAt(h.x, h.y); } }
+  };
+  out.wins.bath = play(BathTime, 3, bath);
+  out.bathOverflow = play(BathTime, 3, (gm) => { if (gm.intro > 0 || gm.banner > 0) release(); else hold(90, 150); });   // pours and never stops
+  out.wins.bathFast = play(BathTime, 3, bath);
+  out.wins.digFast = play(BeachDig, 3, (gm, i) => { if (i % 6 === 0) swipe(gm.hx, gm.hy - 10, gm.hx, gm.hy + 40); });
+  Engine.speed = 1;
+  // HIGH FIVE on touch: tapping the paw that isn't up loses (it used to jam the round)
+  let wrong = 0;
+  for (let k = 0; k < 10; k++) {
+    Engine.startRound(HighFive, 1); Engine.state = 'PLAYING'; Engine.timer = Engine.duration; const h = Engine.game;
+    for (let i = 0; i < 400 && !h.finished && Engine.state === 'PLAYING'; i++) {
+      if (h.raiseT >= 0.3 && h.side !== 'B' && !h._tried) { h._tried = true; const P = HighFive.PAW[h.side === 'L' ? 'R' : 'L']; tapAt(P.x, P.y); }
+      Input.beginStep(); Engine.update(STEP);
+    }
+    if (h._tried && h.finished && !h.won) wrong++;
+  }
+  out.highfiveWrong = wrong;
   return out;
   });
   assert(!out.crash.length, 'games crashed or never ended: ' + out.crash.join(', '));
@@ -122,5 +212,18 @@ export default async function ({ url, launch }) {
   { const [w, n] = out.losses.cook.split('/').map(Number); assert(w === 0, 'COOK: tapping the wrong food should never win, won ' + out.losses.cook); }
   assert(out.fakeIdleWins, 'fake-out: leaving it alone should win');
   assert(out.fakeTouchLoses, 'fake-out: touching it should lose');
+  assert(out.tapWrong === 10, 'TAP: tapping a face that is not laughing should lose, lost ' + out.tapWrong + '/10');
+  assert(out.tapIdle === 0, 'TAP: doing nothing should lose, won ' + out.tapIdle + '/10');
+  assert(out.hopIdle === 0, 'HOP: doing nothing should lose, won ' + out.hopIdle + '/6');
+  assert(out.balanceIdle === 0, 'BALANCE: doing nothing should lose, won ' + out.balanceIdle + '/6');
+  assert(out.shhIdle === '0/20', 'SHH: doing nothing should let a fly wake it: ' + out.shhIdle);
+  assert(out.shhPoke === '0/20', 'SHH: poking the dog should wake it: ' + out.shhPoke);
+  assert(out.pullIdle === '0/20', 'PULL DOWN: doing nothing should lose: ' + out.pullIdle);
+  assert(out.pullRed === '0/20', 'PULL DOWN: pulling the red one should lose: ' + out.pullRed);
+  assert(out.feedShoved === 20, 'FEED: a bone into a shut mouth should lose, lost ' + out.feedShoved + '/20');
+  assert(out.digMiss === '0/20' && out.digIdle === '0/20', 'DIG: digging off the X, or not at all, should lose: ' + out.digMiss + ', ' + out.digIdle);
+  assert(out.bathOverflow === '0/20', 'BATH TIME: overfilling the bath should lose: ' + out.bathOverflow);
+  assert(out.dryIdle === 0, 'DRY OFF: leaving the shiba wet should lose, won ' + out.dryIdle + '/5');
+  assert(out.highfiveWrong >= 5, 'HIGH FIVE: tapping the wrong paw should lose, lost ' + out.highfiveWrong + '/10');
   await done();
 }

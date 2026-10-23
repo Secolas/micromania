@@ -234,7 +234,7 @@ const Coat = {
   ],
   SHEETS: ['shiba', 'fullshiba', 'fullidle', 'breakjump', 'catcher', 'hero', 'face', 'pump', 'dryshake', 'hopdog', 'ordersign',
     'flydog', 'swipeup', 'swipedown', 'runjump', 'swiperight', 'swipeleft', 'hidedog', 'facedir', 'rubdog', 'sleepdog', 'rocker',
-    'yesno', 'wag', 'feed', 'lean', 'leanmove', 'sledmove', 'sledder', 'digmove', 'highfive', 'demo', 'runcowboy', 'jumpcowboy', 'chefmove', 'worn', 'neckwear'],
+    'yesno', 'wag', 'feed', 'lean', 'leanmove', 'sledmove', 'sledder', 'digmove', 'highfive', 'demo', 'runcowboy', 'jumpcowboy', 'chefmove', 'worn', 'neckwear', 'wetidle'],
   // art/worn.png: the hats PixelLab drew on the shiba have its ears in them. Only
   // what's near a colour of the shiba's own fur (art/fullshiba.png) is fur; the
   // cowboy hat's browns, the crown's and halo's golds are further off.
@@ -361,6 +361,7 @@ const Assets = {
     runcowboy:{ src: 'art/runcowboy.png', fw: 120, fh: 120, frames: 9, fps: 1  },
     jumpcowboy:{ src: 'art/jumpcowboy.png', fw: 120, fh: 120, frames: 5, fps: 1 },
     bush:     { src: 'art/bush.png',     fw: 26,  fh: 16,  frames: 1,  fps: 1  },
+    wetidle:  { src: 'art/wetidle.png',  fw: 64,  fh: 64,  frames: 8,  fps: 1  },
     walkstone:{ src: 'art/walkstone.png', fw: 36, fh: 36,  frames: 1,  fps: 1  },
     fullidle: { src: 'art/fullidle.png', fw: 64,  fh: 64,  frames: 22, fps: 1  },
     leanmove: { src: 'art/leanmove.png', fw: 64,  fh: 64,  frames: 7,  fps: 1  },
@@ -2490,35 +2491,60 @@ class Microgame {
    MICROGAMES — add new ones here, then register in POOL / BOSSES at the bottom
 ============================================================================= */
 
-// 1. TAP — tap the bouncing shiba (sometimes a DON'T TAP! fake-out)
+// 1. TAP — shiba faces bounce about: tap the laughing one, never one of the
+// sleepy ones. Each good tap passes the laugh to another face, so on 2 and 3
+// you have to follow it. (Sometimes a DON'T TAP! fake-out.)
 class TapBug extends Microgame {
-  static meta = { id: 'tap', env: 'lawn', prompt: 'TAP!', hint: 'tap', duration: 3.2,
-    how: 'TAP THE DOG' };
+  static meta = { id: 'tap', env: 'lawn', prompt: 'TAP!', hint: 'tap', duration: 3.6,
+    how: "TAP THE LAUGHING DOG\nDON'T WAKE THE SLEEPY ONES" };
+  static R = 14;   // a face's hit radius (drawn 28 across)
   init() {
-    this.miss = 0;
-    this.bug = { x: 24 + Math.random() * (W - 48), y: TOP + 26 + Math.random() * (BOT - TOP - 52), r: 9 };
-    const sp = this.byD(18, 34, 52);
-    const a = Math.random() * 6.28;
-    this.vx = Math.cos(a) * sp; this.vy = Math.sin(a) * sp;
+    this.miss = 0; this.got = 0;
+    this.need = this.byD(1, 2, 3);
+    const n = this.byD(2, 3, 4), sp = this.byD(26, 40, 56);
+    // the faces start spread out, never on top of one another
+    this.faces = [];
+    for (let i = 0; i < n; i++) {
+      let x, y, k = 0;
+      do { x = 24 + Math.random() * (W - 48); y = TOP + 30 + Math.random() * (BOT - TOP - 60); }
+      while (k++ < 40 && this.faces.some(f => Math.hypot(f.x - x, f.y - y) < 44));
+      const a = Math.random() * 6.28;
+      this.faces.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, look: i ? 5 : 0, pop: 0 });   // face frames: 0 laugh, 5 eyes shut (asleep)
+    }
+    this.bug = this.faces[0];   // the laughing one
     this.fake = this.fakeOut(0.15, "DON'T TAP!", "IT'S A TRAP!\nDON'T TOUCH IT");
   }
   update(dt, input) {
-    this.bug.x += this.vx * dt; this.bug.y += this.vy * dt;
-    if (this.bug.x < 12 || this.bug.x > W - 12) this.vx *= -1;
-    if (this.bug.y < TOP + 12 || this.bug.y > BOT - 12) this.vy *= -1;
-    if (input.justDown) {
-      const hit = Math.hypot(input.x - this.bug.x, input.y - this.bug.y) < this.bug.r + 9;
-      if (this.fake) { if (hit) { Sfx.growl(); this.lose(); } return; }
-      if (hit) { FX.hit(this.bug.x, this.bug.y, PAL.accent); Sfx.bark(); this.succeed(); }
-      else this.miss = 0.15;
+    for (const f of this.faces) {
+      f.x += f.vx * dt; f.y += f.vy * dt;
+      if (f.x < 14 || f.x > W - 14) f.vx *= -1;
+      if (f.y < TOP + 14 || f.y > BOT - 14) f.vy *= -1;
+      if (f.pop > 0) f.pop -= dt;
     }
+    if (!input.justDown) return;
+    // the face under the finger, the nearest if two overlap
+    const R = TapBug.R + 4, hit = this.faces.filter(f => Math.hypot(input.x - f.x, input.y - f.y) < R)
+      .sort((a, b) => Math.hypot(input.x - a.x, input.y - a.y) - Math.hypot(input.x - b.x, input.y - b.y))[0];
+    if (this.fake) { if (hit) { Sfx.growl(); this.lose(); } return; }
+    if (!hit) { this.miss = 0.15; return; }
+    if (hit !== this.bug) { FX.hit(hit.x, hit.y, PAL.bad); Sfx.growl(); this.lose(); return; }   // the wrong face
+    FX.hit(hit.x, hit.y, PAL.accent); Sfx.bark(); hit.pop = 0.2;
+    if (++this.got >= this.need) { this.succeed(); return; }
+    // the laugh jumps to another face, and they all speed up a little
+    const next = this.faces.filter(f => f !== hit)[Math.floor(Math.random() * (this.faces.length - 1))];
+    next.look = 0; hit.look = 5; this.bug = next;   // the one you tapped nods off
+    for (const f of this.faces) { f.vx *= 1.15; f.vy *= 1.15; }
   }
   draw(g) {
     g.clear();
     if (this.miss > 0) { this.miss -= STEP; g.circle(Input.x, Input.y, 6, PAL.bad); }
-    // laughing shiba face as the tap target (cycles frames 0-2, the open-mouth laughs)
-    const fr = Math.floor(this.t * 6) % 3;
-    g.sprite('face', this.bug.x, this.bug.y, { w: 22, h: 22, frame: fr });
+    for (const f of this.faces) {
+      // the laughing one cycles frames 0-2, the open-mouth laughs
+      const fr = f.look === 0 ? Math.floor(this.t * 6) % 3 : f.look, s = f.pop > 0 ? 32 : 28;
+      g.sprite('face', f.x, f.y, { w: s, h: s, frame: fr });
+      if (f.look === 5) g.sprite('zletter', f.x + 14, f.y - 16 - Math.sin(this.t * 3 + f.x) * 2, { frame: 0 });   // asleep: a z drifting up
+    }
+    if (this.need > 1) for (let i = 0; i < this.need; i++) g.rect(CX - this.need * 5 + i * 10, BOT - 12, 7, 7, i < this.got ? PAL.accent : PAL.mid);
   }
 }
 
@@ -2596,23 +2622,30 @@ class CatchCoin extends Microgame {
   }
 }
 
-// 3. RUB — scrub the mud off a muddy shiba
+// 3. RUB — scrub the mud off a muddy shiba: it's all over it, ears to sides,
+// and on 2 and 3 it shakes now and then and splatters mud back on
 class RubClean extends Microgame {
   static SY = 151;   // the shiba's centre: drawn 2x, sat down in the tub like BATH TIME's (its front hides the cut)
   // art/rubdog.png, the same shiba in 48x44 frames (drawn 2x): 0-4 squirming
   // with its eyes shut while you scrub, then its wet-dog shake once it's clean
   static WIGGLE = 5; static SHAKE = 8; static SHAKE_FPS = 14;
-  static meta = { id: 'rub', env: 'bath', prompt: 'RUB!', hint: 'rub', duration: 3.6,
+  static meta = { id: 'rub', env: 'bath', prompt: 'RUB!', hint: 'rub', duration: 4.6, minDuration: 4.0,
     how: 'RUB OFF\nALL THE MUD' };
   init() {
     // mud splats over the shiba; each one fades as you scrub over it
     this.mud = [];
-    const n = this.byD(6, 8, 10);
+    // spread over the whole shiba, ears to sides, never on top of one another,
+    // so the scrubbing has to go all over it (all above the tub's rim)
+    const n = this.byD(5, 7, 9);
     for (let i = 0; i < n; i++) {
-      const a = Math.random() * 6.2832, d = Math.sqrt(Math.random()) * 24;
-      this.mud.push({ x: CX + Math.cos(a) * d, y: RubClean.SY - 3 + Math.sin(a) * d * 0.8, r: 8 + Math.random() * 5, dirt: 1 });   // all above the tub's rim
+      let x, y, k = 0;
+      do { x = CX - 30 + Math.random() * 60; y = RubClean.SY - 34 + Math.random() * 42; }
+      while (k++ < 60 && this.mud.some(m => Math.hypot(m.x - x, m.y - y) < 17));
+      this.mud.push({ x, y, r: 7 + Math.random() * 3, dirt: 1 });
     }
-    this.rate = this.byD(0.05, 0.04, 0.034);
+    this.rate = this.byD(0.034, 0.03, 0.027);
+    // on 2 and 3 it shakes every so often, splattering mud back onto clean spots
+    this.shakeEvery = this.byD(0, 1.3, 1.05); this.nextShake = this.shakeEvery; this.splat = [];
     this.bubbles = []; this.squeak = 0;
     this.scrubT = -1;      // when you last scrubbed mud
     this.cleanT = -1;      // when the last of it came off: the shake plays, then the win
@@ -2624,11 +2657,20 @@ class RubClean extends Microgame {
     if (input.down && input.moveDist > 0) {
       let scrubbed = false;
       for (const m of this.mud) {
-        if (m.dirt > 0 && Math.hypot(input.x - m.x, input.y - m.y) < m.r + 10) { m.dirt -= input.moveDist * this.rate; scrubbed = true; }
+        if (m.dirt > 0 && Math.hypot(input.x - m.x, input.y - m.y) < m.r + 3) { m.dirt -= input.moveDist * this.rate; scrubbed = true; }
       }
       if (scrubbed && Math.random() < 0.5) this.bubbles.push({ x: input.x + (Math.random() - 0.5) * 14, y: input.y, r: 2 + Math.random() * 3, t: 0 });
       if (scrubbed && this.squeak <= 0) { Sfx.squeak(); this.squeak = 0.12; }
       if (scrubbed) this.scrubT = this.t;
+    }
+    // a muddy shake: some clean spots get dirty again (only while any mud is left)
+    for (const p of this.splat) { p.t += dt; p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 300 * dt; }
+    this.splat = this.splat.filter(p => p.t < 0.5);
+    if (this.shakeEvery && this.cleanT < 0 && this.mud.some(m => m.dirt > 0) && (this.nextShake -= dt) <= 0) {
+      this.nextShake = this.shakeEvery; this.shookT = this.t; Sfx.splash(); FX.shake(2);
+      const clean = this.mud.filter(m => m.dirt <= 0);
+      for (let k = 0; k < this.byD(0, 1, 2) && clean.length; k++) clean.splice(Math.floor(Math.random() * clean.length), 1)[0].dirt = 0.7;
+      for (let k = 0; k < 8; k++) this.splat.push({ x: CX + (Math.random() - 0.5) * 50, y: RubClean.SY - 10, vx: (Math.random() - 0.5) * 200, vy: -80 - Math.random() * 80, t: 0 });
     }
     // all clean: it shakes itself dry, and the round is won when the shake ends
     // (the clock running out mid-shake doesn't count against you)
@@ -2643,10 +2685,11 @@ class RubClean extends Microgame {
     BathTime.tubBack(178);   // the tub's back rim and water, behind the shiba
     // the shiba: shaking itself dry, squirming while you scrub, else sat waiting
     // (rubdog frames hold the 35x37 shiba at 6, 7: drawn 2x, centred 1 right, 7 up)
-    const scrubbing = this.t - this.scrubT < 0.2;
-    if (Assets.get('rubdog') && (this.cleanT >= 0 || scrubbing)) {
+    const scrubbing = this.t - this.scrubT < 0.2, muddyShake = this.shookT != null && this.t - this.shookT < RubClean.SHAKE / RubClean.SHAKE_FPS;
+    if (Assets.get('rubdog') && (this.cleanT >= 0 || scrubbing || muddyShake)) {
       const f = this.cleanT >= 0 ? RubClean.WIGGLE + Math.min(RubClean.SHAKE - 1, Math.floor((this.t - this.cleanT) * RubClean.SHAKE_FPS))
-                                 : Math.floor(this.t * 10) % RubClean.WIGGLE;
+              : muddyShake ? RubClean.WIGGLE + Math.min(RubClean.SHAKE - 1, Math.floor((this.t - this.shookT) * RubClean.SHAKE_FPS))
+              : Math.floor(this.t * 10) % RubClean.WIGGLE;
       g.sprite('rubdog', CX + 1, RubClean.SY - 7, { w: 96, h: 88, frame: f });
     } else g.sprite('shiba', CX, RubClean.SY, { w: 70, h: 74, frame: left === 0 ? 1 : 0 });
     for (const m of this.mud) {
@@ -2657,6 +2700,7 @@ class RubClean extends Microgame {
     }
     // it sits IN the tub, as in BATH TIME: the front rim and wall hide where the sprite is cut
     BathTime.tubFront(178);
+    for (const p of this.splat) { ctx.globalAlpha = 1 - p.t / 0.5; g.rect(p.x - 1, p.y - 1, 3, 3, SCENE.dirt); ctx.globalAlpha = 1; }   // mud flying off a shake
     for (const b of this.bubbles) {
       ctx.globalAlpha = 1 - b.t / 0.6; ctx.strokeStyle = PAL.ink; ctx.lineWidth = 1;
       ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, 6.2832); ctx.stroke(); ctx.globalAlpha = 1;
@@ -2665,43 +2709,63 @@ class RubClean extends Microgame {
   }
 }
 
-// 4. SWIPE UP — pull the tissues out
+// 4. PULL DOWN — pull the tissues out of a box that slides about: the swipe
+// has to start on the sheet. On 2 and 3 a red LAST ONE hangs out now and then:
+// pull that and the box is empty (it goes back in by itself; wait for a white one).
 class PullTissue extends Microgame {
-  static meta = { id: 'pull', env: 'room@250', prompt: 'PULL DOWN!', hint: 'swipe', duration: 4.0,
-    how: 'SWIPE DOWN TO\nPULL A TISSUE' };
+  static meta = { id: 'pull', env: 'room@250', prompt: 'PULL DOWN!', hint: 'swipe', duration: 4.6, minDuration: 4.0,
+    how: 'SWIPE DOWN ON THE TISSUE\nNEVER THE RED ONE' };
   init() {
     this.pulled = 0; this.need = this.byD(2, 3, 4);
     this.sheetY = 0;        // animates the sheet sliding out on each pull
     this.cue = 0;           // pulsing arrow
+    this.x = CX; this.vx = (Math.random() < 0.5 ? -1 : 1) * this.byD(22, 40, 56);
+    this.red = 0; this.redT = 0; this.missT = 0;
   }
+  // the hanging sheet's box, for where a pull has to start
+  sheet() { const top = TOP + 14 + 34 - 2, hang = 26 + this.sheetY * 34; return { x: this.x - 16, y: top - 6, w: 32, h: hang + 16 }; }
   update(dt, input) {
     this.cue += dt * 4;
+    this.x += this.vx * dt;
+    if (this.x < 40 || this.x > W - 40) { this.vx *= -1; this.x = Math.max(40, Math.min(W - 40, this.x)); }
     if (this.sheetY > 0) this.sheetY = Math.max(0, this.sheetY - dt * 4);   // retract between pulls
-    // a downward swipe yanks one sheet out
+    if (this.missT > 0) this.missT -= dt;
+    // the red one hangs out a moment, then goes back in
+    if (this.red) { if ((this.redT -= dt) <= 0) this.red = 0; }
     if (input.swipe && input.swipe.dir === 'down') {
+      const sw = input.swipe, S = this.sheet();
+      const on = sw.x0 == null || (sw.x0 >= S.x - 6 && sw.x0 <= S.x + S.w + 6 && sw.y0 >= S.y - 10 && sw.y0 <= S.y + S.h + 14);
+      if (!on) { this.missT = 0.25; Sfx.fail(); return; }   // grabbed at thin air
+      if (this.red) { Sfx.thud(); buzz(70); FX.shake(3); this.lose(); return; }   // the last one: the box is empty
       this.pulled++; Sfx.tissue(); buzz(10);
       this.sheetY = 1;
-      FX.hit(CX, CY + 20, PAL.ink);
-      if (this.pulled >= this.need) this.succeed();
+      FX.hit(this.x, CY + 20, PAL.ink);
+      if (this.pulled >= this.need) { this.succeed(); return; }
+      // on 2 and 3, the next one out is sometimes the red last one
+      if (this.d >= 2 && Math.random() < 0.35) { this.red = 1; this.redT = 0.8; }
     }
   }
   draw(g) {
     g.clear();
-    // dispenser box mounted at the top
-    const boxY = TOP + 14, boxH = 34;
-    // the sheet hanging out of the slot — visibly slides down when pulled
-    // (art/tissue.png, its plain middle stretched to the length)
-    const hang = 26 + this.sheetY * 34;
-    const sheetTop = boxY + boxH - 2;
-    if (!g.stretchV('tissue', CX - 12, sheetTop, hang, 6, 20, 40)) {
-      g.rect(CX - 16, sheetTop, 32, hang, PAL.ink); g.box(CX - 16, sheetTop, 32, hang, PAL.mid);
+    // dispenser box sliding along the wall
+    const boxY = TOP + 14, boxH = 34, X = Math.round(this.x);
+    const hang = 26 + this.sheetY * 34, sheetTop = boxY + boxH - 2;
+    if (!g.stretchV('tissue', X - 12, sheetTop, hang, 6, 20, 40)) {
+      g.rect(X - 16, sheetTop, 32, hang, PAL.ink); g.box(X - 16, sheetTop, 32, hang, PAL.mid);
     }
-    g.sprite('tissuebox', CX, boxY + boxH / 2);   // art/tissuebox.png, over the sheet's top
-    // your grab point + a pulsing DOWN arrow so the gesture is obvious
-    const ay = sheetTop + hang + 8 + Math.sin(this.cue) * 3;
-    g.line(CX, sheetTop + hang, CX, ay, PAL.accent, 2);
-    g.line(CX, ay, CX - 5, ay - 5, PAL.accent, 2);
-    g.line(CX, ay, CX + 5, ay - 5, PAL.accent, 2);
+    if (this.red) {   // the red last one: the same sheet, dyed, with a stripe
+      ctx.globalAlpha = 0.6; g.rect(X - 11, sheetTop, 22, hang, PAL.bad); ctx.globalAlpha = 1;
+      g.text('LAST', X, sheetTop + hang - 6, 8, PAL.ink);
+    }
+    g.sprite('tissuebox', X, boxY + boxH / 2);   // art/tissuebox.png, over the sheet's top
+    // a pulsing DOWN arrow so the gesture is obvious (none on the red one)
+    if (!this.red) {
+      const ay = sheetTop + hang + 8 + Math.sin(this.cue) * 3;
+      g.line(X, sheetTop + hang, X, ay, PAL.accent, 2);
+      g.line(X, ay, X - 5, ay - 5, PAL.accent, 2);
+      g.line(X, ay, X + 5, ay - 5, PAL.accent, 2);
+    }
+    if (this.missT > 0) g.text('MISSED IT', CX, CY + 40, 8, PAL.bad);
     // progress pips
     for (let i = 0; i < this.need; i++) g.rect(CX - this.need * 5 + i * 10, BOT - 10, 7, 7, i < this.pulled ? PAL.accent : PAL.mid);
   }
@@ -3068,13 +3132,39 @@ class Dodge extends Microgame {
   }
 }
 
-// 10. SHH — don't wake the sleeping shiba. The classic do-nothing trap.
+// 10. SHH — flies buzz in at the sleeping shiba's nose: shoo each one with a
+// tap before it lands, but a tap on the dog itself wakes it. 1 / 2 / 3 flies.
 class DontTap extends Microgame {
-  static meta = { id: 'dont', env: 'room@205', prompt: 'SHH!', hint: 'wait', duration: 3.0, winOnTimeout: true,
-    how: "IT'S ASLEEP.\nDON'T TOUCH ANYTHING!" };
-  init() { this.woke = 0; sleepFace(); }
+  static meta = { id: 'dont', env: 'room@205', prompt: 'SHH!', hint: 'tap', duration: 4.4, minDuration: 3.8,
+    how: "SHOO THE FLIES\nDON'T TOUCH THE DOG" };
+  static NOSE = { x: CX - 34, y: CY + 14 };   // where a fly lands to wake it
+  init() {
+    this.woke = 0; sleepFace();
+    const n = this.byD(1, 2, 3), sp = this.byD(30, 38, 48), span = Math.max(0.6, (this.timeLimit || 4.4) - 2.6);
+    // each fly comes in from an edge, a little after the last, wobbling as it buzzes
+    this.flies = [];
+    for (let i = 0; i < n; i++) {
+      const side = Math.random() < 0.5 ? -1 : 1, y = TOP + 20 + Math.random() * 90;
+      this.flies.push({ x: side < 0 ? -16 : W + 16, y, sp, at: 0.25 + span * i / Math.max(1, n - 1) * (n > 1 ? 1 : 0), shoo: 0, ph: Math.random() * 6 });
+    }
+  }
+  wake(x, y) { this.woke = 1; Sfx.bark(); buzz(60); FX.shake(3); this.lose(); }
   update(dt, input) {
-    if (input.justDown) { this.woke = 1; Sfx.bark(); buzz(60); FX.shake(3); this.lose(); }
+    const N = DontTap.NOSE;
+    for (const f of this.flies) {
+      if (this.t < f.at) continue;
+      if (f.shoo) { f.shoo += dt; f.x += f.vx * dt; f.y += f.vy * dt; continue; }   // shooed: off it zooms
+      const dx = N.x - f.x, dy = N.y - f.y, d = Math.hypot(dx, dy) || 1;
+      f.x += dx / d * f.sp * dt + Math.cos(this.t * 9 + f.ph) * 22 * dt;
+      f.y += dy / d * f.sp * dt + Math.sin(this.t * 13 + f.ph) * 30 * dt;
+      if (d < 8) { this.wake(); return; }   // it landed on the nose
+    }
+    if (input.justDown) {
+      const f = this.flies.find(f => this.t >= f.at && !f.shoo && Math.hypot(input.x - f.x, input.y - f.y) < 18);
+      if (f) { f.shoo = 0.001; f.vx = (f.x < CX ? -1 : 1) * 260; f.vy = -160; Sfx.whoosh(); FX.hit(f.x, f.y, PAL.accent); buzz(15); }
+      else if (Math.abs(input.x - CX) < 62 && input.y > CY - 6 && input.y < CY + 50) { this.wake(); return; }   // poked the dog
+    }
+    if (this.flies.every(f => f.shoo)) this.succeed();
   }
   draw(g) {
     g.clear();
@@ -3096,7 +3186,10 @@ class DontTap extends Microgame {
       g.zed(CX + 30 + k * 26 + i * 4, CY - 30 - k * 46, i, 9 + i * 3);
       ctx.globalAlpha = 1;
     }
-    g.text('shhh…', CX, BOT - 8, 8, PAL.mid);
+    // the flies: SWAT's little winged shibas, flapping
+    for (const f of this.flies) if (this.t >= f.at && f.y > TOP - 30 && f.x > -30 && f.x < W + 30)
+      g.sprite('flydog', Math.round(f.x), Math.round(f.y), { w: 30, h: 24, flip: (f.shoo ? f.vx : DontTap.NOSE.x - f.x) < 0 });
+    g.text('shoo the flies… shhh', CX, BOT - 8, 8, PAL.mid);
   }
 }
 
@@ -3311,23 +3404,30 @@ class OddOneOut extends Microgame {
   }
 }
 
-// 15. DRAG TO TARGET — get the treat to the dog
+// 15. DRAG TO TARGET — get the treat to the dog while its mouth is open: it
+// opens and shuts, and bumping the treat into a shut mouth loses
 class FeedDog extends Microgame {
-  static meta = { id: 'feed', env: 'lawn', prompt: 'FEED!', hint: 'drag', duration: 4.4,
+  static meta = { id: 'feed', env: 'lawn', prompt: 'FEED!', hint: 'drag', duration: 4.6, minDuration: 4.0,
     how: 'DRAG THE TREAT\nTO THE DOG' };
   init() {
     this.dx = CX; this.dy = TOP + 42;
     this.sway = this.byD(0, 26, 42);
     this.tx = 26 + Math.random() * (W - 52); this.ty = BOT - 30;
     this.held = false;
+    // the mouth: open so long, shut so long, starting at a random point of it
+    this.open = this.byD(1.1, 0.75, 0.55); this.shut = this.byD(0.5, 0.65, 0.75); this.ph = Math.random() * (this.open + this.shut);
   }
+  isOpen() { return (this.t + this.ph) % (this.open + this.shut) < this.open; }
   update(dt, input) {
     this.dx = CX + Math.sin(this.t * 1.9) * this.sway;
     if (input.down) {
       if (!this.held && Math.hypot(input.x - this.tx, input.y - this.ty) < 22) this.held = true;
       if (this.held) { this.tx = input.x; this.ty = input.y; }
     } else { this.held = false; }
-    if (this.ateAt == null && Math.hypot(this.tx - this.dx, this.ty - (this.dy + 6)) < 16) { this.ateAt = this.t; Sfx.chomp(); }
+    if (this.ateAt == null && Math.hypot(this.tx - this.dx, this.ty - (this.dy + 6)) < 16) {
+      if (!this.isOpen()) { Sfx.thud(); buzz(60); FX.hit(this.tx, this.ty, PAL.bad); this.lose(); return; }   // bonk: its mouth was shut
+      this.ateAt = this.t; Sfx.chomp();
+    }
     // it chews for a moment (art/feed.png), then the round is won
     this.playingOut = this.ateAt != null && !this.finished;
     if (this.ateAt != null && (this.t - this.ateAt >= 0.4 || !Assets.get('feed')) && !this.finished) this.succeed();
@@ -3335,7 +3435,8 @@ class FeedDog extends Microgame {
   draw(g) {
     g.clear();
     // (art/feed.png, 1x: mouth open on dx, dy + 6, then 4 frames chewing)
-    if (Assets.get('feed')) g.sprite('feed', Math.round(this.dx) + 8, this.dy + 4, { frame: this.ateAt == null ? 0 : 1 + Math.min(3, Math.floor((this.t - this.ateAt) * 10)) });
+    // mouth open (0) or shut (2) while it waits; chewing (1-4) once fed
+    if (Assets.get('feed')) g.sprite('feed', Math.round(this.dx) + 8, this.dy + 4, { frame: this.ateAt == null ? (this.isOpen() ? 0 : 2) : 1 + Math.min(3, Math.floor((this.t - this.ateAt) * 10)) });
     else g.sprite('face', this.dx, this.dy, { w: 36, h: 37, frame: Math.floor(this.t * 6) % 9 });
     if (this.ateAt == null) g.bone(this.tx, this.ty, 22);     // the treat
     if (!this.held) g.text('GRAB', this.tx, this.ty + 18, 7, PAL.mid);
@@ -3551,7 +3652,7 @@ class CutRope extends Microgame {
 
 // 19. BOSS — squeeze through the gaps in the fences
 class Squeeze extends Microgame {
-  static meta = { id: 'squeeze', env: 'lawn', prompt: 'SQUEEZE!', hint: 'drag', duration: 5.0, winOnTimeout: true,
+  static meta = { id: 'squeeze', env: 'lawn', prompt: 'SQUEEZE!', hint: 'drag', duration: 5.0, minDuration: 4.4, winOnTimeout: true,   // at least 3 fences, however fast
     how: 'DRAG THROUGH\nTHE GAPS IN THE FENCE' };
   init() {
     this.px = CX; this.py = BOT - 26;
@@ -3599,7 +3700,7 @@ class Squeeze extends Microgame {
 // 20. BLOW — blow a big bubble (mic, or tap-fallback)
 class BlowSail extends Microgame {
   static BUBBLES = [16, 24, 34, 44, 52, 66, 80, 94, 108];   // art/bubble.png's sizes, one per frame
-  static meta = { id: 'blow', env: 'field@240', prompt: 'BLOW!', hint: 'blow', duration: 4.2, photo: true, photoCap: 'BIG BUBBLE!',
+  static meta = { id: 'blow', env: 'field@240', prompt: 'BLOW!', hint: 'blow', duration: 4.2, minDuration: 3.6, photo: true, photoCap: 'BIG BUBBLE!',
     how: { mic: 'BLOW INTO THE MIC\nBLOW A BIG BUBBLE', touch: 'TAP FAST\nTO BLOW A BUBBLE' } };
   init() {
     this.fill = 0;
@@ -3621,8 +3722,10 @@ class BlowSail extends Microgame {
       if (!Input.micPending || this.wait > 1.2) this.paused = false;
       return;
     }
-    const b = input.blow > 0.28 ? input.blow : 0;   // only a real blow grows the bubble
-    this.fill += b * dt * 1.9;
+    // the mic: only a real blow grows the bubble; with no mic, each tap is a
+    // puff, 14 / 18 / 22 taps to the full bubble
+    if (Input.micReady) { const b = input.blow > 0.28 ? input.blow : 0; this.fill += b * dt * 1.9; }
+    else this.fill += input.taps.length * this.need / this.byD(14, 18, 22);
     if (this.fill >= this.need && !this.finished) { Sfx.boop(); this.succeed(); }
   }
   stampPhoto(c) { PhotoFX.bubbles(c); }
@@ -3888,13 +3991,15 @@ class Crossy extends Microgame {
   }
   laneY(L) { return BOT - 12 - (L + 1) * this.laneH; }
   update(dt, input) {
-    if (input.justDown && this.row <= this.lanes) { this.row++; this.hopping = 0.28; Sfx.tap(); buzz(10); }
+    // a hop takes 0.28s and can't be cut short by another tap; only its first
+    // half is in the air (cars pass under), so mashing no longer keeps you safe
+    if (input.justDown && this.row <= this.lanes && this.hopping <= 0) { this.row++; this.hopping = 0.28; Sfx.tap(); buzz(10); }
     this.py += ((this.row === 0 ? BOT - 12 : this.row > this.lanes ? this.laneY(this.lanes - 1) - this.laneH : this.laneY(this.row - 1)) - this.py) * Math.min(1, dt * 20);
     for (const c of this.cars) {
       c.x += c.sp * dt;
       if (c.x < -16) c.x = W + 16; if (c.x > W + 16) c.x = -16;
       // hit only if the player is standing in that car's lane
-      if (this.row - 1 === c.lane && Math.abs(c.x - this.px) < c.w / 2 + 2 && this.hopping <= 0) { buzz(80); Sfx.thud(); this.lose(); return; }
+      if (this.row - 1 === c.lane && Math.abs(c.x - this.px) < c.w / 2 + 2 && this.hopping <= 0.14) { buzz(80); Sfx.thud(); this.lose(); return; }
     }
     if (this.hopping > 0) this.hopping -= dt;
     if (this.row > this.lanes) { Sfx.bark(); this.succeed(); }   // reached the far side
@@ -3921,35 +4026,62 @@ class Crossy extends Microgame {
   }
 }
 
-// 26. DOODLE — auto-bounce; steer to land on each rising platform
+// 26. DOODLE — auto-bounce; steer up the rising platforms to the top. The
+// one you start on crumbles after a bounce, so you have to move; on 2 they
+// slide; on 3 there's a cracked step too, which breaks if you land on it.
 class Doodle extends Microgame {
-  static meta = { id: 'doodle', env: 'sky', prompt: 'HOP!', hint: 'drag', duration: 5.0, winOnTimeout: true,
-    how: 'DRAG LEFT AND RIGHT\nTO LAND ON THE STEPS' };
+  static meta = { id: 'doodle', env: 'sky', prompt: 'HOP!', hint: 'drag', duration: 5.0, minDuration: 4.6,
+    how: 'DRAG LEFT AND RIGHT\nTO HOP UP THE STEPS' };
   init() {
     this.x = CX; this.vy = 0;
-    this.grav = 240; this.bounce = -210;
-    this.pw = this.byD(58, 50, 44);            // wide platforms
+    this.grav = 480; this.bounce = -300;       // a snappier bounce than before, so the climb fits the round
+    this.pw = this.byD(56, 50, 46);
     this.need = this.byD(2, 2, 3); this.landed = 0;
     const maxRise = (this.bounce * this.bounce) / (2 * this.grav);
-    const step = Math.min((BOT - TOP - 30) / (this.need + 1), maxRise * 0.5);  // easy reach
+    const step = Math.min((BOT - TOP - 40) / (this.need + 1), maxRise * 0.62);
+    const slide = this.byD(0, 28, 36);
     this.plats = [];
     let py = BOT - 20;
-    for (let i = 0; i <= this.need; i++) { this.plats.push({ x: 20 + Math.random() * (W - 40), y: py, used: false }); py -= step; }
-    this.plats[0].x = this.x = CX; this.y = this.plats[0].y - 6;
-    this.cur = 0;
+    for (let i = 0; i <= this.need; i++) {
+      // each step within reach of the last, but never straight above it
+      // far enough to the side that you can't land on it without steering
+      let x = CX;
+      if (i) { const last = this.plats[i - 1], off = 44 + Math.random() * 36; let dir = Math.random() < 0.5 ? -1 : 1;
+        if (last.x + dir * off < 28 || last.x + dir * off > W - 28) dir = -dir;
+        x = Math.max(28, Math.min(W - 28, last.x + dir * off)); }
+      this.plats.push({ x, y: py, used: false, vx: i ? (Math.random() < 0.5 ? -1 : 1) * slide : 0 }); py -= step;
+    }
+    this.y = this.plats[0].y - 6;
+    // on 3: a cracked step at the height of one of the real ones, on the other side
+    if (this.d >= 3) {   // it mirrors that step across the middle: each keeps to its own half
+      const k = 1 + Math.floor(Math.random() * (this.need - 1)), p = this.plats[k];
+      p.half = p.x < CX ? -1 : 1; p.x = p.half < 0 ? Math.min(p.x, CX - this.pw / 2 - 6) : Math.max(p.x, CX + this.pw / 2 + 6);
+      this.twin = p; this.cloud = { x: W - p.x, y: p.y, gone: 0 };
+    }
+    this.bounced = 0;
   }
   update(dt, input) {
     if (input.down) this.x += (input.x - this.x) * Math.min(1, dt * 20);   // snappy steering
     this.x = Math.max(8, Math.min(W - 8, this.x));
+    for (const p of this.plats) {
+      p.x += p.vx * dt;
+      const lo = p.half > 0 ? CX + this.pw / 2 + 6 : this.pw / 2 + 2, hi = p.half < 0 ? CX - this.pw / 2 - 6 : W - this.pw / 2 - 2;
+      if (p.x < lo) { p.x = lo; p.vx = Math.abs(p.vx); } if (p.x > hi) { p.x = hi; p.vx = -Math.abs(p.vx); }
+    }
+    if (this.cloud && !this.cloud.gone) this.cloud.x = W - this.twin.x;
     this.vy += this.grav * dt; this.y += this.vy * dt;
-    // bounce when falling onto the next platform within its width
     if (this.vy > 0) {
       for (const p of this.plats) {
-        if (!p.used && Math.abs(this.y - p.y) < 9 && Math.abs(this.x - p.x) < this.pw / 2 + 3) {
-          this.vy = this.bounce; if (p !== this.plats[0]) { p.used = true; this.landed++; Sfx.boing(); FX.hit(p.x, p.y, PAL.accent); }
-        }
+        if (p.used || p.gone || Math.abs(this.y - p.y) >= 9 || Math.abs(this.x - p.x) >= this.pw / 2 + 3) continue;
+        this.vy = this.bounce;
+        if (p === this.plats[0]) { if (++this.bounced >= 1) { p.gone = 0.001; Sfx.crunch && Sfx.crunch(); } }   // the start crumbles under you
+        else { p.used = true; this.landed++; Sfx.boing(); FX.hit(p.x, p.y, PAL.accent); }
       }
+      const c = this.cloud;
+      if (c && !c.gone && Math.abs(this.y - c.y) < 9 && Math.abs(this.x - c.x) < this.pw / 2 + 3) { c.gone = 0.001; Sfx.crunch(); FX.burst(c.x, c.y, SCENE.woodLo, 12, 60); }   // the cracked one breaks: straight through
     }
+    if (this.plats[0].gone) this.plats[0].gone += dt;
+    if (this.cloud && this.cloud.gone) this.cloud.gone += dt;
     if (this.y > BOT + 10) { buzz(70); this.lose(); return; }
     if (this.landed >= this.need) this.succeed();
   }
@@ -3957,14 +4089,31 @@ class Doodle extends Microgame {
     g.clear();
     const pa = Assets.get('platform'), hl = Math.ceil(this.pw / 2), hr = this.pw - hl;
     for (const p of this.plats) {
-      if (!pa) { g.rect(p.x - this.pw / 2, p.y, this.pw, 4, p.used ? PAL.mid : PAL.accent); continue; }
-      const f = p.used ? pa.fw : 0, x0 = Math.round(p.x - this.pw / 2), y0 = Math.round(p.y) - 1;
-      ctx.drawImage(pa.img, f, 0, hl, pa.fh, x0, y0, hl, pa.fh);
-      ctx.drawImage(pa.img, f + pa.fw - hr, 0, hr, pa.fh, x0 + hl, y0, hr, pa.fh);
+      const fall = p.gone ? p.gone * 120 : 0; if (fall > 80) continue;
+      ctx.globalAlpha = p.gone ? Math.max(0, 1 - p.gone * 2.5) : 1;
+      if (!pa) g.rect(p.x - this.pw / 2, p.y + fall, this.pw, 4, p.used ? PAL.mid : PAL.accent);
+      else {
+        const f = p.used ? pa.fw : 0, x0 = Math.round(p.x - this.pw / 2), y0 = Math.round(p.y + fall) - 1;
+        ctx.drawImage(pa.img, f, 0, hl, pa.fh, x0, y0, hl, pa.fh);
+        ctx.drawImage(pa.img, f + pa.fw - hr, 0, hr, pa.fh, x0 + hl, y0, hr, pa.fh);
+      }
+      ctx.globalAlpha = 1;
+    }
+    const c = this.cloud;
+    if (c && (!c.gone || c.gone < 0.4)) {   // the cracked step: the same plank, split, trembling; it falls in two halves when broken
+      const j = c.gone ? 0 : Math.round(Math.sin(this.t * 30) * 0.6), x0 = Math.round(c.x - this.pw / 2) + j, y0 = Math.round(c.y) - 1, fall = c.gone * 160;
+      ctx.globalAlpha = c.gone ? 1 - c.gone / 0.4 : 1;
+      // the two halves, split with a gap down the middle, darker, with cracks running out from it
+      const gap = 3, lx = x0 - 1 - fall * 0.2, rx = x0 + hl + gap - 1 + fall * 0.2;
+      if (pa) { ctx.drawImage(pa.img, 0, 0, hl, pa.fh, lx, y0 + fall, hl, pa.fh); ctx.drawImage(pa.img, pa.fw - hr, 0, hr, pa.fh, rx, y0 + fall * 1.2, hr, pa.fh); }
+      else { g.rect(lx, y0 + fall, hl, 4, SCENE.wood); g.rect(rx, y0 + fall * 1.2, hr, 4, SCENE.wood); }
+      ctx.globalAlpha *= 0.35; g.rect(lx, y0 + fall, hl, pa ? pa.fh : 4, PAL.bg); g.rect(rx, y0 + fall * 1.2, hr, pa ? pa.fh : 4, PAL.bg); ctx.globalAlpha = c.gone ? 1 - c.gone / 0.4 : 1;
+      if (!c.gone) for (const [cx, cy, w] of [[lx + hl - 9, y0 + 2, 8], [lx + hl - 15, y0 + 4, 6], [rx + 1, y0 + 3, 9], [rx + 9, y0 + 5, 5]]) g.rect(cx, cy, w, 1, PAL.bg);
+      ctx.globalAlpha = 1;
     }
     // jump sprite keyed to velocity: stretched tall (8) rising, crouched (0)
     // landing, mid frames in between for the transition
-    const fr = Math.max(0, Math.min(8, Math.round(4 - this.vy / 55)));
+    const fr = Math.max(0, Math.min(8, Math.round(4 - this.vy / 75)));
     g.sprite('hopdog', this.x, this.y - 6, { w: 22, h: 22, frame: fr });
     for (let i = 0; i < this.need; i++) g.rect(4 + i * 8, TOP + 4, 5, 5, i < this.landed ? PAL.accent : PAL.mid);
   }
@@ -4157,7 +4306,7 @@ class KnockStack extends Microgame {
       }
       return;
     }
-    const G = 420, ball = this.ball;
+    const G = 420, ball = this.ball;   // the aim preview in draw() uses the same 420
     this.playingOut = true;   // a shot in the air when the clock runs out still gets to land
     // the shiba: flies, then bounces and rolls along the ground
     if (ball.flying) {
@@ -4279,7 +4428,7 @@ class KnockStack extends Microgame {
     }
     if (this.aim && held) {   // where it'll go
       let px = bx, py = by, vx = (ox - bx) * this.K, vy = (oy - by) * this.K;
-      for (let i = 0; i < 12; i++) { px += vx * 0.05; py += vy * 0.05; vy += 240 * 0.05; if (py > BOT) break; ctx.globalAlpha = 1 - i / 13; g.rect(px - 1, py - 1, 2, 2, PAL.ink); ctx.globalAlpha = 1; }
+      for (let i = 0; i < 12; i++) { px += vx * 0.05; py += vy * 0.05; vy += 420 * 0.05; if (py > BOT) break; ctx.globalAlpha = 1 - i / 13; g.rect(px - 1, py - 1, 2, 2, PAL.ink); ctx.globalAlpha = 1; }
     }
     // the shiba, curled up in the pouch and then spinning through the air
     ctx.save(); ctx.translate(this.ball.x, this.ball.y); ctx.rotate(this.ball.rot || 0);
@@ -4349,48 +4498,68 @@ class MoveCam extends Microgame {
 
 }
 
-// 31. DRY OFF — big separate shakes at the camera, like a wet dog (Snapped! homage)
+// 31. DRY OFF — a soaked shiba on the bath mat, dripping: shake it dry before
+// the clock runs out. Shake your body at the camera, shake the phone, or rub
+// the screen fast. It's wet (and happy about it) until the last of the water
+// flies off in a puff and it's fluffy; on 2 and 3 it soaks back up if you stop.
 class DryShiba extends Microgame {
-  static meta = { id: 'dry', env: 'bath', cam: true, prompt: 'DRY OFF!', hint: 'move', duration: 5.0, minDuration: 4.0, photo: true, photoCap: 'ALL FLUFFY!',
-    how: { cam: 'SHAKE YOUR BODY HARD,\nSTOP, THEN SHAKE AGAIN', touch: 'TAP, TAP, TAP\nTO SHAKE IT OFF' } };
+  static meta = { id: 'dry', env: 'bath', group: 'CAMERA', prompt: 'DRY OFF!', hint: 'move', duration: 5.0, minDuration: 4.0, photo: true, photoCap: 'ALL FLUFFY!',
+    how: { cam: 'SHAKE YOUR BODY\nTO SHAKE IT DRY', motion: 'SHAKE YOUR PHONE\nTO SHAKE IT DRY', touch: 'RUB THE SCREEN FAST\nTO SHAKE IT DRY' } };
+  static FLUFFY = 0.4;  // wetter than this it looks wet (art/wetidle.png's happy frames, 0-3); drier, fluffy
   init() {
-    // Not MOVE's steady wiggle: a wet dog shakes in big bursts. Each burst is a
-    // spike of motion that has to settle back down before the next one counts.
-    this.bursts = 0; this.need = this.byD(3, 4, 5); this.ready = true;
-    this.drops = [];
+    this.wet = 1;
+    this.need = this.byD(2.0, 2.6, 3.2);          // how much shaking dries it: about 1 / 1.2 / 1.5 s of the hardest shaking
+    this.soak = this.byD(0, 0.07, 0.13);          // what it soaks back up each second you stop
+    this.drops = []; this.drip = 0; this.done = 0; this.wob = 0; this.fluffy = false;
     Input.enableCam();
     this.paused = Input.camPending; this.wait = 0;
-    this.wob = 0; this.pop = 0;
+  }
+  // how hard it's being shaken: your body on camera, else the phone, else rubbing
+  drive(input) { return Input.camReady ? Math.min(1, input.motion * 1.4) : input.shake; }
+  spray(n, sp) {
+    for (let i = 0; i < n; i++) { const a = Math.random() * Math.PI * 2; this.drops.push({ x: CX + Math.cos(a) * 22, y: 190 + Math.sin(a) * 26, vx: Math.cos(a) * sp * (0.6 + Math.random()), vy: Math.sin(a) * sp * 0.7 - 50, t: 0 }); }
   }
   update(dt, input) {
     if (this.paused) { this.wait += dt; if (!Input.camPending || this.wait > 1.5) this.paused = false; return; }
-    const m = input.motion;
-    this.wob = m;
-    if (this.pop > 0) this.pop -= dt;
-    if (m < 0.15) this.ready = true;
-    else if (m > 0.4 && this.ready) {
-      this.ready = false; this.bursts++; this.pop = 0.25;
-      Sfx.splash(); buzz(30); FX.shake(2);
-      for (let i = 0; i < 14; i++) this.drops.push({ x: CX + (Math.random() - 0.5) * 40, y: CY, vx: (Math.random() - 0.5) * 220, vy: -60 - Math.random() * 90, t: 0 });
-      if (this.bursts >= this.need && !this.finished) { this.succeed(); return; }
-    }
-    for (const d of this.drops) { d.t += dt; d.x += d.vx * dt; d.y += d.vy * dt; d.vy += 200 * dt; }
-    this.drops = this.drops.filter(d => d.t < 0.6);
+    for (const d of this.drops) { d.t += dt; d.x += d.vx * dt; d.y += d.vy * dt; d.vy += 260 * dt; }
+    this.drops = this.drops.filter(d => d.t < 0.7 && d.y < 236);
+    if (this.done) { this.done += dt; if (this.done > 0.5 && !this.finished) this.succeed(); return; }
+    const m = this.drive(input); this.wob = m;
+    if (m > 0.12) {
+      this.wet = Math.max(0, this.wet - m * dt * 2.2 / this.need);
+      if (Math.random() < m * this.wet * 0.9) this.spray(1, 140);   // water flying off as it shakes
+      this.buzzT = (this.buzzT || 0) - dt; if (this.buzzT <= 0) { buzz(Math.round(20 + m * 30)); this.buzzT = 0.08; }
+    } else this.wet = Math.min(1, this.wet + this.soak * dt);
+    // still wet: it drips onto the mat
+    if ((this.drip -= dt) <= 0 && this.wet > 0.05) { this.drip = 0.5 - this.wet * 0.3; this.drops.push({ x: CX + (Math.random() - 0.5) * 30, y: 206, vx: 0, vy: 10, t: 0 }); }
+    // dry enough: the last of the water flies off in a puff, and it's fluffy (wet again if it soaks back up)
+    const fluffy = this.wet <= DryShiba.FLUFFY;
+    if (fluffy && !this.fluffy) { this.spray(24, 190); Sfx.poof(); FX.burst(CX, 190, PAL.ink, 16, 80); FX.shake(2); }
+    this.fluffy = fluffy;
+    if (this.wet <= 0) { this.done = 0.001; this.playingOut = true; Sfx.win(); Juice.confetti && Juice.confetti(18); }   // dry: the clock can't take it back
   }
   draw(g) {
     g.clear();
     if (this.paused) { g.text('ALLOW CAMERA…', CX, CY - 6, 11, PAL.ink); g.text('(then shake to dry)', CX, CY + 12, 7, PAL.mid); return; }
-    // wet shiba drying out: frame tracks the shakes (wet -> fluffy), and it
-    // jolts on each one
-    const prog = Math.min(1, this.bursts / this.need);
-    const fr = Math.max(0, Math.min(8, Math.floor(prog * 8.99)));
-    const j = (Math.random() - 0.5) * (this.wob * 6 + this.pop * 30);
-    BathTime.tubBack(162);   // shaking off IN the bath: its back rim and water behind
-    g.sprite('dryshake', Math.round(CX + j), CY + 2, { w: 76, h: 62, frame: fr });   // 2x, crisp; sat down in the water
-    BathTime.tubFront(162);
-    for (const d of this.drops) { const k = 1 - d.t / 0.6; ctx.globalAlpha = k; g.circle(d.x, d.y, 2, PAL.ink); ctx.globalAlpha = 1; }
-    g.text(this.ready ? (Input.camReady ? 'SHAKE!' : 'TAP!') : 'NOW STOP…', CX, TOP + 26, 10, this.ready ? PAL.accent : PAL.mid);
-    for (let i = 0; i < this.need; i++) g.rect(CX - this.need * 6 + i * 12, BOT - 20, 8, 8, i < this.bursts ? PAL.accent : PAL.mid);
+    const fy = 234;   // its paws, on the bath mat
+    // the floor: the same tiles in shadow, with a skirting line where the wall meets it
+    ctx.globalAlpha = 0.28; g.rect(0, fy - 16, W, BOT - fy + 16, PAL.bg); ctx.globalAlpha = 1;
+    g.rect(0, fy - 17, W, 2, SCENE.grout);
+    if (Assets.get('towel')) g.sprite('towel', 30, 112);                    // a towel on the wall, no use to a shiba
+    if (Assets.get('bathmat')) g.sprite('bathmat', CX, fy - 2); else g.rect(CX - 50, fy - 8, 100, 12, SCENE.tile);
+    // the puddle: what's been shaken off
+    ctx.globalAlpha = 0.6; g.rect(CX - 14 - (1 - this.wet) * 30, fy - 2, 28 + (1 - this.wet) * 60, 4, SCENE.sea1); ctx.globalAlpha = 1;
+    // the shiba, wobbling as it's shaken: wet, then fluffy
+    const t = this.t, wob = this.wob > 0.12 ? Math.sin(t * 40) * this.wob * 0.12 : 0;
+    const wa = Assets.get('wetidle'), f = Math.floor(t * 5) % 4;
+    ctx.save(); ctx.translate(CX, fy); ctx.rotate(wob); ctx.translate(-CX, -fy);
+    if (this.fluffy || !wa) g.fullIdle(CX, fy, 'happy', t);
+    else g.sprite('wetidle', CX, fy - 64, { w: 128, h: 128, frame: f });
+    ctx.restore();
+    for (const d of this.drops) { ctx.globalAlpha = 1 - d.t / 0.7; g.rect(d.x - 1, d.y - 1, 2, 3, SCENE.sea0); g.rect(d.x - 1, d.y - 1, 1, 1, PAL.ink); ctx.globalAlpha = 1; }
+    // how wet: a bar of water draining
+    g.text(this.done ? 'ALL FLUFFY!' : Input.camReady ? 'SHAKE!' : Engine.howKey(this.meta) === 'motion' ? 'SHAKE THE PHONE!' : 'RUB FAST!', CX, TOP + 26, 10, this.done ? PAL.accent : PAL.ink);
+    g.bar(30, TOP + 34, W - 60, 6, this.wet, SCENE.sea1, PAL.mid);
   }
 }
 
@@ -5040,7 +5209,8 @@ class Juggle extends Microgame {
    is missing, so they stay playable on any device.
 ─────────────────────────────────────────────────────────────────────────────── */
 
-// TILT — keep the ball on the see-saw plank until the clock runs out
+// TILT — keep the ball on the see-saw until the clock runs out, while crates
+// drop onto it and tip it their way (on 3 a gust of wind too): lean against them
 class BalanceBall extends Microgame {
   static meta = { id: 'balance', env: 'field@200', prompt: 'BALANCE!', hint: 'move', duration: 5.0, minDuration: 4.2, winOnTimeout: true,
     how: { tilt: 'TILT THE PHONE\nKEEP THE BALL ON', touch: 'HOLD LEFT OR RIGHT\nTO TILT' } };
@@ -5050,13 +5220,29 @@ class BalanceBall extends Microgame {
     this.grav = this.byD(1.6, 2.1, 2.6);
     this.half = 62;
     this.rollT = 0; this.edgeT = 0;
+    this.vel = (Math.random() < 0.5 ? -1 : 1) * 0.12;   // a nudge to start with: it never just sits there
+    // crates (KNOCK IT's) dropping onto the plank, each at its own spot and time
+    const n = this.byD(1, 2, 3), span = Math.max(1.6, (this.timeLimit || 5) - 1.6);
+    this.crates = [];
+    for (let i = 0; i < n; i++) this.crates.push({ at: 0.6 + span * (i + Math.random() * 0.5) / n, px: (Math.random() < 0.5 ? -1 : 1) * (0.35 + Math.random() * 0.5), y: TOP, vy: 0, on: false });
+    this.gust = this.d >= 3 ? { at: 1.2 + Math.random() * Math.max(0.5, span - 1.2), dir: Math.random() < 0.5 ? -1 : 1, t: 0 } : null;
   }
+  // the crates' weight tipping the plank: each pulls it down on its side
+  load() { return this.crates.reduce((a, c) => a + (c.on ? c.px * 0.55 : 0), 0); }
   update(dt, input) {
     // gyro tilt, or drag left/right, or ease back to flat
     const want = Input.tiltReady ? input.tiltX
                : input.down ? Math.max(-1, Math.min(1, (input.x - CX) / (W / 2))) : this.tilt * 0.9;
-    this.tilt += (Math.max(-1, Math.min(1, want)) - this.tilt) * Math.min(1, dt * 10);
+    this.tilt += (Math.max(-1, Math.min(1, want + this.load())) - this.tilt) * Math.min(1, dt * 10);
     this.vel += this.tilt * this.grav * dt;
+    // the crates fall onto the plank and stay; a gust shoves the ball
+    for (const c of this.crates) if (!c.on && this.t >= c.at) {
+      c.vy += 420 * dt; c.y += c.vy * dt;
+      const land = CY + 6 + Math.sin(this.tilt * 0.5) * c.px * this.half - 8;
+      if (c.y >= land) { c.on = true; Sfx.thud(); FX.shake(2); buzz(25); }
+    }
+    const gu = this.gust;
+    if (gu && this.t >= gu.at && gu.t < 0.9) { gu.t += dt; this.vel += gu.dir * 0.9 * dt; }
     this.vel *= 0.99;
     this.pos += this.vel * dt;
     // the ball rumbles as it rolls, and beeps faster the nearer it gets to the edge
@@ -5076,9 +5262,13 @@ class BalanceBall extends Microgame {
     const pk = Assets.get('plank');   // art/plank.png, its middle 2 x half
     if (pk) ctx.drawImage(pk.img, Math.floor((pk.fw - this.half * 2) / 2), 0, this.half * 2, pk.fh, -this.half, -2, this.half * 2, pk.fh);
     else g.rect(-this.half, -2, this.half * 2, 4, PAL.mid);
+    for (const c of this.crates) if (c.on) g.sprite('crate', c.px * this.half, -8);   // art/crate.png, riding the plank
     const bx = this.pos * this.half;
     g.sprite('face', bx, -12, { w: 20, h: 20, frame: Math.floor(this.t * 8) % 3 });
     ctx.restore();
+    for (const c of this.crates) if (!c.on && this.t >= c.at) g.sprite('crate', CX + c.px * this.half, c.y);   // falling
+    const gu = this.gust;   // the gust: streaks blowing across
+    if (gu && this.t >= gu.at && gu.t < 0.9) { ctx.globalAlpha = 0.7; for (let i = 0; i < 5; i++) { const x = ((this.t * 220 * gu.dir + i * 47) % (W + 40) + W + 40) % (W + 40) - 20; g.rect(x, CY - 40 + i * 14, 18, 1, PAL.ink); } ctx.globalAlpha = 1; }
     // edge markers turn red as the ball nears the drop
     g.rect(CX - this.half - 3, CY + 4, 3, 8, near && this.pos < 0 ? PAL.bad : PAL.mid);
     g.rect(CX + this.half, CY + 4, 3, 8, near && this.pos > 0 ? PAL.bad : PAL.mid);
@@ -5226,12 +5416,15 @@ class BlowCandles extends Microgame {
   }
   update(dt, input) {
     if (this.paused) { this.wait += dt; if (!Input.micPending || this.wait > 1.2) this.paused = false; return; }
-    if (input.blow > 0.3) {
+    // the mic: a real blow snuffs them; with no mic, every tap is a puff that
+    // takes a fifth of a candle (5 taps a candle, at every level)
+    const puff = Input.micReady ? (input.blow > 0.3 ? input.blow * dt * 1.6 : 0) : input.taps.length * 0.2;
+    if (puff > 0) {
       // snuff the candles left-to-right so progress is visible
       for (let i = 0; i < this.n; i++) {
         if (this.lit[i] > 0) {
-          this.lit[i] = Math.max(0, this.lit[i] - input.blow * dt * 1.6);
-          if (this.lit[i] <= 0) Sfx.poof();   // each candle goes out with a little fwip
+          this.lit[i] = Math.max(0, this.lit[i] - puff);
+          if (this.lit[i] <= 0.001) { this.lit[i] = 0; Sfx.poof(); }   // each candle goes out with a little fwip
           break;
         }
       }
@@ -5644,6 +5837,11 @@ class HighFive extends Microgame {
       return;
     }
     if (this.raiseT < 0.25) return;                   // the paw is still going up
+    // touch: a tap on the paw that isn't up is a miss, and the high five is off
+    if (!Input.camReady && input.justDown && this.side !== 'B') {
+      const o = this.side === 'L' ? 'R' : 'L', P = HighFive.PAW[o];
+      if (Math.hypot(input.x - P.x, input.y - P.y) < 34) { Sfx.fail(); FX.hit(P.x, P.y, PAL.bad); this.lose(); return; }
+    }
     const L = this.hitIn('L', input), R = this.hitIn('R', input), thr = Input.camReady ? this.thr : 0.5;
     // swaying your whole body moves the middle as much as the sides: that's no high five
     const C = Input.camReady ? Input.motionPeak(0.42, 0, 0.58, 1) * 1.15 : 0;
@@ -5687,55 +5885,86 @@ class HighFive extends Microgame {
 }
 
 // ── REGISTRY ─────────────────────────────────────────────────────────────────
-// 47. DIG — swipe to dig a hole in the sand until the bone turns up
+// 47. DIG — swipe on the X to dig until the bone turns up. On 2 and 3 there
+// are two, the second X somewhere else on the beach; a swipe off the X is a
+// miss, and three misses lose.
 class BeachDig extends Microgame {
-  static meta = { id: 'dig', env: 'beach@118', prompt: 'DIG!', hint: 'swipe', duration: 4.2,
-    how: 'SWIPE AGAIN AND AGAIN\nTO DIG UP THE BONE' };
+  static meta = { id: 'dig', env: 'beach@118', prompt: 'DIG!', hint: 'swipe', duration: 5.0, minDuration: 4.4,
+    how: 'SWIPE ON THE X\nTO DIG UP THE BONE' };
+  static AIM = 26;   // how near the X a swipe has to start
   init() {
-    this.need = this.byD(4, 5, 7); this.dug = 0;
+    this.bones = this.byD(1, 2, 2); this.need = this.byD(4, 3, 4);
+    this.got = 0; this.dug = 0; this.misses = 0; this.missT = 0;
     this.sand = []; this.pop = 0; this.found = 0;
-    this.hx = CX; this.hy = 192;                     // the hole
+    // where each bone is buried: apart from each other, on the dry sand
+    this.spots = [];
+    for (let i = 0; i < this.bones; i++) {
+      let x, y, k = 0;
+      do { x = 40 + Math.random() * (W - 80); y = 168 + Math.random() * 44; } while (k++ < 40 && this.spots.some(p => Math.abs(p.x - x) < 60));
+      this.spots.push({ x: Math.round(x), y: Math.round(y) });
+    }
+    if (this.bones === 1) this.spots[0] = { x: CX, y: 192 };
+    this.hx = this.spots[0].x; this.hy = this.spots[0].y; this.dogX = this.hx;
+    this.done = [];   // holes already dug
   }
   update(dt, input) {
     if (this.pop > 0) this.pop -= dt;
-    if (this.found > 0) { this.found += dt; if (this.found > 0.45 && !this.finished) this.succeed(); }
-    else if (input.swipe) {
-      // every swipe is a scoop: the hole gets deeper and sand flies back
-      this.dug++; this.pop = 0.18;
-      Sfx.noise(0.07, 0.06, 900); buzz(12);
-      for (let i = 0; i < 9; i++) this.sand.push({ x: this.hx + (Math.random() - 0.5) * 20, y: this.hy + 4, vx: (Math.random() - 0.5) * 120, vy: 40 + Math.random() * 90, t: 0 });
-      if (this.dug >= this.need) { this.found = 0.001; Sfx.win(); FX.burst(this.hx, this.hy, PAL.accent, 12, 60); }
+    if (this.missT > 0) this.missT -= dt;
+    this.dogX += (this.hx - this.dogX) * Math.min(1, dt * 12);   // it runs over to the X
+    if (this.found > 0) {
+      this.found += dt;
+      if (this.found > 0.45) {
+        this.done.push({ x: this.hx, y: this.hy });
+        if (++this.got >= this.bones) { if (!this.finished) this.succeed(); return; }
+        const p = this.spots[this.got]; this.hx = p.x; this.hy = p.y; this.dug = 0; this.found = 0; this.playingOut = false;
+      }
+    } else if (input.swipe) {
+      const sw = input.swipe, on = sw.x0 == null || Math.hypot(sw.x0 - this.hx, sw.y0 - this.hy) < BeachDig.AIM;
+      if (!on) {   // dug in the wrong place: sand in the air, nothing found
+        this.misses++; this.missT = 0.4; Sfx.fail();
+        if (this.misses >= 3) { this.lose(); return; }
+      } else {
+        // every swipe is a scoop: the hole gets deeper and sand flies back
+        this.dug++; this.pop = 0.18;
+        Sfx.noise(0.07, 0.06, 900); buzz(12);
+        for (let i = 0; i < 9; i++) this.sand.push({ x: this.hx + (Math.random() - 0.5) * 20, y: this.hy + 4, vx: (Math.random() - 0.5) * 120, vy: 40 + Math.random() * 90, t: 0 });
+        if (this.dug >= this.need) { this.found = 0.001; this.playingOut = this.got + 1 >= this.bones; Sfx.win(); FX.burst(this.hx, this.hy, PAL.accent, 12, 60); }   // the last bone: the clock can't take it back
+      }
     }
     for (const p of this.sand) { p.t += dt; p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 160 * dt; }
     this.sand = this.sand.filter(p => p.t < 0.6);
   }
   draw(g) {
     g.clear();
-    const k = Math.min(1, this.dug / this.need), rw = 12 + k * 18, rh = 6 + k * 8;
+    const near = (ws, w) => ws.reduce((b, v, i) => Math.abs(v - w) < Math.abs(ws[b] - w) ? i : b, 0);
+    for (const h of this.done) g.sprite('hole', h.x, h.y + 1, { frame: near([30, 42, 54, 48], 48) });   // the holes already dug
+    const k = Math.min(1, this.dug / this.need), rw = 12 + k * 18;
     // the sand pile thrown up behind the dog, and the hole getting deeper
     // (art/sandpile.png, art/hole.png: the nearest size, 1:1)
-    const near = (ws, w) => ws.reduce((b, v, i) => Math.abs(v - w) < Math.abs(ws[b] - w) ? i : b, 0);
-    g.sprite('sandpile', this.hx + 30, this.hy + 10 - 12, { frame: near([17, 26, 40], 2 * (8 + k * 12)) });
-    g.sprite('hole', this.hx, this.hy + 1, { frame: near([30, 42, 54, 48], 2 * (rw + 3)) });
-    if (this.dug === 0) { g.line(this.hx - 7, this.hy - 7, this.hx + 7, this.hy + 7, PAL.bad, 3); g.line(this.hx + 7, this.hy - 7, this.hx - 7, this.hy + 7, PAL.bad, 3); }   // X marks the spot
+    if (this.dug) g.sprite('sandpile', this.hx + 30, this.hy + 10 - 12, { frame: near([17, 26, 40], 2 * (8 + k * 12)) });
+    if (this.dug) g.sprite('hole', this.hx, this.hy + 1, { frame: near([30, 42, 54, 48], 2 * (rw + 3)) });
+    else { g.line(this.hx - 7, this.hy - 7, this.hx + 7, this.hy + 7, PAL.bad, 3); g.line(this.hx + 7, this.hy - 7, this.hx - 7, this.hy + 7, PAL.bad, 3); }   // X marks the spot
     if (this.found > 0) {                                       // the bone rises out of the hole
       const up = Math.min(1, this.found / 0.25) * 16;
       g.bone(this.hx, this.hy - up, 26);
     }
     // the shiba from behind, paws going, bobbing on each scoop
-    const bob = this.pop > 0 ? -3 : 0;
+    const bob = this.pop > 0 ? -3 : 0, dx = Math.round(this.dogX);
     // between scoops it sniffs at the hole, tail going (art/digmove.png)
-    if (this.pop <= 0 && Assets.get('digmove')) g.sprite('digmove', this.hx, this.hy + 34 + bob, { w: 35, h: 42, frame: Math.floor(this.t * 6) % 4 });
-    else g.sprite('hero', this.hx, this.hy + 34 + bob, { w: 34, h: 42, frame: this.pop > 0 ? Math.floor(this.t * 30) % 9 : 0 });
+    if (this.pop <= 0 && Assets.get('digmove')) g.sprite('digmove', dx, this.hy + 34 + bob, { w: 35, h: 42, frame: Math.floor(this.t * 6) % 4 });
+    else g.sprite('hero', dx, this.hy + 34 + bob, { w: 34, h: 42, frame: this.pop > 0 ? Math.floor(this.t * 30) % 9 : 0 });
     for (const p of this.sand) { ctx.globalAlpha = 1 - p.t / 0.6; g.rect(p.x, p.y, 3, 3, SCENE.sandLo); ctx.globalAlpha = 1; }
     for (let i = 0; i < this.need; i++) g.rect(CX - this.need * 5 + i * 10, BOT - 14, 7, 7, i < this.dug ? PAL.accent : PAL.bg);
-    g.text(this.found > 0 ? 'FOUND IT!' : 'SWIPE TO DIG!', CX, TOP + 26, 9, PAL.ink);
+    // misses so far, as little red crosses
+    for (let i = 0; i < this.misses; i++) { const x = W - 14 - i * 10, y = TOP + 8; g.line(x - 3, y - 3, x + 3, y + 3, PAL.bad, 2); g.line(x + 3, y - 3, x - 3, y + 3, PAL.bad, 2); }
+    g.text(this.found > 0 ? 'FOUND IT!' : this.missT > 0 ? 'NOT THERE!' : 'SWIPE ON THE X!', CX, TOP + 26, 9, this.missT > 0 ? PAL.bad : PAL.ink);
+    if (this.bones > 1) g.text((this.got + (this.found > 0 ? 1 : 0)) + ' / ' + this.bones, 18, TOP + 12, 8, PAL.ink);
   }
 }
 
 // 48. BOSS — a giant shiba asleep in its bed: shout it awake before time's up
 class WakeUp extends Microgame {
-  static meta = { id: 'wake', env: 'bedroom@232', prompt: 'WAKE UP!', hint: 'shout', duration: 4.6, photo: true, photoCap: 'RISE AND SHINE!',
+  static meta = { id: 'wake', env: 'bedroom@232', prompt: 'WAKE UP!', hint: 'shout', duration: 4.6, minDuration: 4.0, photo: true, photoCap: 'RISE AND SHINE!',
     how: { mic: 'SHOUT INTO THE MIC\nWAKE THE BIG SHIBA!', touch: 'TAP AS FAST AS YOU CAN\nTO WAKE IT UP' } };
   init() {
     Input.enableMic(); Input.enableCam();
@@ -5756,7 +5985,7 @@ class WakeUp extends Microgame {
     const stage = Math.floor(Math.min(0.99, this.fill / this.need) * 3);
     if (stage > this.peak) { this.peak = stage; Sfx.squeak(); buzz(20); FX.shake(2); }
     if (this.fill < this.need * 0.2) { this.snoreT -= dt; if (this.snoreT <= 0) { Sfx.snore(); this.snoreT = 1.2; } }
-    if (this.fill >= this.need) { this.woke = 0.001; Sfx.bark(); FX.shake(6); buzz(60); }
+    if (this.fill >= this.need) { this.woke = 0.001; this.playingOut = true; Sfx.bark(); FX.shake(6); buzz(60); }   // woken: the clock can't take it back
   }
   draw(g) {
     g.clear();
@@ -5794,36 +6023,87 @@ class WakeUp extends Microgame {
   }
 }
 
-// 49. BOSS — bath time: shake the phone to fling the suds off a soapy shiba
+// 49. BOSS — BATH TIME, start to finish, in four goes, each explained before
+// it starts (the clock waits while you read): POUR the bath, tilting the phone
+// (or holding) to fill it to the line, as in POUR!; RUB the mud off; SHAKE it
+// dry, wet to fluffy; then blow it a KISS (or tap the hearts) until it's happy.
 class BathTime extends Microgame {
-  static meta = { id: 'bath', env: 'bath', prompt: 'BATH TIME!', hint: 'shake', duration: 4.4,
-    how: { motion: 'SHAKE YOUR PHONE\nSHAKE OFF ALL THE SUDS', touch: 'RUB THE SCREEN FAST\nSHAKE OFF ALL THE SUDS' } };
+  static meta = { id: 'bath', env: 'bath', group: 'SHAKE', prompt: 'BATH TIME!', hint: 'shake', duration: 6.5, minDuration: 8.5,
+    how: 'POUR, RUB, SHAKE DRY,\nTHEN BLOW A KISS!' };
+  static STEPS = ['POUR!', 'RUB!', 'SHAKE!', 'KISS!'];
+  static LO = 0.6; static HI = 0.85;   // the water line: fill the bath to between these, then stop
   init() {
-    this.n = this.byD(12, 16, 20);
-    this.suds = []; for (let i = 0; i < this.n; i++) this.suds.push(this.newSud());
-    this.flying = []; this.fling = 0; this.grow = 0; this.every = this.byD(1.0, 0.8, 0.6); this.done = 0;
+    Input.enableTilt(); Input.zeroTilt(); Input.enableMic();
+    this.step = 0; this.k = 0; this.done = 0;
+    this.intro = 2.4;      // the four goes, listed, before the first (the clock waits)
+    this.banner = 0;       // each go's name and what to do, before it starts (the clock waits)
+    this.fill = 0; this.pouring = false; this.hold = 0;
+    this.sx = CX; this.mud = []; this.drops = []; this.hearts = []; this.heartT = 0; this.scrubT = -1;
+    // it gets in the bath muddy: splats over it, apart from one another
+    for (let i = 0; i < 4; i++) {
+      let x, y, n = 0;
+      do { x = CX - 26 + Math.random() * 52; y = 120 + Math.random() * 38; } while (n++ < 60 && this.mud.some(m => Math.hypot(m.x - x, m.y - y) < 18));
+      this.mud.push({ x, y, r: 8, dirt: 1 });
+    }
+    this.paused = true;
   }
-  newSud() {   // a bubble somewhere on the dog's head or the top of the tub
-    const a = Math.random() * 6.2832, r = Math.random();
-    return Math.random() < 0.6 ? { x: CX + Math.cos(a) * r * 26, y: 150 + Math.sin(a) * r * 22, r: 5 + Math.random() * 4 }
-                               : { x: 46 + Math.random() * 88, y: 182 + Math.random() * 6, r: 6 + Math.random() * 5 };
+  // what each go asks of you, for the phone you're on
+  how(st) {
+    const motion = Engine.howKey({ how: { motion: 1, touch: 1 } }) === 'motion';
+    return [Input.tiltReady ? ['TILT THE PHONE TO POUR WATER', 'STOP AT THE LINE'] : ['HOLD TO POUR WATER', 'LET GO AT THE LINE'],
+            ['DRAG TO RUB OFF THE MUD', ''],
+            [motion ? 'SHAKE THE PHONE TO DRY IT' : 'RUB FAST TO DRY IT', ''],
+            [Input.micReady ? 'BLOW TO SEND A KISS' : 'TAP THE HEARTS', Input.micReady ? '' : 'TO SEND A KISS']][st];
+  }
+  // a win or a loss always counts, even with a card up (the round isn't paused then)
+  succeed() { this.paused = false; super.succeed(); }
+  lose() { this.paused = false; super.lose(); }
+  next() {
+    this.step++; this.k = 0; Sfx.clear(); FX.flash(PAL.accent, 0.25); buzz(30);
+    if (this.step === 4) { this.done = 0.001; this.playingOut = true; this.paused = false; Sfx.win(); Juice.confetti(40); return; }   // happy: the clock can't take it back
+    this.banner = 1.1; this.paused = true;
   }
   update(dt, input) {
-    if (this.done > 0) { this.done += dt; if (this.done > 0.45 && !this.finished) this.succeed(); return; }
-    // shaking flings suds off one by one; stop and the bubble bath foams back up
-    this.fling += input.shake * dt * 7;
-    while (this.fling >= 1 && this.suds.length) {
-      this.fling -= 1;
-      const s = this.suds.splice(Math.floor(Math.random() * this.suds.length), 1)[0];
-      const dir = s.x < CX ? -1 : 1;
-      this.flying.push({ x: s.x, y: s.y, r: s.r, vx: dir * (60 + Math.random() * 120), vy: -80 - Math.random() * 80, t: 0 });
-      Sfx.blip(1200 + Math.random() * 600, 0.03, 'sine', 0.04);
+    for (const d of this.drops) { d.t += dt; d.x += d.vx * dt; d.y += d.vy * dt; d.vy += 300 * dt; }
+    this.drops = this.drops.filter(d => d.t < 0.6);
+    for (const h of this.hearts) { h.t += dt; if (h.sent) { h.x += (CX - h.x) * Math.min(1, dt * 6); h.y += (128 - h.y) * Math.min(1, dt * 6); } else h.y -= 34 * dt; }
+    this.hearts = this.hearts.filter(h => h.t < 3 && !(h.sent && Math.hypot(h.x - CX, h.y - 128) < 6) && h.y > TOP);
+    if (this.done) { this.done += dt; if (this.done > 0.7 && !this.finished) this.succeed(); return; }
+    // the list of goes, then each go's own card: the clock waits; a tap moves on
+    if (this.intro > 0) { this.intro -= dt; if (input.taps.length && this.intro < 2.0) this.intro = 0; if (this.intro <= 0) { this.banner = 1.1; Sfx.prompt && Sfx.prompt(false); } return; }
+    if (this.banner > 0) { this.banner -= dt; if (input.taps.length && this.banner < 0.8) this.banner = 0; if (this.banner <= 0) { this.paused = false; Input.flush(); } return; }
+    if (this.step === 0) {   // POUR: tilt to pour, level off to stop (as POUR!), hold a touch with no gyro
+      const t = Input.tiltReady ? Math.abs(input.tiltX) : (input.down ? 0.7 : 0);
+      if (t > 0.5) this.pouring = true; else if (t < 0.3) this.pouring = false;
+      if (this.pouring) { this.fill += Math.min(1, t) * dt * 0.42; if (Math.random() < 0.4) this.drops.push({ x: CX + (Math.random() - 0.5) * 20, y: 132, vx: (Math.random() - 0.5) * 90, vy: -50, t: 0 }); }
+      if (this.fill > 1) { buzz(100); FX.shake(3); Sfx.splash(); this.lose(); return; }   // it overflows
+      const ok = this.fill >= BathTime.LO && this.fill <= BathTime.HI;
+      if (!this.pouring && ok) { this.hold += dt; if (this.hold >= 0.4) { Sfx.chomp(); this.k = 1; } } else this.hold = 0;
+      if (this.k < 1) this.k = Math.min(0.99, this.fill / BathTime.LO);
+    } else if (this.step === 1) {   // RUB: drag right over each splat
+      if (input.down && input.moveDist > 0)
+        for (const m of this.mud) if (m.dirt > 0 && Math.hypot(input.x - m.x, input.y - m.y) < m.r + 4) { m.dirt -= input.moveDist * 0.03; this.scrubT = this.t; if (Math.random() < 0.2) Sfx.squeak(); }
+      this.k = 1 - this.mud.reduce((a, m) => a + Math.max(0, m.dirt), 0) / this.mud.length;
+    } else if (this.step === 2) {   // SHAKE: the phone, or rubbing fast, shakes it dry
+      const m = input.shake;
+      if (m > 0.12) {
+        const was = this.k; this.k += m * dt * 2.2 / 1.8;
+        if (Math.random() < m * (1 - this.k)) this.drops.push({ x: CX + (Math.random() - 0.5) * 50, y: 130 + Math.random() * 30, vx: (Math.random() - 0.5) * 220, vy: -80 - Math.random() * 60, t: 0 });
+        // halfway: the last of the water flies off in a puff, and it's fluffy
+        if (was < 0.6 && this.k >= 0.6) { for (let n = 0; n < 24; n++) { const a = n / 24 * 6.28; this.drops.push({ x: CX + Math.cos(a) * 30, y: 150 + Math.sin(a) * 34, vx: Math.cos(a) * 180, vy: Math.sin(a) * 140 - 40, t: 0 }); } Sfx.poof(); FX.burst(CX, 150, PAL.ink, 16, 80); }
+      }
+    } else if (this.step === 3) {   // KISS: blow hearts at it, or tap the hearts floating up
+      if (Input.micReady) {
+        if (input.blow > 0.3) { this.k += input.blow * dt * 1.1; if ((this.heartT -= dt) <= 0) { this.heartT = 0.15; this.hearts.push({ x: CX + (Math.random() - 0.5) * 40, y: BOT - 20, t: 0, sent: true }); } }
+      } else {
+        if ((this.heartT -= dt) <= 0) { this.heartT = 0.32; this.hearts.push({ x: 30 + Math.random() * (W - 60), y: BOT - 40, t: 0, sent: false }); }   // floating up from above the bar
+        for (const tp of input.taps) {
+          const h = this.hearts.find(h => !h.sent && Math.hypot(tp.x - h.x, tp.y - h.y) < 18);
+          if (h) { h.sent = true; this.k += 0.34; Sfx.heart(); buzz(15); }   // 3 hearts
+        }
+      }
     }
-    if (input.shake < 0.12) { this.grow += dt; if (this.grow >= this.every && this.suds.length < this.n) { this.grow = 0; this.suds.push(this.newSud()); } }
-    else this.grow = 0;
-    if (!this.suds.length) { this.done = 0.001; Sfx.splash(); FX.burst(CX, 150, PAL.ink, 14, 70); }
-    for (const f of this.flying) { f.t += dt; f.x += f.vx * dt; f.y += f.vy * dt; f.vy += 260 * dt; }
-    this.flying = this.flying.filter(f => f.t < 0.8);
+    if (this.k >= 1 && this.step < 4) this.next();
   }
   // the tub (art/tub.png): white enamel, a rim with the water in it, little
   // feet; its rim's top at y - 4, x 24..156 (DRY OFF sits in it too)
@@ -5839,23 +6119,75 @@ class BathTime extends Microgame {
     ctx.globalAlpha = 0.65; ctx.drawImage(a.img, 4, 4, a.fw - 8, r - 4, CX - a.fw / 2 + 4, y, a.fw - 8, r - 4); ctx.globalAlpha = 1;
     ctx.drawImage(a.img, 0, r, a.fw, a.fh - r, CX - a.fw / 2, y - 4 + r, a.fw, a.fh - r);
   }
-  bubble(x, y, r) { g.sprite('suds', x, y, { frame: r < 8 ? 0 : 1 }); }   // art/suds.png: small, big
+  // a pixel heart, as PAT draws them, at k times the size, with a dark rim so it reads on the tiles
+  static heart(x, y, c, k = 1) {
+    const H = (dx, dy, w, h, col) => g.rect(x + dx * k, y + dy * k, w * k, h * k, col);
+    for (const [ox, oy] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+      const R = (dx, dy, w, h) => g.rect(x + dx * k + ox, y + dy * k + oy, w * k, h * k, PAL.bg);
+      R(-4, -3, 3, 2); R(1, -3, 3, 2); R(-5, -1, 10, 2); R(-4, 1, 8, 2); R(-2, 3, 4, 2);
+    }
+    H(-4, -3, 3, 2, c); H(1, -3, 3, 2, c); H(-5, -1, 10, 2, c); H(-4, 1, 8, 2, c); H(-2, 3, 4, 2, c);
+    H(-3, -2, 1, 1, PAL.ink);   // a shine
+  }
   draw(g) {
     g.clear();
-    const j = (Math.random() - 0.5) * Input.shake * 8, clean = this.done > 0;
-    // the shiba sits in the tub, squinting under the suds; clean = all smiles
-    // the shiba from RUB in the tub: sudsy and squirming, then happy once clean
+    const st = this.step, sx = Math.round(this.sx), wig = Math.floor(this.t * 10) % RubClean.WIGGLE, f4 = Math.floor(this.t * 5) % 4;
     BathTime.tubBack(178);
-    if (Assets.get('rubdog')) g.sprite('rubdog', Math.round(CX + j), 144, { w: 96, h: 88, frame: clean ? 12 : Math.floor(this.t * 10) % RubClean.WIGGLE });   // sat down in the water
-    else g.sprite('face', CX + j, 152, { w: 64, h: 66, frame: clean ? 0 : 1 });
+    // the shiba in the tub: muddy while the bath fills and while you rub,
+    // wet then drying to fluffy as it shakes (happy, never sad), then waiting
+    // for its kiss and cheering once it has had it
+    if (st <= 1) {
+      if (Assets.get('rubdog')) g.sprite('rubdog', sx + 1, 144, { w: 96, h: 88, frame: st === 1 && this.t - this.scrubT < 0.2 ? wig : 0 });
+      else g.sprite('shiba', sx, 151, { w: 70, h: 74, frame: 0 });
+    } else if (st === 2) {
+      const sh = this.banner > 0 ? 0 : Input.shake, wob = sh > 0.12 ? Math.sin(this.t * 40) * sh * 0.1 : 0;
+      ctx.save(); ctx.translate(CX, 210); ctx.rotate(wob); ctx.translate(-CX, -210);
+      // wet (art/wetidle.png's happy frames) until the last of the water flies off, then fluffy
+      if (this.k < 0.6 && Assets.get('wetidle')) g.sprite('wetidle', CX, 210 - 64, { w: 128, h: 128, frame: f4 });
+      else g.fullIdle(CX, 210, 'happy', this.t);
+      ctx.restore();
+    } else g.fullIdle(CX, 210, 'happy', this.t);
+    for (const m of this.mud) if (st <= 1 && m.dirt > 0) { ctx.globalAlpha = Math.min(1, m.dirt + 0.15); g.sprite('mud', m.x, m.y); ctx.globalAlpha = 1; }
     BathTime.tubFront(178);
-    // a rubber duck riding the bath
-    const dx = 120 + Math.sin(this.t * 2) * 6;
-    g.sprite('duck', dx + 3, 172);   // art/duck.png
-    for (const s of this.suds) this.bubble(s.x + j * 0.5, s.y, s.r);
-    for (const f of this.flying) { ctx.globalAlpha = 1 - f.t / 0.8; this.bubble(f.x, f.y, f.r); ctx.globalAlpha = 1; }
-    g.text(clean ? 'SQUEAKY CLEAN!' : 'SHAKE!', CX, TOP + 26, 11, PAL.accent);
-    g.text('SUDS ' + this.suds.length, CX, BOT - 10, 9, PAL.ink);
+    g.sprite('duck', 123 + Math.sin(this.t * 2) * 6, 172);   // a rubber duck riding the bath (art/duck.png)
+    // POUR: the jug tipped over the tub as in POUR!, its stream, and the water gauge with its line
+    if (st === 0) {
+      const t = Input.tiltReady ? Input.tiltX : (Input.down && this.banner <= 0 && this.intro <= 0 ? 0.6 : 0), tip = Math.max(-1, Math.min(1, t)) * 0.7;
+      ctx.save(); ctx.translate(CX - 4, TOP + 46); ctx.rotate(tip); g.sprite('jug', 1, -4); ctx.restore();
+      if (this.pouring) { ctx.globalAlpha = 0.8; g.rect(CX - 2, TOP + 56, 3, 132 - TOP - 56, SCENE.sea1); ctx.globalAlpha = 1; }
+      const gx = W - 24, gy0 = 100, gh = 130, ok = this.fill >= BathTime.LO && this.fill <= BathTime.HI;
+      g.rect(gx - 1, gy0 - 1, 10, gh + 2, PAL.bg); g.rect(gx, gy0, 8, gh, SCENE.grout);
+      g.rect(gx, gy0 + gh - Math.min(1, this.fill) * gh, 8, Math.min(1, this.fill) * gh, ok ? PAL.accent : SCENE.sea1);
+      for (const v of [BathTime.LO, BathTime.HI]) g.rect(gx - 4, gy0 + gh - v * gh, 16, 1, PAL.accent);
+      g.text('WATER', gx + 4, gy0 - 5, 8, PAL.ink);
+    }
+    for (const d of this.drops) { ctx.globalAlpha = 1 - d.t / 0.6; g.rect(d.x - 1, d.y - 1, 2, 3, SCENE.sea0); ctx.globalAlpha = 1; }
+    for (const h of this.hearts) BathTime.heart(Math.round(h.x), Math.round(h.y), h.sent ? PAL.bad : '#ff6f9e', h.sent ? 1 : 2);
+    for (let n = 0; n < 4; n++) g.rect(CX - 20 + n * 10, BOT - 26, 7, 7, n < st ? PAL.accent : n === st ? PAL.ink : PAL.mid);
+    if (st >= 4) { g.outline('SQUEAKY CLEAN!', CX, TOP + 26, 14, PAL.accent); return; }
+    const S = BathTime.STEPS, i = Math.min(3, st), [l1, l2] = this.how(i);
+    // the four goes, before the first: a card with each one and what to do
+    if (this.intro > 0) {
+      ctx.globalAlpha = 0.85; g.rect(0, TOP, W, BOT - TOP, PAL.bg); ctx.globalAlpha = 1;
+      g.outline('BATH TIME!', CX, TOP + 30, 16, PAL.accent);
+      for (let n = 0; n < 4; n++) {
+        const y = TOP + 62 + n * 46, [a1, a2] = this.how(n);
+        g.button({ x: 12, y: y - 14, w: W - 24, h: 38 }, n === 0);
+        g.text((n + 1) + '  ' + S[n], CX, y + 2, 11, n === 0 ? PAL.bg : PAL.accent);
+        g.text(a1, CX, y + 16, 8, n === 0 ? PAL.bg : PAL.ink);
+      }
+      return;
+    }
+    // each go: its name big and what to do, then the name small with its bar
+    if (this.banner > 0) {
+      ctx.globalAlpha = 0.6; g.rect(0, TOP + 30, W, 74, PAL.bg); ctx.globalAlpha = 1;
+      g.outline((i + 1) + ' / 4  ' + S[i], CX, TOP + 56, 18, PAL.accent);
+      g.text(l1, CX, TOP + 78, 9, PAL.ink); if (l2) g.text(l2, CX, TOP + 92, 9, PAL.ink);
+    } else {
+      g.outline(S[i], CX, TOP + 22, 12, PAL.accent);
+      g.text(l1, CX, TOP + 36, 8, PAL.ink);
+      g.bar(30, BOT - 14, W - 60, 6, this.k, PAL.accent, PAL.mid);
+    }
   }
 }
 
