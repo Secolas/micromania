@@ -1,28 +1,23 @@
-// The title's runner: it jumps the games' props in its way, jumps for the
-// bones floating about, and puts on the cowboy hat when it grabs one.
+// The title's runner: it runs past the bushes, jumps for the bones floating
+// about, and puts on the cowboy hat when it grabs one.
 import { assert, openGame } from './lib.mjs';
 
 export default async function ({ url, launch }) {
   const { page, done } = await openGame(launch, url);
   const r = await page.evaluate(() => {
     Engine.state = 'TITLE'; Engine.timer = 0; Engine.titleT = 0; Engine.runner = null;
-    const kinds = new Set(); let hatAt = -1, clipped = 0;
+    let hatAt = -1, bones = 0;
     for (let i = 0; i < 1500; i++) {
       Input.beginStep(); Engine.update(STEP);
-      const R = Engine.runner;
-      if (R.hat && hatAt < 0) hatAt = i;
-      // the shiba's paws are never below the top of a prop it is over
-      for (let k = Engine.runThingAfter(R.scroll + Engine.RUN_X - 6); ; k++) {
-        const th = Engine.runThing(k), dx = th.x - R.scroll - Engine.RUN_X; if (dx > 6) break;
-        kinds.add(th.kind); if (th.h && Math.abs(dx) < 4 && R.y < th.h) clipped++;
-      }
+      if (Engine.runner.hat && hatAt < 0) hatAt = i;
       if (i % 30 === 0) Engine.draw();
     }
-    return { got: Engine.runner.got.size, hatAt, kinds: [...kinds], clipped };
+    // every bone it has run past (after the intro, when it starts jumping)
+    const R = Engine.runner, past = Engine.runThingAfter(R.scroll + Engine.RUN_X - 20);
+    for (let k = 0; k < past; k++) if (Engine.runThing(k).kind === 'bone' && Engine.runThing(k).x > 200) bones++;
+    return { got: R.got.size, bones, hatAt };
   });
-  assert(r.got >= 8, 'it grabs bones as it runs: ' + r.got);
+  assert(r.bones >= 8 && r.got >= r.bones, 'it grabs every bone it passes, low or high: ' + r.got + ' of ' + r.bones);
   assert(r.hatAt > 0, 'and grabs the cowboy hat, and wears it');
-  assert(r.kinds.filter(k => k !== 'bone' && k !== 'hat').length >= 3, 'it jumps the games\' props: ' + r.kinds);
-  assert(r.clipped === 0, 'clearing each one: ' + r.clipped);
   await done();
 }

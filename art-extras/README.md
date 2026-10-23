@@ -153,5 +153,7 @@ instead.
 
 `bush-spiky.png`: PixelLab's first try at the title's bush to hop
 (`create_image_pixflux`, the hedge's colours as the palette), a spiky plant
-rather than a bush. The second try, a low round shrub on a 48×32 canvas, is
-`art/bush.png`.
+rather than a bush. `bush-big.png`: the second try, a low round shrub on a
+48×32 canvas (39×24), the title's bush for a while. It was too big, so PixelLab
+redrew it at two-thirds size (from a nearest-neighbour shrink of it, init
+strength 300), and that is `art/bush.png` (26×16).
