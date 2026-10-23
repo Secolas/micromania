@@ -5128,7 +5128,8 @@ class Juggle extends Microgame {
    is missing, so they stay playable on any device.
 ─────────────────────────────────────────────────────────────────────────────── */
 
-// TILT — keep the ball on the see-saw plank until the clock runs out
+// TILT — keep the ball on the see-saw until the clock runs out, while crates
+// drop onto it and tip it their way (on 3 a gust of wind too): lean against them
 class BalanceBall extends Microgame {
   static meta = { id: 'balance', env: 'field@200', prompt: 'BALANCE!', hint: 'move', duration: 5.0, minDuration: 4.2, winOnTimeout: true,
     how: { tilt: 'TILT THE PHONE\nKEEP THE BALL ON', touch: 'HOLD LEFT OR RIGHT\nTO TILT' } };
@@ -5138,13 +5139,29 @@ class BalanceBall extends Microgame {
     this.grav = this.byD(1.6, 2.1, 2.6);
     this.half = 62;
     this.rollT = 0; this.edgeT = 0;
+    this.vel = (Math.random() < 0.5 ? -1 : 1) * 0.12;   // a nudge to start with: it never just sits there
+    // crates (KNOCK IT's) dropping onto the plank, each at its own spot and time
+    const n = this.byD(1, 2, 3), span = Math.max(1.6, (this.timeLimit || 5) - 1.6);
+    this.crates = [];
+    for (let i = 0; i < n; i++) this.crates.push({ at: 0.6 + span * (i + Math.random() * 0.5) / n, px: (Math.random() < 0.5 ? -1 : 1) * (0.35 + Math.random() * 0.5), y: TOP, vy: 0, on: false });
+    this.gust = this.d >= 3 ? { at: 1.2 + Math.random() * Math.max(0.5, span - 1.2), dir: Math.random() < 0.5 ? -1 : 1, t: 0 } : null;
   }
+  // the crates' weight tipping the plank: each pulls it down on its side
+  load() { return this.crates.reduce((a, c) => a + (c.on ? c.px * 0.55 : 0), 0); }
   update(dt, input) {
     // gyro tilt, or drag left/right, or ease back to flat
     const want = Input.tiltReady ? input.tiltX
                : input.down ? Math.max(-1, Math.min(1, (input.x - CX) / (W / 2))) : this.tilt * 0.9;
-    this.tilt += (Math.max(-1, Math.min(1, want)) - this.tilt) * Math.min(1, dt * 10);
+    this.tilt += (Math.max(-1, Math.min(1, want + this.load())) - this.tilt) * Math.min(1, dt * 10);
     this.vel += this.tilt * this.grav * dt;
+    // the crates fall onto the plank and stay; a gust shoves the ball
+    for (const c of this.crates) if (!c.on && this.t >= c.at) {
+      c.vy += 420 * dt; c.y += c.vy * dt;
+      const land = CY + 6 + Math.sin(this.tilt * 0.5) * c.px * this.half - 8;
+      if (c.y >= land) { c.on = true; Sfx.thud(); FX.shake(2); buzz(25); }
+    }
+    const gu = this.gust;
+    if (gu && this.t >= gu.at && gu.t < 0.9) { gu.t += dt; this.vel += gu.dir * 0.9 * dt; }
     this.vel *= 0.99;
     this.pos += this.vel * dt;
     // the ball rumbles as it rolls, and beeps faster the nearer it gets to the edge
@@ -5164,9 +5181,13 @@ class BalanceBall extends Microgame {
     const pk = Assets.get('plank');   // art/plank.png, its middle 2 x half
     if (pk) ctx.drawImage(pk.img, Math.floor((pk.fw - this.half * 2) / 2), 0, this.half * 2, pk.fh, -this.half, -2, this.half * 2, pk.fh);
     else g.rect(-this.half, -2, this.half * 2, 4, PAL.mid);
+    for (const c of this.crates) if (c.on) g.sprite('crate', c.px * this.half, -8);   // art/crate.png, riding the plank
     const bx = this.pos * this.half;
     g.sprite('face', bx, -12, { w: 20, h: 20, frame: Math.floor(this.t * 8) % 3 });
     ctx.restore();
+    for (const c of this.crates) if (!c.on && this.t >= c.at) g.sprite('crate', CX + c.px * this.half, c.y);   // falling
+    const gu = this.gust;   // the gust: streaks blowing across
+    if (gu && this.t >= gu.at && gu.t < 0.9) { ctx.globalAlpha = 0.7; for (let i = 0; i < 5; i++) { const x = ((this.t * 220 * gu.dir + i * 47) % (W + 40) + W + 40) % (W + 40) - 20; g.rect(x, CY - 40 + i * 14, 18, 1, PAL.ink); } ctx.globalAlpha = 1; }
     // edge markers turn red as the ball nears the drop
     g.rect(CX - this.half - 3, CY + 4, 3, 8, near && this.pos < 0 ? PAL.bad : PAL.mid);
     g.rect(CX + this.half, CY + 4, 3, 8, near && this.pos > 0 ? PAL.bad : PAL.mid);

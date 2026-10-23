@@ -142,6 +142,12 @@ export default async function ({ url, launch }) {
   { let idle = 0; for (let k = 0; k < 6; k++) { Engine.startRound(Doodle, 1); Engine.state = 'PLAYING'; Engine.timer = Engine.duration; const d = Engine.game; release();
       for (let i = 0; i < 900 && !d.finished && Engine.state === 'PLAYING'; i++) { Input.beginStep(); Engine.update(STEP); } if (d.won) idle++; }
     out.hopIdle = idle; }
+  // BALANCE: lean against the crates and the roll (a steady hand); doing nothing lets it roll off
+  const steady = (gm) => { const want = Math.max(-1, Math.min(1, -gm.load() - gm.pos * 1.6 - gm.vel * 1.4)); hold(90 + want * 90, 150); };
+  out.wins.balance = play(BalanceBall, 3, steady);
+  { let idle = 0; for (let k = 0; k < 6; k++) { Engine.startRound(BalanceBall, 1); Engine.state = 'PLAYING'; Engine.timer = Engine.duration; const d = Engine.game; release();
+      for (let i = 0; i < 900 && !d.finished && Engine.state === 'PLAYING'; i++) { Input.beginStep(); Engine.update(STEP); } if (d.won) idle++; }
+    out.balanceIdle = idle; }
   // DRY OFF with no sensors: rubbing fast dries the shiba; leaving it wet loses
   out.wins.dry = play(DryShiba, 3, (gm, i) => hold(90 + Math.cos(i * 0.7) * 45, 180));
   { let idleWins = 0; for (let k = 0; k < 5; k++) { Engine.startRound(DryShiba, 1); Engine.state = 'PLAYING'; Engine.timer = Engine.duration; const d = Engine.game;
@@ -177,6 +183,7 @@ export default async function ({ url, launch }) {
   assert(out.tapWrong === 10, 'TAP: tapping a face that is not laughing should lose, lost ' + out.tapWrong + '/10');
   assert(out.tapIdle === 0, 'TAP: doing nothing should lose, won ' + out.tapIdle + '/10');
   assert(out.hopIdle === 0, 'HOP: doing nothing should lose, won ' + out.hopIdle + '/6');
+  assert(out.balanceIdle === 0, 'BALANCE: doing nothing should lose, won ' + out.balanceIdle + '/6');
   assert(out.dryIdle === 0, 'DRY OFF: leaving the shiba wet should lose, won ' + out.dryIdle + '/5');
   assert(out.highfiveWrong >= 5, 'HIGH FIVE: tapping the wrong paw should lose, lost ' + out.highfiveWrong + '/10');
   await done();
