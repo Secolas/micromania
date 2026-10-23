@@ -8205,7 +8205,7 @@ const Engine = {
   RUN_PROPS: [
     ['crate', 12, 'KNOCK IT'], ['crates', 24, 'KNOCK IT'], ['cactus', 31, 'JUMP!'], ['fence', 12, 'SQUEEZE, WALKIES'],
     ['pot', 20, 'DODGE'], ['duck', 24, 'BATH TIME'], ['speaker', 29, 'HEADBANG'], ['ball', 14, 'JUGGLE'],
-    ['bowl', 24, 'FEED'], ['hurdle', 25, 'BARK JUMP'], ['doghouse', 23, 'the doghouse'], ['bush', 22, 'the title'],
+    ['bowl', 24, 'FEED'], ['doghouse', 23, 'the doghouse'], ['bush', 22, 'the title'],
   ],
   runThing(i) {
     const r = k => (((i + 1) * 2654435761 + k * 40503) >>> 0) % 1000 / 1000;   // the same every time for slot i
@@ -8248,7 +8248,7 @@ const Engine = {
       else if (th.kind === 'fence') g.fence(bx - 10, bx + 11, gy - 6);
       else if (th.kind === 'pot') g.pot(bx, gy - 5, 1);
       else if (th.kind === 'cactus') prop('cactus', gy + 1);
-      else prop(th.kind, gy);   // duck, speaker, ball, bowl, hurdle, doghouse: 1:1, standing on the grass
+      else prop(th.kind, gy);   // duck, speaker, ball, bowl, doghouse: 1:1, standing on the grass
       if (!th.lift || Rn.got && Rn.got.has(i)) continue;
       const by = gy - th.lift + Math.sin(this.time * 4 + i) * 1.5;
       if (th.kind === 'hat') { if (!Rn.hat) Closet.drawItem({ f: 15 }, bx, by + 12, 1); }   // hats.png's cowboy hat
