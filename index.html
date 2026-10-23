@@ -3094,13 +3094,39 @@ class Dodge extends Microgame {
   }
 }
 
-// 10. SHH — don't wake the sleeping shiba. The classic do-nothing trap.
+// 10. SHH — flies buzz in at the sleeping shiba's nose: shoo each one with a
+// tap before it lands, but a tap on the dog itself wakes it. 1 / 2 / 3 flies.
 class DontTap extends Microgame {
-  static meta = { id: 'dont', env: 'room@205', prompt: 'SHH!', hint: 'wait', duration: 3.0, winOnTimeout: true,
-    how: "IT'S ASLEEP.\nDON'T TOUCH ANYTHING!" };
-  init() { this.woke = 0; sleepFace(); }
+  static meta = { id: 'dont', env: 'room@205', prompt: 'SHH!', hint: 'tap', duration: 4.4, minDuration: 3.8,
+    how: "SHOO THE FLIES\nDON'T TOUCH THE DOG" };
+  static NOSE = { x: CX - 34, y: CY + 14 };   // where a fly lands to wake it
+  init() {
+    this.woke = 0; sleepFace();
+    const n = this.byD(1, 2, 3), sp = this.byD(30, 38, 48), span = Math.max(0.6, (this.timeLimit || 4.4) - 2.6);
+    // each fly comes in from an edge, a little after the last, wobbling as it buzzes
+    this.flies = [];
+    for (let i = 0; i < n; i++) {
+      const side = Math.random() < 0.5 ? -1 : 1, y = TOP + 20 + Math.random() * 90;
+      this.flies.push({ x: side < 0 ? -16 : W + 16, y, sp, at: 0.25 + span * i / Math.max(1, n - 1) * (n > 1 ? 1 : 0), shoo: 0, ph: Math.random() * 6 });
+    }
+  }
+  wake(x, y) { this.woke = 1; Sfx.bark(); buzz(60); FX.shake(3); this.lose(); }
   update(dt, input) {
-    if (input.justDown) { this.woke = 1; Sfx.bark(); buzz(60); FX.shake(3); this.lose(); }
+    const N = DontTap.NOSE;
+    for (const f of this.flies) {
+      if (this.t < f.at) continue;
+      if (f.shoo) { f.shoo += dt; f.x += f.vx * dt; f.y += f.vy * dt; continue; }   // shooed: off it zooms
+      const dx = N.x - f.x, dy = N.y - f.y, d = Math.hypot(dx, dy) || 1;
+      f.x += dx / d * f.sp * dt + Math.cos(this.t * 9 + f.ph) * 22 * dt;
+      f.y += dy / d * f.sp * dt + Math.sin(this.t * 13 + f.ph) * 30 * dt;
+      if (d < 8) { this.wake(); return; }   // it landed on the nose
+    }
+    if (input.justDown) {
+      const f = this.flies.find(f => this.t >= f.at && !f.shoo && Math.hypot(input.x - f.x, input.y - f.y) < 18);
+      if (f) { f.shoo = 0.001; f.vx = (f.x < CX ? -1 : 1) * 260; f.vy = -160; Sfx.whoosh(); FX.hit(f.x, f.y, PAL.accent); buzz(15); }
+      else if (Math.abs(input.x - CX) < 62 && input.y > CY - 6 && input.y < CY + 50) { this.wake(); return; }   // poked the dog
+    }
+    if (this.flies.every(f => f.shoo)) this.succeed();
   }
   draw(g) {
     g.clear();
@@ -3122,7 +3148,10 @@ class DontTap extends Microgame {
       g.zed(CX + 30 + k * 26 + i * 4, CY - 30 - k * 46, i, 9 + i * 3);
       ctx.globalAlpha = 1;
     }
-    g.text('shhh…', CX, BOT - 8, 8, PAL.mid);
+    // the flies: SWAT's little winged shibas, flapping
+    for (const f of this.flies) if (this.t >= f.at && f.y > TOP - 30 && f.x > -30 && f.x < W + 30)
+      g.sprite('flydog', Math.round(f.x), Math.round(f.y), { w: 30, h: 24, flip: (f.shoo ? f.vx : DontTap.NOSE.x - f.x) < 0 });
+    g.text('shoo the flies… shhh', CX, BOT - 8, 8, PAL.mid);
   }
 }
 
@@ -3969,7 +3998,11 @@ class Doodle extends Microgame {
     let py = BOT - 20;
     for (let i = 0; i <= this.need; i++) {
       // each step within reach of the last, but never straight above it
-      const last = this.plats[i - 1], x = i ? Math.max(28, Math.min(W - 28, last.x + (Math.random() < 0.5 ? -1 : 1) * (30 + Math.random() * 40))) : CX;
+      // far enough to the side that you can't land on it without steering
+      let x = CX;
+      if (i) { const last = this.plats[i - 1], off = 44 + Math.random() * 36; let dir = Math.random() < 0.5 ? -1 : 1;
+        if (last.x + dir * off < 28 || last.x + dir * off > W - 28) dir = -dir;
+        x = Math.max(28, Math.min(W - 28, last.x + dir * off)); }
       this.plats.push({ x, y: py, used: false, vx: i ? (Math.random() < 0.5 ? -1 : 1) * slide : 0 }); py -= step;
     }
     this.y = this.plats[0].y - 6;

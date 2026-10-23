@@ -68,7 +68,10 @@ export default async function ({ url, launch }) {
     const k = gm.i + gm.fly.filter(f => !f.bad).length;
     if (i % 8 === 4 && k < gm.recipe.length) { const b = gm.bins.find(b => b.f === gm.recipe[k]); tapAt(b.x + b.w / 2, b.y + 20); }
   });
-  out.wins.shh = play(DontTap, 3, () => {});
+  // SHH: tap each fly as it comes in (never the dog); doing nothing lets one land on its nose
+  out.wins.shh = play(DontTap, 3, (gm, i) => { if (i % 8) return; const f = gm.flies.find(f => gm.t >= f.at && !f.shoo && f.x > 4 && f.x < W - 4 && !(Math.abs(f.x - 90) < 62 && f.y > 141 && f.y < 197)); if (f) tapAt(f.x, f.y); });
+  out.shhIdle = play(DontTap, 1, () => {});
+  out.shhPoke = play(DontTap, 1, (gm, i) => { if (i === 30) tapAt(90, 175); });
   out.wins.dodge = play(Dodge, 3, (gm) => { const danger = gm.blocks.filter(b => b.y > gm.py - 80 && b.y < gm.py + 10); let best = gm.px, bs = -1; for (let x = 12; x < W - 12; x += 4) { const s = Math.min(...danger.map(b => Math.abs(b.x - x) - b.w / 2), 999); if (s > bs) { bs = s; best = x; } } hold(best, 250); });
   out.wins.squeeze = play(Squeeze, 3, (gm) => { const w = gm.walls.filter(w => w.y < gm.py).sort((a, b) => b.y - a.y)[0]; hold(w ? w.gx : 90, 250); });
   // CROSS: hop when the next lane stays clear for a moment, or when a car is about to reach you where you stand
@@ -184,6 +187,8 @@ export default async function ({ url, launch }) {
   assert(out.tapIdle === 0, 'TAP: doing nothing should lose, won ' + out.tapIdle + '/10');
   assert(out.hopIdle === 0, 'HOP: doing nothing should lose, won ' + out.hopIdle + '/6');
   assert(out.balanceIdle === 0, 'BALANCE: doing nothing should lose, won ' + out.balanceIdle + '/6');
+  assert(out.shhIdle === '0/20', 'SHH: doing nothing should let a fly wake it: ' + out.shhIdle);
+  assert(out.shhPoke === '0/20', 'SHH: poking the dog should wake it: ' + out.shhPoke);
   assert(out.dryIdle === 0, 'DRY OFF: leaving the shiba wet should lose, won ' + out.dryIdle + '/5');
   assert(out.highfiveWrong >= 5, 'HIGH FIVE: tapping the wrong paw should lose, lost ' + out.highfiveWrong + '/10');
   await done();
