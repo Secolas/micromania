@@ -6845,10 +6845,10 @@ const Prize = {
     const it = this.q[0], t = this.t, pop = Math.min(1, t / 0.25), k = pop < 1 ? 1 - Math.pow(1 - pop, 3) * 1.1 + 0.1 * Math.sin(pop * 9) : 1;
     ctx.globalAlpha = 0.8 * pop; g.rect(0, 0, W, H, PAL.bg); ctx.globalAlpha = 1;
     ctx.save(); ctx.translate(CX, CY); ctx.scale(k, k); ctx.translate(-CX, -CY);
-    const P = { x: 14, y: CY - 106, w: W - 28, h: 214 };
+    const P = { x: 14, y: CY - 126, w: W - 28, h: 250 };
     g.rect(P.x, P.y, P.w, P.h, MENU_PANEL);
     g.nine('titlesign', 0, P.x - 4, P.y - 4, P.w + 8, P.h + 8, 22);
-    const sy = CY + 50;   // the shiba's paws
+    const sy = P.y + P.h - 42;   // the shiba's paws: low enough that a tall hat clears the name
     // light turning behind it
     ctx.save(); ctx.beginPath(); ctx.rect(P.x + 8, P.y + 8, P.w - 16, P.h - 16); ctx.clip();
     ctx.globalAlpha = 0.22; ctx.fillStyle = PAL.accent;
@@ -6859,7 +6859,7 @@ const Prize = {
     ctx.globalAlpha = 1; ctx.restore();
     g.text('YOU GOT', CX, P.y + 24, 10, PAL.ink);
     const name = it.coat ? it.name + ' COAT' : it.name;
-    g.wrap(name, P.w - 24, 14).forEach((l, i, L) => g.outline(l, CX, P.y + 44 + i * 16 - (L.length - 1) * 4, 14, PAL.accent));
+    g.wrap(name, P.w - 24, 14).forEach((l, i, L) => g.outline(l, CX, P.y + 46 + i * 16 - (L.length - 1) * 4, 14, PAL.accent));
     // the shiba, twice size, cheering, in it
     const f = Math.floor(t * 6) % 2 ? g.FULL.cheer : g.FULL.cheer2;
     const raw = Assets.raw('fullshiba'), sh = it.coat && raw ? Coat.sheet('fullshiba', raw, it.coat) : Assets.get('fullshiba');
