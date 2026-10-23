@@ -122,6 +122,20 @@ export default async function ({ url, launch }) {
   out.fakeIdleWins = gm.won;
   gm = forceFake(TapBug); Engine.state = 'PLAYING'; Engine.timer = Engine.duration; tapAt(gm.bug.x, gm.bug.y); Input.beginStep(); Engine.update(STEP);
   out.fakeTouchLoses = gm.finished && !gm.won;
+  // TAP: follow the laughing face; tapping a calm or sleepy one loses, and doing nothing loses
+  Engine.seen.delete('tap');   // no fake-outs here
+  out.wins.tap = play(TapBug, 3, (gm, i) => { if (i % 12 === 6) tapAt(gm.bug.x, gm.bug.y); });
+  { let wrong = 0, idle = 0;
+    for (let k = 0; k < 10; k++) {
+      Engine.startRound(TapBug, 3); Engine.state = 'PLAYING'; Engine.timer = Engine.duration; let t = Engine.game;
+      const o = t.faces.find(f => f !== t.bug); tapAt(o.x, o.y); Input.beginStep(); Engine.update(STEP);
+      if (t.finished && !t.won) wrong++;   // (a fake-out loses on any face too)
+      Engine.startRound(TapBug, 1); Engine.state = 'PLAYING'; Engine.timer = Engine.duration; t = Engine.game;
+      for (let i = 0; i < 900 && !t.finished && Engine.state === 'PLAYING'; i++) { Input.beginStep(); Engine.update(STEP); }
+      if (t.won && !t.fake) idle++;   // a DON'T TAP! fake-out is won by waiting
+    }
+    out.tapWrong = wrong; out.tapIdle = idle; }
+  Engine.seen.add('tap');
   // DRY OFF with no sensors: rubbing fast dries the shiba; leaving it wet loses
   out.wins.dry = play(DryShiba, 3, (gm, i) => hold(90 + Math.cos(i * 0.7) * 45, 180));
   { let idleWins = 0; for (let k = 0; k < 5; k++) { Engine.startRound(DryShiba, 1); Engine.state = 'PLAYING'; Engine.timer = Engine.duration; const d = Engine.game;
@@ -154,6 +168,8 @@ export default async function ({ url, launch }) {
   { const [w, n] = out.losses.cook.split('/').map(Number); assert(w === 0, 'COOK: tapping the wrong food should never win, won ' + out.losses.cook); }
   assert(out.fakeIdleWins, 'fake-out: leaving it alone should win');
   assert(out.fakeTouchLoses, 'fake-out: touching it should lose');
+  assert(out.tapWrong === 10, 'TAP: tapping a face that is not laughing should lose, lost ' + out.tapWrong + '/10');
+  assert(out.tapIdle === 0, 'TAP: doing nothing should lose, won ' + out.tapIdle + '/10');
   assert(out.dryIdle === 0, 'DRY OFF: leaving the shiba wet should lose, won ' + out.dryIdle + '/5');
   assert(out.highfiveWrong >= 5, 'HIGH FIVE: tapping the wrong paw should lose, lost ' + out.highfiveWrong + '/10');
   await done();

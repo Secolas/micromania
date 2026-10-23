@@ -2491,35 +2491,60 @@ class Microgame {
    MICROGAMES — add new ones here, then register in POOL / BOSSES at the bottom
 ============================================================================= */
 
-// 1. TAP — tap the bouncing shiba (sometimes a DON'T TAP! fake-out)
+// 1. TAP — shiba faces bounce about: tap the laughing one, never one of the
+// sleepy ones. Each good tap passes the laugh to another face, so on 2 and 3
+// you have to follow it. (Sometimes a DON'T TAP! fake-out.)
 class TapBug extends Microgame {
-  static meta = { id: 'tap', env: 'lawn', prompt: 'TAP!', hint: 'tap', duration: 3.2,
-    how: 'TAP THE DOG' };
+  static meta = { id: 'tap', env: 'lawn', prompt: 'TAP!', hint: 'tap', duration: 3.6,
+    how: "TAP THE LAUGHING DOG\nDON'T WAKE THE SLEEPY ONES" };
+  static R = 14;   // a face's hit radius (drawn 28 across)
   init() {
-    this.miss = 0;
-    this.bug = { x: 24 + Math.random() * (W - 48), y: TOP + 26 + Math.random() * (BOT - TOP - 52), r: 9 };
-    const sp = this.byD(18, 34, 52);
-    const a = Math.random() * 6.28;
-    this.vx = Math.cos(a) * sp; this.vy = Math.sin(a) * sp;
+    this.miss = 0; this.got = 0;
+    this.need = this.byD(1, 2, 3);
+    const n = this.byD(2, 3, 4), sp = this.byD(26, 40, 56);
+    // the faces start spread out, never on top of one another
+    this.faces = [];
+    for (let i = 0; i < n; i++) {
+      let x, y, k = 0;
+      do { x = 24 + Math.random() * (W - 48); y = TOP + 30 + Math.random() * (BOT - TOP - 60); }
+      while (k++ < 40 && this.faces.some(f => Math.hypot(f.x - x, f.y - y) < 44));
+      const a = Math.random() * 6.28;
+      this.faces.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, look: i ? 5 : 0, pop: 0 });   // face frames: 0 laugh, 5 eyes shut (asleep)
+    }
+    this.bug = this.faces[0];   // the laughing one
     this.fake = this.fakeOut(0.15, "DON'T TAP!", "IT'S A TRAP!\nDON'T TOUCH IT");
   }
   update(dt, input) {
-    this.bug.x += this.vx * dt; this.bug.y += this.vy * dt;
-    if (this.bug.x < 12 || this.bug.x > W - 12) this.vx *= -1;
-    if (this.bug.y < TOP + 12 || this.bug.y > BOT - 12) this.vy *= -1;
-    if (input.justDown) {
-      const hit = Math.hypot(input.x - this.bug.x, input.y - this.bug.y) < this.bug.r + 9;
-      if (this.fake) { if (hit) { Sfx.growl(); this.lose(); } return; }
-      if (hit) { FX.hit(this.bug.x, this.bug.y, PAL.accent); Sfx.bark(); this.succeed(); }
-      else this.miss = 0.15;
+    for (const f of this.faces) {
+      f.x += f.vx * dt; f.y += f.vy * dt;
+      if (f.x < 14 || f.x > W - 14) f.vx *= -1;
+      if (f.y < TOP + 14 || f.y > BOT - 14) f.vy *= -1;
+      if (f.pop > 0) f.pop -= dt;
     }
+    if (!input.justDown) return;
+    // the face under the finger, the nearest if two overlap
+    const R = TapBug.R + 4, hit = this.faces.filter(f => Math.hypot(input.x - f.x, input.y - f.y) < R)
+      .sort((a, b) => Math.hypot(input.x - a.x, input.y - a.y) - Math.hypot(input.x - b.x, input.y - b.y))[0];
+    if (this.fake) { if (hit) { Sfx.growl(); this.lose(); } return; }
+    if (!hit) { this.miss = 0.15; return; }
+    if (hit !== this.bug) { FX.hit(hit.x, hit.y, PAL.bad); Sfx.growl(); this.lose(); return; }   // the wrong face
+    FX.hit(hit.x, hit.y, PAL.accent); Sfx.bark(); hit.pop = 0.2;
+    if (++this.got >= this.need) { this.succeed(); return; }
+    // the laugh jumps to another face, and they all speed up a little
+    const next = this.faces.filter(f => f !== hit)[Math.floor(Math.random() * (this.faces.length - 1))];
+    next.look = 0; hit.look = 5; this.bug = next;   // the one you tapped nods off
+    for (const f of this.faces) { f.vx *= 1.15; f.vy *= 1.15; }
   }
   draw(g) {
     g.clear();
     if (this.miss > 0) { this.miss -= STEP; g.circle(Input.x, Input.y, 6, PAL.bad); }
-    // laughing shiba face as the tap target (cycles frames 0-2, the open-mouth laughs)
-    const fr = Math.floor(this.t * 6) % 3;
-    g.sprite('face', this.bug.x, this.bug.y, { w: 22, h: 22, frame: fr });
+    for (const f of this.faces) {
+      // the laughing one cycles frames 0-2, the open-mouth laughs
+      const fr = f.look === 0 ? Math.floor(this.t * 6) % 3 : f.look, s = f.pop > 0 ? 32 : 28;
+      g.sprite('face', f.x, f.y, { w: s, h: s, frame: fr });
+      if (f.look === 5) g.sprite('zletter', f.x + 14, f.y - 16 - Math.sin(this.t * 3 + f.x) * 2, { frame: 0 });   // asleep: a z drifting up
+    }
+    if (this.need > 1) for (let i = 0; i < this.need; i++) g.rect(CX - this.need * 5 + i * 10, BOT - 12, 7, 7, i < this.got ? PAL.accent : PAL.mid);
   }
 }
 
