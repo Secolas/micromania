@@ -234,7 +234,7 @@ const Coat = {
   ],
   SHEETS: ['shiba', 'fullshiba', 'fullidle', 'breakjump', 'catcher', 'hero', 'face', 'pump', 'dryshake', 'hopdog', 'ordersign',
     'flydog', 'swipeup', 'swipedown', 'runjump', 'swiperight', 'swipeleft', 'hidedog', 'facedir', 'rubdog', 'sleepdog', 'rocker',
-    'yesno', 'wag', 'feed', 'lean', 'leanmove', 'sledmove', 'sledder', 'digmove', 'highfive', 'demo', 'runcowboy', 'jumpcowboy', 'chefmove', 'worn', 'neckwear', 'maprun'],
+    'yesno', 'wag', 'feed', 'lean', 'leanmove', 'sledmove', 'sledder', 'digmove', 'highfive', 'demo', 'runcowboy', 'jumpcowboy', 'chefmove', 'worn', 'neckwear'],
   // art/worn.png: the hats PixelLab drew on the shiba have its ears in them. Only
   // what's near a colour of the shiba's own fur (art/fullshiba.png) is fur; the
   // cowboy hat's browns, the crown's and halo's golds are further off.
@@ -302,7 +302,6 @@ const Assets = {
     dryshake:{ src: ART.dryshake,      fw: 38, fh: 31, frames: 9,  fps: 10 },
     pumpdog:{ src: ART.pumpdog,         fw: 70, fh: 70, frames: 9,  fps: 12 },
     hopdog: { src: ART.hopdog,         fw: 28, fh: 28, frames: 9,  fps: 12 },
-    maprun:   { src: 'art/maprun.png',   fw: 58,  fh: 54,  frames: 24, fps: 1  },
     ordersign:{ src: ART.ordersign,    fw: 34, fh: 65, frames: 3,  fps: 1  },
     whack:  { src: ART.whack,          fw: 48, fh: 48, frames: 9,  fps: 12 },
     shaketable:{ src: ART.shaketable,   fw: 78, fh: 78, frames: 9,  fps: 12 },
@@ -7368,18 +7367,19 @@ const Run = {
     const dir = Math.abs(dx) >= Math.abs(dy) ? (dx < 0 ? 'left' : 'right') : (dy < 0 ? 'up' : 'down');
     return { x: Math.round(a.x + dx * t), y: Math.round(a.y + dy * t), dir, moving: k < 1 && total > 0, dist: s + lens.slice(0, i).reduce((q, l) => q + l, 0) };
   },
-  // art/maprun.png: the map's shiba (PixelLab, turned from the game's own
-  // front-on shiba), RUN_FRAMES frames running each way in RUN_DIRS order, all
-  // cut to one box with the paws on its bottom row; standing still, it faces you
-  RUN_DIRS: ['down', 'right', 'up', 'left'], RUN_FRAMES: 6, RUN_STAND: 0, RUN_TALL: 40,
+  // the map's shiba is the game's own runners, at the size their games draw
+  // them: STACK's gallop (swiperight / swipeleft) across, SQUEEZE's hero up the
+  // map, swipedown down it, and swipeup's first frame standing at a stop, facing
+  // you. [sheet, drawn w, h, paws below its middle]
+  RUNNER: {
+    right: ['swiperight', 56, 56, 14], left: ['swipeleft', 56, 56, 14],
+    up: ['hero', 24, 30, 15], down: ['swipedown', 56, 56, 16], stand: ['swipeup', 56, 56, 14],
+  },
+  RUN_TALL: 27,      // the standing shiba, paws to ears
   drawRunner(dog) {
-    const a = Assets.get('maprun');
-    if (!a) {   // the hopping shiba until the runner is in
-      g.sprite('hopdog', dog.x, dog.y - 12, { frame: Math.floor(Engine.time * 3) % 2 }); return;
-    }
-    const d = this.RUN_DIRS.indexOf(dog.moving ? dog.dir : 'down');
-    const f = dog.moving ? Math.floor(dog.dist / 4) % this.RUN_FRAMES : this.RUN_STAND;
-    g.sprite('maprun', dog.x, dog.y + 2 - a.fh / 2, { frame: d * this.RUN_FRAMES + f });
+    const [name, w, h, paws] = this.RUNNER[dog.moving ? dog.dir : 'stand'];
+    const a = Assets.get(name), f = dog.moving && a ? Math.floor(dog.dist / 3) % a.frames : 0;
+    g.sprite(name, dog.x, dog.y + 1 - paws, { w, h, frame: f });
   },
   drawMap() {
     const M = this.MAP, BH = this.BAND, n = this.WORLDS.length, art = this.mapArt && this.mapFor === this.WORLDS ? this.mapArt : this.buildMap();
@@ -7415,8 +7415,8 @@ const Run = {
     g.nine('titlesign', 0, 4, TOP + 2, W - 8, H - TOP - 6, 22);   // the frame again, over the map's corners
     // the boss stop's crown floats over the shiba's head, out over the frame if it must
     if (this.bossStage()) {
-      const p = this.stopAt(b, j), head = Assets.get('maprun') ? this.RUN_TALL : 24;
-      g.sprite('crown', M.x + p.x, M.y - oy + p.y - head - 6 + Math.round(Math.sin(Engine.time * 4) * 1.5));
+      const p = this.stopAt(b, j);
+      g.sprite('crown', M.x + p.x, M.y - oy + p.y - this.RUN_TALL - 6 + Math.round(Math.sin(Engine.time * 4) * 1.5));
     }
   },
 

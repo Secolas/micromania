@@ -50,8 +50,10 @@ fits every kind of game: a band of meadow per world, a dirt path winding through
 its stops, and a stream with a wooden bridge and a signpost (WORLD 2) where the
 path climbs into the next world. The trees, pines, hedges and benches are
 scattered from a seed per world, so each one looks a little different. The
-shiba (`art/maprun.png`) runs along the path from its doghouse, or the stop it
-just cleared, to the next one: sideways, up the map or towards you. The target
+shiba runs along the path from its doghouse, or the stop it just cleared, to
+the next one, using the game's own runners at the size their games draw them:
+STACK's gallop across the map, SQUEEZE's runner up it, and the head-first
+runner down it (`Run.RUNNER`). The target
 and your treats show below. Cleared stops turn gold, and a boss's crown sits on
 the shiba's head when it gets there.
 The worlds come from one list, `Run.WORLDS` in `index.html`. Each world has its
