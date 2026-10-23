@@ -45,6 +45,31 @@ picture, never cropped or stretched: the TV takes its shape, tall for a phone
 held upright and wide for a laptop, drawn smooth like a photo. They stay in memory on the
 phone only, and the next run starts with none.
 
+**RUN's world map**: each RUN stage opens on a map of one countryside that
+fits every kind of game: a band of meadow per world, a dirt path winding through
+its stops, and a stream with a wooden bridge and a signpost (WORLD 2) where the
+path climbs into the next world. The trees, pines, hedges and benches are
+scattered from a seed per world, so each one looks a little different. The
+shiba runs along the path from its doghouse, or the stop it just cleared, to
+the next one, using the game's own runners at the size their games draw them:
+STACK's gallop across the map, SQUEEZE's runner up it, and the head-first
+runner down it (`Run.RUNNER`). The target
+and your treats show below. Cleared stops turn gold, and a boss's crown sits on
+the shiba's head when it gets there.
+The worlds come from one list, `Run.WORLDS` in `index.html`. Each world has its
+stages, and it can also have a `name` for its signpost, `games` and `bosses`
+(the game ids it picks from; all games if left out) and a `ground` (one of
+`Run.GROUNDS`; the meadow if left out). A stage can be a `boss`, set its own
+`target`, `games` or place on the map (`x`, 0 to 1). Add a world or a stage
+there and the map, the stage labels (2-3), the targets and the end of the run
+follow. With more worlds than fit, the map scrolls to follow the shiba.
+
+**Things to wear**: the DOGHOUSE keeps the hats, neck things and coats you
+win. A game with a prize names it on its prompt only on HARD (WIN: COWBOY HAT).
+Winning one, or reaching a milestone, brings up a YOU GOT card once the round
+is over: the thing's name, and the shiba big in the middle wearing it,
+cheering. The game holds still under it until a tap, or 3 seconds.
+
 **Surprises**: once things get going, a prompt can start out normal and then
 have a stamp slam down on the game's title:
 - **REVERSE!** (drag and tilt games only): your touch lands where you press, but
@@ -188,8 +213,10 @@ The title is full-bleed (sky to the top edge, meadow to the bottom) and a
 little side-scroller. **SHIBA** and **MANIA** drop in letter by
 letter, and the menu slides up: RUN, CLASSIC, ALBUM and SETTINGS as alike white
 outlined words, like Super Mario's title menu. The shiba runs in and
-keeps running: the hills and meadow scroll past, and it hops every bush and
-snaps up the bone floating over it. A tap skips the intro. Coming back
+keeps running: far blue mountains, the hills and the meadow scroll past at
+their own speeds, bushes and all. It jumps for the bones floating about, low,
+mid-air or high, whenever one comes. Now and then a cowboy hat floats by: grab
+it and the shiba wears it, as JUMP!'s runner does. A tap skips the intro. Coming back
 from the album shows the settled screen straight away.
 
 ## Photo album

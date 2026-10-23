@@ -360,6 +360,7 @@ const Assets = {
     custfull: { src: 'art/custfull.png', fw: 48,  fh: 64,  frames: 11, fps: 1  },
     runcowboy:{ src: 'art/runcowboy.png', fw: 120, fh: 120, frames: 9, fps: 1  },
     jumpcowboy:{ src: 'art/jumpcowboy.png', fw: 120, fh: 120, frames: 5, fps: 1 },
+    bush:     { src: 'art/bush.png',     fw: 26,  fh: 16,  frames: 1,  fps: 1  },
     walkstone:{ src: 'art/walkstone.png', fw: 36, fh: 36,  frames: 1,  fps: 1  },
     fullidle: { src: 'art/fullidle.png', fw: 64,  fh: 64,  frames: 22, fps: 1  },
     leanmove: { src: 'art/leanmove.png', fw: 64,  fh: 64,  frames: 7,  fps: 1  },
@@ -2125,14 +2126,14 @@ const SCENE = {
 };
 const Env = {
   cache: {},
-  paint(spec) {
+  paint(spec, sun = true) {   // sun: false leaves the sun out (the title draws its own)
     let c = this.cache[spec];
     if (!c) c = this.cache[spec] = this.build(spec);
     ctx.fillStyle = PAL.bg; ctx.fillRect(0, 0, W, H);
     ctx.drawImage(c, 0, 0, W, H);
     if (spec === 'sky') this.clouds();
     if (spec.startsWith('sunny') || spec.startsWith('park') || spec.startsWith('nature')) {
-      if (Assets.get('sun')) g.sprite('sun', W - 30, TOP + 28);   // art/sun.png, rays twinkling
+      if (sun && Assets.get('sun')) g.sprite('sun', W - 30, TOP + 28);   // art/sun.png, rays twinkling
       this.dayClouds();
     }
     if (spec.startsWith('beach')) this.surf(+spec.split('@')[1]);
@@ -6629,7 +6630,7 @@ const Closet = {
     return Object.assign({}, s, {
       classic: Engine.best || 0,
       runWins: Run.wins || 0,
-      runWorld: Math.max(Math.floor((Run.best || 0) / 3) + 1, Engine.mode === 'run' && Engine.state !== 'TITLE' ? Run.world : 1),
+      runWorld: Math.max(Run.at(Run.best || 0).world,Engine.mode === 'run' && Engine.state !== 'TITLE' ? Run.world : 1),
     });
   },
   met(id) { const s = this.stats; if (!s.met.includes(id)) { s.met.push(id); this.save(); } },
@@ -6656,15 +6657,15 @@ const Closet = {
     for (const it of this.ITEMS) {
       if (s.owned.includes(it.id) || !it.got(v)) continue;
       s.owned.push(it.id);
-      if (it.id !== 'party') Toast.show('NEW! ' + it.name, it);   // the free one is just there
+      if (it.id !== 'party') Prize.show(it);   // the free one is just there
     }
     for (const it of this.NECK) {
       if (s.necks.includes(it.id) || !it.got(v)) continue;
-      s.necks.push(it.id); Toast.show('NEW! ' + it.name, it);
+      s.necks.push(it.id); Prize.show(it);
     }
     for (const c of Coat.LIST) {
       if (s.coats.includes(c.id) || !c.got(v)) continue;
-      s.coats.push(c.id); Toast.show('NEW! ' + c.name, { coat: c.id });   // with the shiba's face in it
+      s.coats.push(c.id); Prize.show({ coat: c.id, name: c.name });
     }
     this.save();
   },
@@ -6817,22 +6818,63 @@ const Closet = {
   },
 };
 
-// A short wooden note sliding down from the top: NEW! COWBOY HAT, with the hat.
-const Toast = {
+// Winning something to wear: the game holds a moment for it. A card comes up
+// with YOU GOT and the thing's name, the shiba big in the middle wearing it (or
+// in the new coat) and cheering, light turning behind it, confetti. It waits
+// for the round to end (never mid-game), and a tap or a few seconds goes on.
+const Prize = {
   q: [], t: 0,
-  show(text, item) { this.q.push({ text, item }); if (this.q.length === 1) { this.t = 0; Sfx.unlockItem && Sfx.unlockItem(); } },
+  HOLD: ['PLAYING', 'PROMPT', 'READY', 'PERMS', 'CAMCHECK', 'REPLAY'],   // screens it waits out
+  MIN: 0.6, MAX: 3,
+  // it: a hat or neck thing from Closet, or { coat: id, name }
+  show(it) { this.q.push(it); },
+  on() { return this.q.length > 0 && !this.HOLD.includes(Engine.state); },
+  // true while it's up, so the screen under it holds still
   update(dt) {
-    if (!this.q.length) return;
+    if (!this.on()) return false;
+    if (this.t === 0) { Sfx.unlockItem && Sfx.unlockItem(); Juice.confetti(50); buzz(40); }
     this.t += dt;
-    if (this.t > 2.6) { this.q.shift(); this.t = 0; if (this.q.length && Sfx.unlockItem) Sfx.unlockItem(); }
+    if (this.t > this.MAX || (this.t > this.MIN && Input.taps.length)) this.next();
+    return true;
   },
+  next() { this.q.shift(); this.t = 0; Input.flush && Input.flush(); },
+  // a tap while it's up is only for it
+  tap() { if (!this.on()) return false; if (this.t > this.MIN) this.next(); return true; },
   draw() {
-    if (!this.q.length) return;
-    const n = this.q[0], t = this.t, k = t < 0.25 ? t / 0.25 : t > 2.3 ? 1 - (t - 2.3) / 0.3 : 1;
-    const y = Math.round(-40 + k * (TOP + 46));
-    g.nine('buttons', 1, 10, y, W - 20, 38, 6) || g.rect(10, y, W - 20, 38, PAL.accent);
-    if (n.item) Closet.drawItem(n.item, 34, y + 34, 1);
-    g.text(n.text, CX + 14, y + 23, 9, PAL.bg);
+    if (!this.on()) return;
+    const it = this.q[0], t = this.t, pop = Math.min(1, t / 0.25), k = pop < 1 ? 1 - Math.pow(1 - pop, 3) * 1.1 + 0.1 * Math.sin(pop * 9) : 1;
+    ctx.globalAlpha = 0.8 * pop; g.rect(0, 0, W, H, PAL.bg); ctx.globalAlpha = 1;
+    ctx.save(); ctx.translate(CX, CY); ctx.scale(k, k); ctx.translate(-CX, -CY);
+    const P = { x: 14, y: CY - 126, w: W - 28, h: 250 };
+    g.rect(P.x, P.y, P.w, P.h, MENU_PANEL);
+    g.nine('titlesign', 0, P.x - 4, P.y - 4, P.w + 8, P.h + 8, 22);
+    const sy = P.y + P.h - 42;   // the shiba's paws: low enough that a tall hat clears the name
+    // light turning behind it
+    ctx.save(); ctx.beginPath(); ctx.rect(P.x + 8, P.y + 8, P.w - 16, P.h - 16); ctx.clip();
+    ctx.globalAlpha = 0.22; ctx.fillStyle = PAL.accent;
+    for (let i = 0; i < 12; i++) {
+      const a0 = t * 0.8 + i * Math.PI / 6;
+      ctx.beginPath(); ctx.moveTo(CX, sy - 64); ctx.lineTo(CX + Math.cos(a0) * 160, sy - 64 + Math.sin(a0) * 160); ctx.lineTo(CX + Math.cos(a0 + 0.26) * 160, sy - 64 + Math.sin(a0 + 0.26) * 160); ctx.fill();
+    }
+    ctx.globalAlpha = 1; ctx.restore();
+    g.text('YOU GOT', CX, P.y + 24, 10, PAL.ink);
+    const name = it.coat ? it.name + ' COAT' : it.name;
+    g.wrap(name, P.w - 24, 14).forEach((l, i, L) => g.outline(l, CX, P.y + 46 + i * 16 - (L.length - 1) * 4, 14, PAL.accent));
+    // the shiba, twice size, cheering, in it
+    const f = Math.floor(t * 6) % 2 ? g.FULL.cheer : g.FULL.cheer2;
+    const raw = Assets.raw('fullshiba'), sh = it.coat && raw ? Coat.sheet('fullshiba', raw, it.coat) : Assets.get('fullshiba');
+    if (sh) ctx.drawImage(sh.img, f * sh.fw, 0, sh.fw, sh.fh, CX - sh.fw, sy - sh.fh * 2, sh.fw * 2, sh.fh * 2);
+    if (it.coat) Closet.dress('fullshiba', f, CX, sy - 64, 96, 128);
+    else if (it.neck) Closet.dress('fullshiba', f, CX, sy - 64, 96, 128, Closet.hat, it);
+    else Closet.dress('fullshiba', f, CX, sy - 64, 96, 128, it, Closet.neck);
+    // twinkles round it
+    for (let i = 0; i < 5; i++) if ((Math.floor(t * 5) + i) % 3 === 0) {
+      const sx = CX + Math.cos(i * 1.3) * 52, sy2 = sy - 70 + Math.sin(i * 2.1) * 44;
+      g.rect(sx - 2, sy2, 5, 1, PAL.ink); g.rect(sx, sy2 - 2, 1, 5, PAL.ink);
+    }
+    g.text("IT'S IN YOUR DOGHOUSE", CX, P.y + P.h - 26, 8, PAL.ink);
+    if (t > this.MIN && Math.floor(t * 2) % 2) g.text('TAP TO GO ON', CX, P.y + P.h - 13, 8, PAL.ink);
+    ctx.restore();
   }
 };
 
@@ -6876,8 +6918,39 @@ const Mascot = {
 ─────────────────────────────────────────────────────────────────────────────── */
 const Run = {
   GAMES: 5,          // games per stage — CHONK adds one
-  WORLDS: 3,         // beat the boss of world 3 and the run is won (then ENDLESS, if you like)
   SLOTS: 5,          // treat slots — CHONK takes one
+  // ── THE WORLDS ───────────────────────────────────────────────────────────
+  // A run goes through these in order, and the world map is drawn from them,
+  // one band of the countryside per world, the first at the bottom. Add a world or a stage, or
+  // change which games a world plays, here: the map, the stage labels (2-3),
+  // the targets and the end of the run all follow. Beating the last stage of
+  // the last world wins the run; ENDLESS then goes round them again, faster.
+  //   name     on the world's signpost (default: WORLD 2 and so on)
+  //   ground   its scenery, one of Run.GROUNDS (default: the meadow every world shares)
+  //   games    ids of the games its stages pick from (default: all of POOL)
+  //   bosses   ids of the bosses a boss stage opens on (default: all of BOSSES)
+  //   stages   one per stop on the map, in play order. Each may set
+  //              boss: true  open on a boss (and ask for a bigger score)
+  //              target      the score to hit in world 1 (default: by its place, see target())
+  //              games       its own game ids, instead of the world's
+  //              x           where its stop sits across the band, 0 (left) .. 1 (right);
+  //                          by default the stops spread out, left to right on
+  //                          the 1st, 3rd ... world and right to left on the others
+  WORLDS: [
+    { stages: [{}, {}, { boss: true }] },
+    { stages: [{}, {}, { boss: true }] },
+    { stages: [{}, {}, { boss: true }] },
+  ],
+  // world w's entry (ENDLESS goes round the list again) and the stage on now
+  worldDef(w = this.world) { return this.WORLDS[(w - 1) % this.WORLDS.length]; },
+  stageDef() { return this.worldDef().stages[this.stage]; },
+  lastStage() { return this.stage === this.worldDef().stages.length - 1; },
+  // game ids to classes; unknown ids are skipped, and none at all means the whole pool
+  classes(ids, all) {
+    if (!ids) return all;
+    const L = [...POOL, ...BOSSES].filter(C => ids.includes(C.meta.id));
+    return L.length ? L : all;
+  },
   // art is [sprite, frame, scale?] — scale for sheets with roomy frames, like
   // the 120px runners; GOLDEN BONE draws its own bone
   TREATS: [
@@ -6922,11 +6995,17 @@ const Run = {
   treat(id) { return this.TREATS.find(t => t.id === id); },
   games() { return this.GAMES + (this.has('chonk') ? 1 : 0); },
   slots() { return this.SLOTS - (this.has('chonk') ? 1 : 0); },
-  bossStage() { return this.stage === 2; },
-  // a 5-game stage with a few misses still makes it; the bosses ask for a streak
-  target() { return Math.round([120, 190, 280][this.stage] * Math.pow(1.4, this.world - 1) / 10) * 10; },
-  reached() { return (this.world - 1) * 3 + this.stage; },
-  label(i = this.reached()) { return (Math.floor(i / 3) + 1) + '-' + (i % 3 + 1); },
+  bossStage() { return !!this.stageDef().boss; },
+  // a 5-game stage with a few misses still makes it; the bosses ask for a
+  // streak. 120, 190, 260 ... along a world, +20 on a boss; x1.4 a world.
+  target() {
+    const st = this.stageDef(), base = st.target || 120 + 70 * this.stage + (st.boss ? 20 : 0);
+    return Math.round(base * Math.pow(1.4, this.world - 1) / 10) * 10;
+  },
+  // stages are counted 0 = 1-1, 1 = 1-2, ... across the worlds (the best run is kept that way)
+  reached() { let i = this.stage; for (let w = 1; w < this.world; w++) i += this.worldDef(w).stages.length; return i; },
+  at(i) { let w = 1; while (i >= this.worldDef(w).stages.length) i -= this.worldDef(w++).stages.length; return { world: w, stage: i }; },
+  label(i = this.reached()) { const p = this.at(i); return p.world + '-' + (p.stage + 1); },
 
   start() { this.world = 1; this.stage = 0; this.bones = 4; this.treats = []; this.endless = false; this.won = false; this.startT = Engine.time; },
   endless: false, won: false, startT: 0, winTime: 0,
@@ -6944,10 +7023,12 @@ const Run = {
     Engine.state = 'STAGE'; Engine.timer = 1.8;
   },
 
-  // the boss stage opens on a boss; every other game comes from the pool
+  // the boss stage opens on a boss; every other game comes from the world's
+  // games (or the stage's own)
   nextGame() {
-    const boss = this.bossStage() && this.played === 0;
-    Engine.startRound(Engine.pick(boss ? BOSSES : POOL), boss ? 3 : Math.min(3, this.world), boss);
+    const boss = this.bossStage() && this.played === 0, wd = this.worldDef();
+    const list = boss ? this.classes(wd.bosses, BOSSES) : this.classes(this.stageDef().games || wd.games, POOL);
+    Engine.startRound(Engine.pick(list), boss ? 3 : Math.min(3, this.world), boss);
   },
 
   // Score a finished game. remain is the share of the round clock left over,
@@ -7003,7 +7084,7 @@ const Run = {
     this.payout = rows;
     this.bones += rows.reduce((n, r) => n + r[1], 0);
     this.saveBest(this.reached() + 1);
-    if (this.bossStage() && this.world === this.WORLDS && !this.endless) { this.win(); return; }
+    if (this.lastStage() && this.world === this.WORLDS.length && !this.endless) { this.win(); return; }
     Engine.state = 'CLEAR'; Engine.timer = 2.4;
     Sfx.clear(); FX.flash(PAL.accent, 0.4); Juice.confetti(60);
   },
@@ -7058,7 +7139,7 @@ const Run = {
 
   nextStage() {
     this.stage++;
-    if (this.stage > 2) { this.stage = 0; this.world++; }
+    if (this.stage >= this.worldDef().stages.length) { this.stage = 0; this.world++; }
     this.beginStage();
   },
 
@@ -7084,7 +7165,7 @@ const Run = {
   },
 
   // ── YOUR TREATS: tap one to read it; in the shop, to sell it ─────────────
-  ownedY() { return Engine.state === 'SHOP' ? TOP + 44 : CY + 66; },
+  ownedY() { return Engine.state === 'SHOP' ? TOP + 44 : BOT - 38; },
   ownedHit(p) {
     const y = this.ownedY();
     for (let i = 0; i < this.treats.length; i++) if (Engine.hit({ x: 8 + i * 33, y, w: 30, h: 34 }, p)) return i;
@@ -7186,17 +7267,209 @@ const Run = {
     g.rect(0, TOP - 2, W * Math.min(1, this.score / this.target()), 2, PAL.accent);
   },
 
-  drawStage() {
-    const boss = this.bossStage();
-    g.text((this.endless ? 'ENDLESS · ' : '') + 'WORLD ' + this.world + (this.endless ? '' : ' / ' + this.WORLDS), CX, CY - 56, 11, PAL.mid);
-    g.text(boss ? 'BOSS STAGE' : 'STAGE ' + (this.stage + 1) + ' / 3', CX, CY - 32, 16, boss ? PAL.bad : PAL.ink);
-    g.text('TARGET', CX, CY - 4, 9, PAL.mid);
-    g.text(String(this.target()), CX, CY + 24, 26, PAL.accent);
-    g.text(this.games() + ' GAMES TO SCORE IT', CX, CY + 46, 8, PAL.ink);
-    if (this.treats.length) {
-      g.text('YOUR TREATS  ·  TAP TO SEE', CX, CY + 61, 6, PAL.mid);
-      this.drawOwned(CY + 66);
+  // ── THE WORLD MAP: the stage card ────────────────────────────────────────
+  // One countryside for every world, whatever its games: a band of meadow per
+  // world in WORLDS, the first at the bottom, a dirt path winding through its
+  // stops, and a stream with a bridge where the path climbs into the next world,
+  // with that world's signpost. The trees and hedges are scattered from a seed
+  // per band, so every world looks a little different and any number of them
+  // fits. The shiba runs from the stop it last cleared (or its doghouse) to the
+  // next while the target is read out below; the map scrolls to follow it.
+  MAP: { x: 14, y: TOP + 12, w: 152, h: 162 },
+  BAND: 84,          // each world's band, tall
+  PATH_Y: 60,        // where the path runs, down from a band's top; the stops wind WIND either side
+  WIND: 5,
+  STREAM: 9,         // the stream along the top of every band below the last
+  WALK: 0.8,         // seconds from stop to stop
+  // the scenery under a world. d.tiles fills the band with scenetiles frames;
+  // d.prop offers a sprite (feet at x, y in band coordinates) and leaves it out
+  // if it would sit on the path, a signpost or another prop.
+  GROUNDS: {
+    meadow(d) {
+      d.tiles(() => d.rnd() < 0.18 ? 11 + Math.floor(d.rnd() * 3) : 8 + Math.floor(d.rnd() * 2), SCENE.meadow);
+      const kinds = [['parktree', 0], ['parktree', 0], ['parktree', 0], ['pine', 0], ['pine', 1], ['pine', 0], ['pine', 1], ['hedge', 0], ['hedge', 0], ['bench', 0]];
+      for (let i = 0; i < 120; i++) {
+        const [name, f] = kinds[Math.floor(d.rnd() * kinds.length)];
+        d.prop(name, 6 + d.rnd() * (d.w - 12), 14 + d.rnd() * (d.h - 12), f);
+      }
+    },
+  },
+  bandTop(b) { return (this.WORLDS.length - 1 - b) * this.BAND; },   // map coordinates, 0 at the top
+  // stop j of world band b, in map coordinates; j = -1 is home, the doghouse
+  stopAt(b, j) {
+    const st = this.WORLDS[b].stages, n = st.length, M = this.MAP, pad = 34;
+    const y = this.bandTop(b) + this.PATH_Y;
+    if (j < 0) return { x: 14, y };
+    let k = st[j].x != null ? st[j].x : n > 1 ? j / (n - 1) : 0.5;
+    if (st[j].x == null && b % 2) k = 1 - k;
+    return { x: Math.round(pad + k * (M.w - 2 * pad)), y: y + (j % 2 ? -this.WIND : this.WIND) };
+  },
+  // the path run to stop j of band b: from the stop before it, round the
+  // corner when it climbs into the next band
+  leg(b, j) {
+    const to = this.stopAt(b, j), from = j > 0 ? this.stopAt(b, j - 1) : b > 0 ? this.stopAt(b - 1, this.WORLDS[b - 1].stages.length - 1) : this.stopAt(0, -1);
+    return from.y === to.y || j > 0 ? [from, to] : [from, { x: from.x, y: to.y }, to];
+  },
+  // every world's signpost: above the path, halfway to its second stop
+  sign(b) {
+    const p = this.stopAt(b, 0), q = this.WORLDS[b].stages.length > 1 ? this.stopAt(b, 1) : { x: p.x + 30, y: p.y };
+    return { x: Math.round((p.x + q.x) / 2), y: Math.min(p.y, q.y) - 13 };
+  },
+  // the map's scenery and path, painted once
+  mapArt: null, mapFor: null,
+  buildMap() {
+    const need = ['scenetiles', 'parktree', 'pine', 'hedge', 'doghouse'];
+    const M = this.MAP, BH = this.BAND, n = this.WORLDS.length;
+    const c = document.createElement('canvas'); c.width = M.w; c.height = n * BH;
+    const x = c.getContext('2d');
+    const R = (a, y, w, h, col) => { x.fillStyle = col; x.fillRect(Math.round(a), Math.round(y), Math.round(w), Math.round(h)); };
+    const legs = [];
+    for (let b = 0; b < n; b++) this.WORLDS[b].stages.forEach((s, j) => legs.push(this.leg(b, j)));
+    // how far a box is from the path, for keeping props off it
+    const near = (x0, y0, x1, y1) => {
+      let best = 1e9;
+      for (const pts of legs) for (let i = 1; i < pts.length; i++) {
+        const p = pts[i - 1], q = pts[i], L = Math.max(1, Math.hypot(q.x - p.x, q.y - p.y));
+        for (let s = 0; s <= L; s += 2) {
+          const px = p.x + (q.x - p.x) * s / L, py = p.y + (q.y - p.y) * s / L;
+          const dx = Math.max(x0 - px, 0, px - x1), dy = Math.max(y0 - py, 0, py - y1);
+          best = Math.min(best, Math.hypot(dx, dy));
+        }
+      }
+      return best;
+    };
+    const props = [], taken = [];
+    const home = this.stopAt(0, -1);
+    taken.push([home.x - 13, home.y - 24, home.x + 13, home.y + 2]);
+    for (let b = 0; b < n; b++) { const s = this.sign(b); taken.push([s.x - 26, s.y - 8, s.x + 26, s.y + 14]); }
+    // the meadow, band by band, from a seed of its own
+    for (let b = 0; b < n; b++) {
+      const top = this.bandTop(b);
+      let seed = 4321 + b * 7919;
+      const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+      const d = {
+        w: M.w, h: BH, b, rnd,
+        R: (a, y, w, h, col) => R(a, top + y, w, h, col),
+        tiles(pick, flat) {
+          const a = Assets.get('scenetiles');
+          if (!a) { R(0, top, M.w, BH, flat); return; }
+          x.save(); x.beginPath(); x.rect(0, top, M.w, BH); x.clip();
+          for (let ty = 0; ty < BH; ty += a.fh) for (let tx = 0; tx < M.w; tx += a.fw) x.drawImage(a.img, pick() * a.fw, 0, a.fw, a.fh, tx, top + ty, a.fw, a.fh);
+          x.restore();
+        },
+        prop(name, px, py, f = 0) {
+          const a = Assets.get(name); if (!a) return false;
+          const box = [Math.round(px - a.fw / 2), Math.round(top + py - a.fh), Math.round(px + a.fw / 2), Math.round(top + py)];
+          const ceil = top + (b < n - 1 ? Run.STREAM + 1 : 0);   // clear of the band's stream (the top band has none)
+          if (box[0] < -4 || box[2] > M.w + 4 || box[1] < ceil || box[3] > top + BH) return false;
+          if (near(...box) < 5) return false;
+          if (taken.some(t => box[0] < t[2] && box[2] > t[0] && box[1] + a.fh / 2 < t[3] && box[3] > t[1])) return false;
+          taken.push(box); props.push([a, f, box]); return true;
+        },
+      };
+      (this.GROUNDS[this.WORLDS[b].ground] || this.GROUNDS.meadow)(d);
     }
+    // a stream along the top of each band but the last, its ripples moving with the seed
+    for (let b = 0; b < n - 1; b++) {
+      const top = this.bandTop(b);
+      R(0, top, M.w, this.STREAM, SCENE.sea1); R(0, top + this.STREAM - 2, M.w, 2, SCENE.sea0);
+      R(0, top + this.STREAM, M.w, 1, SCENE.grassLo);
+      for (let i = 0; i < M.w; i += 7) R(i + (b * 3 + i) % 5, top + 2 + (i % 3), 3, 1, SCENE.cloud);
+    }
+    // the dirt path
+    const dot = (px, py, r, col) => R(px - r, py - r, 2 * r + 1, 2 * r + 1, col);
+    for (const pass of [[3, SCENE.floorLo], [2, SCENE.floor]]) for (const pts of legs) for (let i = 1; i < pts.length; i++) {
+      const p = pts[i - 1], q = pts[i], L = Math.max(1, Math.hypot(q.x - p.x, q.y - p.y));
+      for (let s = 0; s <= L; s++) dot(Math.round(p.x + (q.x - p.x) * s / L), Math.round(p.y + (q.y - p.y) * s / L), pass[0], pass[1]);
+    }
+    // wooden bridges where the path crosses a stream
+    for (let b = 1; b < n; b++) {
+      const bx = this.leg(b, 0)[0].x, top = this.bandTop(b - 1);
+      R(bx - 5, top - 2, 11, this.STREAM + 4, SCENE.woodLo);
+      for (let y = top - 1; y < top + this.STREAM + 2; y += 2) R(bx - 4, y, 9, 1, SCENE.wood);
+      R(bx - 6, top - 2, 1, this.STREAM + 4, SCENE.band); R(bx + 6, top - 2, 1, this.STREAM + 4, SCENE.band);
+    }
+    // the props, back to front
+    props.sort((p, q) => p[2][3] - q[2][3]);
+    for (const [a, f, box] of props) x.drawImage(a.img, f * a.fw, 0, a.fw, a.fh, box[0], box[1], a.fw, a.fh);
+    if (need.every(k => Assets.get(k))) { this.mapArt = c; this.mapFor = this.WORLDS; }   // keep it once the art is in (for this list of worlds)
+    return c;
+  },
+  // the world band and stop on now
+  here() { return { b: (this.world - 1) % this.WORLDS.length, j: this.stage }; },
+  // the shiba's place on its run: k is 0..1 along the leg, dir the way it faces
+  walker(b, j, k) {
+    const pts = this.leg(b, j);
+    if (b === 0 && j === 0 && this.world > 1) pts.splice(0, pts.length - 1);   // a new ENDLESS lap starts at the first stop
+    const lens = pts.slice(1).map((p, i) => Math.hypot(p.x - pts[i].x, p.y - pts[i].y)), total = lens.reduce((a, l) => a + l, 0);
+    let s = k * total, i = 0;
+    while (i < lens.length - 1 && s > lens[i]) s -= lens[i++];
+    const a = pts[i], z = pts[i + 1] || a, t = lens[i] ? s / lens[i] : 1;
+    const dx = z.x - a.x, dy = z.y - a.y;
+    const dir = Math.abs(dx) >= Math.abs(dy) ? (dx < 0 ? 'left' : 'right') : (dy < 0 ? 'up' : 'down');
+    return { x: Math.round(a.x + dx * t), y: Math.round(a.y + dy * t), dir, moving: k < 1 && total > 0, dist: s + lens.slice(0, i).reduce((q, l) => q + l, 0) };
+  },
+  // the map's shiba is the game's own runners, at the size their games draw
+  // them: STACK's gallop (swiperight / swipeleft) across, SQUEEZE's hero up the
+  // map, swipedown down it, and swipeup's first frame standing at a stop, facing
+  // you. [sheet, drawn w, h, paws below its middle]
+  RUNNER: {
+    right: ['swiperight', 56, 56, 14], left: ['swipeleft', 56, 56, 14],
+    up: ['hero', 24, 30, 15], down: ['swipedown', 56, 56, 16], stand: ['swipeup', 56, 56, 14],
+  },
+  RUN_TALL: 27,      // the standing shiba, paws to ears
+  drawRunner(dog) {
+    const [name, w, h, paws] = this.RUNNER[dog.moving ? dog.dir : 'stand'];
+    const a = Assets.get(name), f = dog.moving && a ? Math.floor(dog.dist / 3) % a.frames : 0;
+    g.sprite(name, dog.x, dog.y + 1 - paws, { w, h, frame: f });
+  },
+  drawMap() {
+    const M = this.MAP, BH = this.BAND, n = this.WORLDS.length, art = this.mapArt && this.mapFor === this.WORLDS ? this.mapArt : this.buildMap();
+    const { b, j } = this.here(), lap = Math.floor((this.world - 1) / n) * n;
+    const k = Math.max(0, Math.min(1, (1.8 - Engine.timer - 0.15) / this.WALK));
+    const dog = this.walker(b, j, k);
+    // scroll to keep the shiba in view
+    const oy = Math.round(Math.max(0, Math.min(n * BH - M.h, dog.y - M.h / 2 - 8)));
+    ctx.save(); ctx.beginPath(); ctx.rect(M.x, M.y, M.w, M.h); ctx.clip();
+    ctx.translate(M.x, M.y - oy);
+    ctx.drawImage(art, 0, 0);
+    // each world's signpost: WORLD 2, or the world's own name
+    for (let bb = 0; bb < n; bb++) {
+      const s = this.sign(bb), label = this.WORLDS[bb].name || 'WORLD ' + (lap + bb + 1);
+      ctx.font = 'bold 8px ui-monospace, monospace';
+      const w = Math.ceil(ctx.measureText(label).width) + 10;
+      g.rect(s.x - 1, s.y + 4, 3, 9, SCENE.woodLo);
+      if (!g.nine('buttons', bb === b ? 1 : 0, s.x - w / 2, s.y - 6, w, 12, 5)) g.rect(s.x - w / 2, s.y - 6, w, 12, SCENE.wood);
+      g.text(label, s.x, s.y + 3, 8, bb === b ? PAL.bg : PAL.ink);
+    }
+    // home, and every stop: gold when cleared, a crown on the bosses
+    const home = this.stopAt(0, -1);
+    g.sprite('doghouse', home.x, home.y - 11);
+    const passed = (bb, jj) => bb < b || bb === b && jj < j;
+    for (let bb = 0; bb < n; bb++) this.WORLDS[bb].stages.forEach((st, jj) => {
+      const p = this.stopAt(bb, jj), done = passed(bb, jj);
+      if (!g.nine('buttons', done ? 1 : 0, p.x - 8, p.y - 6, 16, 13, 6)) g.rect(p.x - 8, p.y - 6, 16, 13, done ? PAL.accent : SCENE.woodLo);
+      if (st.boss) { if (bb !== b || jj !== j) g.sprite('crown', p.x, p.y - 15); }
+      else if (!done) g.text(String(jj + 1), p.x, p.y + 4, 8, PAL.ink);
+    });
+    this.drawRunner(dog);
+    ctx.restore();
+    g.nine('titlesign', 0, 4, TOP + 2, W - 8, H - TOP - 6, 22);   // the frame again, over the map's corners
+    // the boss stop's crown floats over the shiba's head, out over the frame if it must
+    if (this.bossStage()) {
+      const p = this.stopAt(b, j);
+      g.sprite('crown', M.x + p.x, M.y - oy + p.y - this.RUN_TALL - 6 + Math.round(Math.sin(Engine.time * 4) * 1.5));
+    }
+  },
+
+  drawStage() {
+    const boss = this.bossStage(), M = this.MAP;
+    this.drawMap();
+    const y = M.y + M.h + 11;
+    g.text((this.endless ? 'ENDLESS ' : '') + (boss ? 'BOSS STAGE ' : 'STAGE ') + this.label(), CX, y, 8, boss ? PAL.bad : PAL.ink);
+    g.text('TARGET ' + this.target(), CX, y + 14, 12, PAL.accent);
+    g.text(this.games() + ' GAMES TO SCORE IT', CX, y + 25, 8, PAL.ink);
+    if (this.treats.length) this.drawOwned(this.ownedY());
     this.drawInfo();
   },
 
@@ -7255,7 +7528,7 @@ const Run = {
   },
 
   drawClear() {
-    g.text(this.stage === 2 ? 'WORLD ' + this.world : 'STAGE', CX, CY - 64, 18, PAL.accent);
+    g.text(this.lastStage() ? 'WORLD ' + this.world : 'STAGE', CX, CY - 64, 18, PAL.accent);
     g.text('CLEAR!', CX, CY - 42, 18, PAL.accent);
     this.payout.forEach(([a, v], i) => {
       g.text(a, 20, CY - 12 + i * 13, 8, PAL.mid, 'left');
@@ -7520,7 +7793,7 @@ const Engine = {
 
   update(dt) {
     this.time += dt;
-    Toast.update(dt);
+    if (Prize.update(dt)) { Juice.update(dt); Mascot.update(dt); return; }   // a prize is up: everything under it holds
     if (!this.closetReady && this.state === 'TITLE') { this.closetReady = true; Closet.check(); }   // progress from before the closet existed counts too
     Input.rev = this.reverse && this.state === 'PLAYING';
     // a PLAYING game may request a pause (e.g. blow waiting on mic permission);
@@ -7826,6 +8099,7 @@ const Engine = {
   hit(b, p) { return p.x >= b.x && p.x < b.x + b.w && p.y >= b.y && p.y < b.y + b.h; },
 
   press(p) {
+    if (Prize.on()) return true;                                               // the prize card takes the tap
     if (this.paused) return true;                                              // the pause screen's own buttons
     if (this.canPause() && this.hit(this.PAUSE_BTN, p)) { this.pause(); Sfx.tap(); return true; }
     if (this.tut && this.state !== 'TUTDONE' && this.hit(this.tutSkip(), p)) return true;   // SKIP, never a tap in the game
@@ -7833,6 +8107,7 @@ const Engine = {
   },
 
   release(p) {
+    if (Prize.tap()) return;
     const s = this.state;
     if (s === 'PROMPT' && this.waitReady) {   // READY: a short beat, then GO
       this.waitReady = false; Prefs.set('learned.' + this.game.meta.id, true);
@@ -7889,34 +8164,62 @@ const Engine = {
       if (this.titleSfx === beats.length - 1) Sfx.bark(); else Sfx.tick();
       this.titleSfx++;
     }
-    // the runner: the world scrolls past, the shiba hops each bush and
-    // snaps up the bone floating over it
-    const R = this.runner || (this.runner = { scroll: 0, y: 0, vy: 0, legT: 0, got: -1, pops: [] });
+    // the runner: the world scrolls past, bushes and all, and the shiba jumps
+    // for the bones floating about, and for a cowboy hat now and then, which it puts on
+    const R = this.runner || (this.runner = { scroll: 0, y: 0, vy: 0, legT: 0, got: new Set(), pops: [], hat: false });
     R.scroll += this.RUN_SPEED * dt; R.legT += dt;
-    const next = this.runBush(this.runBushAfter(R.scroll + this.RUN_X - 12));
-    if (R.y === 0 && next.x - R.scroll - this.RUN_X < 26 && t > 1.0) R.vy = 190;
-    if (R.vy || R.y > 0) { R.vy -= 620 * dt; R.y = Math.max(0, R.y + R.vy * dt); if (R.y === 0) R.vy = 0; }
-    for (let i = this.runBushAfter(R.scroll - 20); ; i++) {
-      const b = this.runBush(i), bx = b.x - R.scroll; if (bx > W) break;
-      if (i > R.got && Math.abs(bx - this.RUN_X) < 10 && R.y > 18) { R.got = i; R.pops.push({ x: bx, y: this.RUN_GROUND - 42, t: 0 }); }
+    const G = 620, head = 24;   // gravity; the shiba's mouth, above its paws
+    if (R.y === 0 && t > 1.0) {   // on the ground: jump for the next thing worth it, timed to be at the top over it
+      for (let i = this.runThingAfter(R.scroll + this.RUN_X - 4); ; i++) {
+        const th = this.runThing(i), dx = th.x - R.scroll - this.RUN_X;
+        if (dx > 120) break;
+        if (R.got.has(i)) continue;   // a bone already taken
+        if (th.kind === 'hat' && R.hat) continue;
+        const ph = th.lift - head;   // bring the mouth up to it (a bush: no need)
+        if (ph <= 2) continue;
+        const vy = Math.sqrt(2 * G * ph), lead = this.RUN_SPEED * vy / G;
+        if (dx <= lead) R.vy = vy;
+        break;
+      }
+    }
+    if (R.vy || R.y > 0) { R.vy -= G * dt; R.y = Math.max(0, R.y + R.vy * dt); if (R.y === 0) R.vy = 0; }
+    // snap up a bone, or the hat, the mouth goes past
+    for (let i = this.runThingAfter(R.scroll - 20); ; i++) {
+      const th = this.runThing(i), bx = th.x - R.scroll; if (bx > W) break;
+      if (!th.lift || R.got.has(i) || Math.abs(bx - this.RUN_X - 6) > 9 || Math.abs(R.y + head - th.lift) > 11) continue;
+      if (th.kind === 'hat' && R.hat) continue;
+      R.got.add(i);
+      R.pops.push({ x: bx, y: this.RUN_GROUND - th.lift, t: 0, hat: th.kind === 'hat' });
+      if (th.kind === 'hat') { R.hat = true; Sfx.win && Sfx.win(); }
     }
     for (const p of R.pops) { p.t += dt; p.x -= this.RUN_SPEED * dt; }
     R.pops = R.pops.filter(p => p.t < 0.6);
   },
-  // bushes sit along the run at a steady, slightly uneven spacing
-  runBush(i) { return { x: 200 + i * 130 + ((i * 47) % 60), i }; },
-  runBushAfter(wx) { let i = Math.max(0, Math.floor((wx - 260) / 130)); while (this.runBush(i).x < wx) i++; return i; },
+  // What's along the run: slot i sits a little unevenly past the last. A slot
+  // is a bush the shiba runs past, or a bone floating low, mid-air or high,
+  // and every so often the cowboy hat. kind, x, and lift (how high a bone or
+  // the hat floats; 0 for a bush)
+  runThing(i) {
+    const r = k => (((i + 1) * 2654435761 + k * 40503) >>> 0) % 1000 / 1000;   // the same every time for slot i
+    const x = 200 + i * 64 + Math.round(r(1) * 24);
+    if (i % 13 === 6) return { i, x, kind: 'hat', lift: 44 };
+    if (r(2) < 0.55) return { i, x, kind: 'bone', lift: [20, 38, 48][Math.floor(r(3) * 3)] };
+    return { i, x, kind: 'bush', lift: 0 };
+  },
+  runThingAfter(wx) { let i = Math.max(0, Math.floor((wx - 260) / 64)); while (this.runThing(i).x < wx) i++; return i; },
   drawTitle() {
     const t = this.titleT == null ? 9 : this.titleT;
     const bounce = (k) => { if (k <= 0) return 0; if (k >= 1) return 1; const n = 7.5625, d = 2.75;
       if (k < 1 / d) return n * k * k; if (k < 2 / d) return n * (k -= 1.5 / d) * k + 0.75;
       if (k < 2.5 / d) return n * (k -= 2.25 / d) * k + 0.9375; return n * (k -= 2.625 / d) * k + 0.984375; };
     const back = (k) => { k = Math.max(0, Math.min(1, k)); const c = 1.7; return 1 + (c + 1) * Math.pow(k - 1, 3) + c * Math.pow(k - 1, 2); };
-    Env.paint('sunny@180');
+    Env.paint('sunny@180', false);
     g.rect(0, 0, W, TOP, SCENE.day0);   // the title is full-bleed: sky to the top edge, meadow to the bottom
     const Rn = this.runner || { scroll: 0, y: 0, legT: t, pops: [] }, sc = Rn.scroll, gy = this.RUN_GROUND;
     // the far hills drift by at half speed, the meadow at full speed
     g.rect(0, gy - 14, W, 14, SCENE.day1);
+    const mt = Assets.get('mountains');   // far blue mountains (art/mountains.png), slowest of all
+    if (mt) for (let x = -Math.round(sc * 0.2) % mt.fw; x < W; x += mt.fw) ctx.drawImage(mt.img, x, gy - 10 - mt.fh);
     for (let i = 0; i < W; i++) { const u = i + sc * 0.5, hh = 7 + Math.sin(u / 19) * 4 + Math.sin(u / 6) * 1.5; g.rect(i, gy - hh, 1, hh, SCENE.dayHill); }
     g.rect(0, gy, W, H - gy, SCENE.meadow); g.rect(0, gy, W, 2, SCENE.meadowHi);
     for (let i = 0; i < 18; i++) {
@@ -7925,17 +8228,18 @@ const Engine = {
       if (i % 4 === 0) g.rect(tx + 1, ty - 1, 2, 2, i % 8 ? PAL.ink : PAL.accent);
     }
     ctx.globalAlpha = 0.25; g.rect(0, 0, W, H, PAL.bg); ctx.globalAlpha = 1;
-    // bushes to hop, each with a bone floating over it until the shiba grabs it
-    for (let i = this.runBushAfter(sc - 20); ; i++) {
-      const bx = this.runBush(i).x - sc; if (bx > W + 12) break;
-      for (const [col, d] of [[SCENE.grassLo, 1], [SCENE.leafHi, 0]]) {   // dark rim, then the leaves
-        ctx.fillStyle = col; for (const [ox, r] of [[-7, 6], [0, 9], [7, 6]]) { ctx.beginPath(); ctx.arc(bx + ox, gy + 1, r + d, Math.PI, 0); ctx.fill(); }
-      }
-      g.rect(bx - 4, gy - 6, 3, 2, SCENE.meadowHi); g.rect(bx + 5, gy - 3, 2, 2, SCENE.meadowHi);
-      if (i > (this.runner ? this.runner.got : -1)) g.bone(bx, gy - 42 + Math.sin(this.time * 4 + i) * 1.5, 14);
+    // what's along the run: bushes it runs past, bones floating, the cowboy hat
+    for (let i = this.runThingAfter(sc - 30); ; i++) {
+      const th = this.runThing(i), bx = Math.round(th.x - sc); if (bx > W + 30) break;
+      const bu = Assets.get('bush');
+      if (th.kind === 'bush' && bu) g.sprite('bush', bx, gy + 2 - bu.fh / 2);   // art/bush.png, behind the shiba
+      if (!th.lift || Rn.got && Rn.got.has(i)) continue;
+      const by = gy - th.lift + Math.sin(this.time * 4 + i) * 1.5;
+      if (th.kind === 'hat') { if (!Rn.hat) Closet.drawItem({ f: 15 }, bx, by + 12, 1); }   // hats.png's cowboy hat
+      else g.bone(bx, by, 14);
     }
-    for (const p of Rn.pops) {   // a grabbed bone pops up and fades, with a sparkle
-      ctx.globalAlpha = 1 - p.t / 0.6; g.bone(p.x, p.y - p.t * 30, 12);
+    for (const p of Rn.pops) {   // a grabbed bone pops up and fades, with a sparkle (the hat goes on: just the sparkle)
+      ctx.globalAlpha = 1 - p.t / 0.6; if (!p.hat) g.bone(p.x, p.y - p.t * 30, 12);
       const r = 6 + p.t * 18; g.rect(p.x - r, p.y, 3, 1, PAL.accent); g.rect(p.x + r - 3, p.y, 3, 1, PAL.accent); g.rect(p.x, p.y - r, 1, 3, PAL.accent);
       ctx.globalAlpha = 1;
     }
@@ -7952,13 +8256,17 @@ const Engine = {
     word('SHIBA', 70, PAL.ink, 0.0);
     word('MANIA', 98, PAL.accent, 0.35);
     if (t > 1.0) { ctx.globalAlpha = Math.min(1, (t - 1.0) * 3); g.outline(POOL.length + BOSSES.length + ' MICROGAMES', CX, 118, 8, PAL.ink); ctx.globalAlpha = 1; }
+    // the sun in the top-right corner, bright, its rays just over the sign's corner
+    if (Assets.get('sun')) { ctx.globalAlpha = Math.min(1, t * 3); g.sprite('sun', W - 24, 26); ctx.globalAlpha = 1; }
     // the shiba runs in from the left, then keeps running: hop, grab, land
     const rx = t < 1.2 ? -30 + (this.RUN_X + 30) * (1 - Math.pow(1 - Math.max(0, (t - 0.3) / 0.9), 3)) : this.RUN_X;
     const ry = gy - 14 - (Rn.y || 0);
+    // in the cowboy hat once it's grabbed one: JUMP!'s runner (art/runcowboy.png, jumpcowboy.png)
+    const cow = Rn.hat && Assets.get('runcowboy') && Assets.get('jumpcowboy');
     if (!Rn.y) {
-      g.sprite('swiperight', rx, ry, { w: 60, h: 56, frame: Math.floor(Rn.legT * 14) % 9 });
+      g.sprite(cow ? 'runcowboy' : 'swiperight', rx, ry, { w: 60, h: 56, frame: Math.floor(Rn.legT * 14) % 9 });
       if (Math.floor(Rn.legT * 7) % 2) g.rect(rx - 18, gy - 3, 3, 2, PAL.mid);   // a puff of dust off the back foot
-    } else g.sprite('runjump', rx, ry, { w: 60, h: 56, frame: Rn.vy > 60 ? 2 : Rn.vy < -60 ? 4 : 3 });
+    } else g.sprite(cow ? 'jumpcowboy' : 'runjump', rx, ry, { w: 60, h: 56, frame: Rn.vy > 60 ? 2 : Rn.vy < -60 ? 4 : 3 });
     // sparkles around the logo once it has settled
     if (t > 1.6) for (let i = 0; i < 5; i++) {
       if ((Math.floor(this.time * 4) + i) % 3) continue;
@@ -8594,8 +8902,8 @@ const Engine = {
     FX.pre();
     this.drawScene();
     if (this.hasShelf() && this.state !== 'BREAK') Mascot.draw(g);   // the title has its own shiba; menu screens have none
+    Prize.draw();
     Juice.drawConfetti();
-    Toast.draw();
     if (this.state === 'PLAYING') {
       this.drawFuse(Math.max(0, this.timer / this.duration));
       // DEBUG: what the camera is actually reading, for tuning thresholds on a
@@ -8863,8 +9171,8 @@ const Engine = {
       // is labelled by what you'll actually do
       const gr = Run.group(m), backup = m.how && typeof m.how === 'object' && !['TAP', 'DRAG'].includes(gr) && this.howTo(m) === m.how.touch;
       const prize = !this.tut && !this.testClass && Closet.prize(m.id);
-      if (prize) {   // WIN: BEANIE (or, below HARD, ON HARD: BEANIE), with a small one of the thing, above the kind of game
-        const pre = this.game && this.game.d >= 3 ? 'WIN: ' : 'ON HARD: ';
+      if (prize && this.game && this.game.d >= 3) {   // on HARD, WIN: BEANIE, with a small one of the thing, above the kind of game
+        const pre = 'WIN: ';
         g.outline(pre + prize.name, CX + 8, ty - 16, 8, PAL.accent);
         Closet.drawItem(prize.icon != null ? { f: prize.icon } : prize, CX - 6 - (prize.name.length + pre.length) * 3, ty - 13, 1);
       }

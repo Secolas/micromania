@@ -136,3 +136,24 @@ frame's raised paws are, so a neck thing goes behind them. PixelLab coloured
 each frame's front legs green (`edit_image`, the green-paw prompt), and
 `neck-options/paw_masks.py` turns that into a mask lined up on our frames, less
 the legs where they rest in frame 0, grown a pixel for the outline.
+
+### map/ (2026-10-23)
+
+The RUN world map's shiba. `reference.png` is the game's own front-on shiba
+(`swipeup` frame 0, on a 64px canvas), which PixelLab (`create_character`, v3,
+quadruped dog, 4 directions) turned to face each way. `big_<dir>.png` is the first
+try, 59px tall, too big for the map; halving it lost the face, so the second
+try asked for a 36px dog. `turn_<dir>.png` are that one's four turns, and
+`maprun.png` is its `running-6-frames` animation cut to one 58×54 box (down,
+right, up, left, 6 frames each). It ran the map for one preview. It was still too
+big, so the map now uses the game's own small runners (STACK's and SQUEEZE's)
+instead.
+
+### title/ (2026-10-23)
+
+`bush-spiky.png`: PixelLab's first try at the title's bush to hop
+(`create_image_pixflux`, the hedge's colours as the palette), a spiky plant
+rather than a bush. `bush-big.png`: the second try, a low round shrub on a
+48×32 canvas (39×24), the title's bush for a while. It was too big, so PixelLab
+redrew it at two-thirds size (from a nearest-neighbour shrink of it, init
+strength 300), and that is `art/bush.png` (26×16).

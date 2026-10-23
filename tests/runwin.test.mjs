@@ -15,6 +15,7 @@ export default async function ({ url, launch }) {
     Run.world = 3; Run.stage = 2; Run.beginStage(); Run.score = Run.target(); Run.after();
     const win = [Engine.state, Run.won, Run.wins >= 1, Run.label()];
     step(80);
+    const wizard = Prize.on() && Prize.q.some(i => i.id === 'wizard'); Prize.q.length = 0; step(70);   // winning a run wins the wizard hat (and reaching world 3 the propeller cap): their cards come up first, holding the screen
     tap(Run.BTN_KEEP); step(2);
     const keep = [Engine.state, Run.endless];
     step(30); Input._pendingTaps.push({ x: Run.NEXT.x + 5, y: Run.NEXT.y + 5 }); step(1);   // the shop reads taps
@@ -24,11 +25,13 @@ export default async function ({ url, launch }) {
     const endlessClear = Engine.state;
     // a second win, then DONE
     Run.start(); Run.world = 3; Run.stage = 2; Run.beginStage(); Run.score = Run.target(); Run.after(); step(80);
+    Prize.q.length = 0;
     tap(Run.BTN_DONE);
-    return { targets, win, keep, next, endlessClear, home: Engine.state, wins: +localStorage.getItem('micromania.runWins') };
+    return { targets, win, wizard, keep, next, endlessClear, home: Engine.state, wins: +localStorage.getItem('micromania.runWins') };
   });
   eq(r.targets, [120, 190, 280, 170, 270, 390, 240, 370, 550], 'stage targets, three worlds');
   eq(r.win, ['RUNWIN', true, true, '3-3'], 'beating the world-3 boss wins the run');
+  assert(r.wizard, 'the wizard hat card comes up over RUN COMPLETE!');
   eq(r.keep, ['SHOP', true], 'KEEP GOING goes on, ENDLESS, through the shop');
   eq(r.next, ['STAGE', 4, '4-1'], 'and into world 4');
   eq(r.endlessClear, 'CLEAR', 'in ENDLESS a boss clear is a plain clear');
