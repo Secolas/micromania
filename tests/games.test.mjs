@@ -71,7 +71,15 @@ export default async function ({ url, launch }) {
   out.wins.shh = play(DontTap, 3, () => {});
   out.wins.dodge = play(Dodge, 3, (gm) => { const danger = gm.blocks.filter(b => b.y > gm.py - 80 && b.y < gm.py + 10); let best = gm.px, bs = -1; for (let x = 12; x < W - 12; x += 4) { const s = Math.min(...danger.map(b => Math.abs(b.x - x) - b.w / 2), 999); if (s > bs) { bs = s; best = x; } } hold(best, 250); });
   out.wins.squeeze = play(Squeeze, 3, (gm) => { const w = gm.walls.filter(w => w.y < gm.py).sort((a, b) => b.y - a.y)[0]; hold(w ? w.gx : 90, 250); });
-  out.wins.crossy = play(Crossy, 3, (gm) => { const L = gm.row; const ok = L >= gm.lanes || gm.cars.filter(c => c.lane === L).every(c => Math.abs(c.x - gm.px) > 46 || (gm.px - c.x) * Math.sign(c.sp) < 0); if (ok && gm.hopping <= 0) tapAt(90, 150); });
+  // CROSS: hop when the next lane stays clear for a moment, or when a car is about to reach you where you stand
+  out.wins.crossy = play(Crossy, 3, (gm) => {
+    if (gm.hopping > 0) return;
+    const clear = (L, t0, t1) => L < 0 || L >= gm.lanes || gm.cars.filter(c => c.lane === L).every(c => {
+      for (let t = t0; t <= t1; t += 0.02) { let x = c.x + c.sp * t; if (x < -16) x += W + 32; if (x > W + 16) x -= W + 32; if (Math.abs(x - gm.px) < c.w / 2 + 4) return false; }
+      return true; });
+    const next = clear(gm.row, 0.1, 0.55), here = clear(gm.row - 1, 0, 0.3);
+    if (next || (!here && clear(gm.row, 0.1, 0.3))) tapAt(90, 150);
+  });
   out.wins.sled = play(SteerRun, 3, (gm) => { const g0 = gm.gates.filter(g => !g.done).sort((a, b) => b.y - a.y)[0]; const tx = g0 ? g0.x : gm.px; if (Math.abs(tx - gm.px) > 3) hold(tx > gm.px ? 180 : 0, 150); else release(); });
   out.wins.fetch = play(FlickShot, 3, (gm, i) => { if (i === 8) { const t = (gm.oy - gm.dy) / 280; const lead = gm.dx + gm.dvx * t; swipe(gm.ox, gm.oy, gm.ox + (lead - gm.ox) * 0.25, gm.oy - (gm.oy - gm.dy) * 0.25); } });
   out.wins.dry = play(DryShiba, 3, (gm, i) => { if (i % 14 === 0) tapAt(90, 150); });
@@ -114,6 +122,25 @@ export default async function ({ url, launch }) {
   out.fakeIdleWins = gm.won;
   gm = forceFake(TapBug); Engine.state = 'PLAYING'; Engine.timer = Engine.duration; tapAt(gm.bug.x, gm.bug.y); Input.beginStep(); Engine.update(STEP);
   out.fakeTouchLoses = gm.finished && !gm.won;
+  // CANDLES with no mic: a tap is a puff, so tapping fast blows them all out
+  out.wins.candles = play(BlowCandles, 3, (gm, i) => { if (i % 6 === 0) tapAt(90, 150); });
+  // at top speed, the bosses and DIG can still be won, and a win isn't lost on the clock while it plays out
+  Engine.speed = 2.6;
+  out.wins.wakeFast = play(WakeUp, 3, (gm, i) => { if (i % 5 === 0) tapAt(90, 150); });
+  out.wins.bathFast = play(BathTime, 3, (gm, i) => hold(90 + Math.cos(i * 0.5) * 40, 150 + Math.sin(i * 0.5) * 40));
+  out.wins.digFast = play(BeachDig, 3, (gm, i) => { if (i % 6 === 0) swipe(90, 120, 90, 200); });
+  Engine.speed = 1;
+  // HIGH FIVE on touch: tapping the paw that isn't up loses (it used to jam the round)
+  let wrong = 0;
+  for (let k = 0; k < 10; k++) {
+    Engine.startRound(HighFive, 1); Engine.state = 'PLAYING'; Engine.timer = Engine.duration; const h = Engine.game;
+    for (let i = 0; i < 400 && !h.finished && Engine.state === 'PLAYING'; i++) {
+      if (h.raiseT >= 0.3 && h.side !== 'B' && !h._tried) { h._tried = true; const P = HighFive.PAW[h.side === 'L' ? 'R' : 'L']; tapAt(P.x, P.y); }
+      Input.beginStep(); Engine.update(STEP);
+    }
+    if (h._tried && h.finished && !h.won) wrong++;
+  }
+  out.highfiveWrong = wrong;
   return out;
   });
   assert(!out.crash.length, 'games crashed or never ended: ' + out.crash.join(', '));
@@ -122,5 +149,6 @@ export default async function ({ url, launch }) {
   { const [w, n] = out.losses.cook.split('/').map(Number); assert(w === 0, 'COOK: tapping the wrong food should never win, won ' + out.losses.cook); }
   assert(out.fakeIdleWins, 'fake-out: leaving it alone should win');
   assert(out.fakeTouchLoses, 'fake-out: touching it should lose');
+  assert(out.highfiveWrong >= 5, 'HIGH FIVE: tapping the wrong paw should lose, lost ' + out.highfiveWrong + '/10');
   await done();
 }

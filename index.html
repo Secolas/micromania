@@ -3551,7 +3551,7 @@ class CutRope extends Microgame {
 
 // 19. BOSS — squeeze through the gaps in the fences
 class Squeeze extends Microgame {
-  static meta = { id: 'squeeze', env: 'lawn', prompt: 'SQUEEZE!', hint: 'drag', duration: 5.0, winOnTimeout: true,
+  static meta = { id: 'squeeze', env: 'lawn', prompt: 'SQUEEZE!', hint: 'drag', duration: 5.0, minDuration: 4.4, winOnTimeout: true,   // at least 3 fences, however fast
     how: 'DRAG THROUGH\nTHE GAPS IN THE FENCE' };
   init() {
     this.px = CX; this.py = BOT - 26;
@@ -3599,7 +3599,7 @@ class Squeeze extends Microgame {
 // 20. BLOW — blow a big bubble (mic, or tap-fallback)
 class BlowSail extends Microgame {
   static BUBBLES = [16, 24, 34, 44, 52, 66, 80, 94, 108];   // art/bubble.png's sizes, one per frame
-  static meta = { id: 'blow', env: 'field@240', prompt: 'BLOW!', hint: 'blow', duration: 4.2, photo: true, photoCap: 'BIG BUBBLE!',
+  static meta = { id: 'blow', env: 'field@240', prompt: 'BLOW!', hint: 'blow', duration: 4.2, minDuration: 3.6, photo: true, photoCap: 'BIG BUBBLE!',
     how: { mic: 'BLOW INTO THE MIC\nBLOW A BIG BUBBLE', touch: 'TAP FAST\nTO BLOW A BUBBLE' } };
   init() {
     this.fill = 0;
@@ -3621,8 +3621,10 @@ class BlowSail extends Microgame {
       if (!Input.micPending || this.wait > 1.2) this.paused = false;
       return;
     }
-    const b = input.blow > 0.28 ? input.blow : 0;   // only a real blow grows the bubble
-    this.fill += b * dt * 1.9;
+    // the mic: only a real blow grows the bubble; with no mic, each tap is a
+    // puff, 14 / 18 / 22 taps to the full bubble
+    if (Input.micReady) { const b = input.blow > 0.28 ? input.blow : 0; this.fill += b * dt * 1.9; }
+    else this.fill += input.taps.length * this.need / this.byD(14, 18, 22);
     if (this.fill >= this.need && !this.finished) { Sfx.boop(); this.succeed(); }
   }
   stampPhoto(c) { PhotoFX.bubbles(c); }
@@ -3888,13 +3890,15 @@ class Crossy extends Microgame {
   }
   laneY(L) { return BOT - 12 - (L + 1) * this.laneH; }
   update(dt, input) {
-    if (input.justDown && this.row <= this.lanes) { this.row++; this.hopping = 0.28; Sfx.tap(); buzz(10); }
+    // a hop takes 0.28s and can't be cut short by another tap; only its first
+    // half is in the air (cars pass under), so mashing no longer keeps you safe
+    if (input.justDown && this.row <= this.lanes && this.hopping <= 0) { this.row++; this.hopping = 0.28; Sfx.tap(); buzz(10); }
     this.py += ((this.row === 0 ? BOT - 12 : this.row > this.lanes ? this.laneY(this.lanes - 1) - this.laneH : this.laneY(this.row - 1)) - this.py) * Math.min(1, dt * 20);
     for (const c of this.cars) {
       c.x += c.sp * dt;
       if (c.x < -16) c.x = W + 16; if (c.x > W + 16) c.x = -16;
       // hit only if the player is standing in that car's lane
-      if (this.row - 1 === c.lane && Math.abs(c.x - this.px) < c.w / 2 + 2 && this.hopping <= 0) { buzz(80); Sfx.thud(); this.lose(); return; }
+      if (this.row - 1 === c.lane && Math.abs(c.x - this.px) < c.w / 2 + 2 && this.hopping <= 0.14) { buzz(80); Sfx.thud(); this.lose(); return; }
     }
     if (this.hopping > 0) this.hopping -= dt;
     if (this.row > this.lanes) { Sfx.bark(); this.succeed(); }   // reached the far side
@@ -4157,7 +4161,7 @@ class KnockStack extends Microgame {
       }
       return;
     }
-    const G = 420, ball = this.ball;
+    const G = 420, ball = this.ball;   // the aim preview in draw() uses the same 420
     this.playingOut = true;   // a shot in the air when the clock runs out still gets to land
     // the shiba: flies, then bounces and rolls along the ground
     if (ball.flying) {
@@ -4279,7 +4283,7 @@ class KnockStack extends Microgame {
     }
     if (this.aim && held) {   // where it'll go
       let px = bx, py = by, vx = (ox - bx) * this.K, vy = (oy - by) * this.K;
-      for (let i = 0; i < 12; i++) { px += vx * 0.05; py += vy * 0.05; vy += 240 * 0.05; if (py > BOT) break; ctx.globalAlpha = 1 - i / 13; g.rect(px - 1, py - 1, 2, 2, PAL.ink); ctx.globalAlpha = 1; }
+      for (let i = 0; i < 12; i++) { px += vx * 0.05; py += vy * 0.05; vy += 420 * 0.05; if (py > BOT) break; ctx.globalAlpha = 1 - i / 13; g.rect(px - 1, py - 1, 2, 2, PAL.ink); ctx.globalAlpha = 1; }
     }
     // the shiba, curled up in the pouch and then spinning through the air
     ctx.save(); ctx.translate(this.ball.x, this.ball.y); ctx.rotate(this.ball.rot || 0);
@@ -5226,12 +5230,15 @@ class BlowCandles extends Microgame {
   }
   update(dt, input) {
     if (this.paused) { this.wait += dt; if (!Input.micPending || this.wait > 1.2) this.paused = false; return; }
-    if (input.blow > 0.3) {
+    // the mic: a real blow snuffs them; with no mic, every tap is a puff that
+    // takes a fifth of a candle (5 taps a candle, at every level)
+    const puff = Input.micReady ? (input.blow > 0.3 ? input.blow * dt * 1.6 : 0) : input.taps.length * 0.2;
+    if (puff > 0) {
       // snuff the candles left-to-right so progress is visible
       for (let i = 0; i < this.n; i++) {
         if (this.lit[i] > 0) {
-          this.lit[i] = Math.max(0, this.lit[i] - input.blow * dt * 1.6);
-          if (this.lit[i] <= 0) Sfx.poof();   // each candle goes out with a little fwip
+          this.lit[i] = Math.max(0, this.lit[i] - puff);
+          if (this.lit[i] <= 0.001) { this.lit[i] = 0; Sfx.poof(); }   // each candle goes out with a little fwip
           break;
         }
       }
@@ -5644,6 +5651,11 @@ class HighFive extends Microgame {
       return;
     }
     if (this.raiseT < 0.25) return;                   // the paw is still going up
+    // touch: a tap on the paw that isn't up is a miss, and the high five is off
+    if (!Input.camReady && input.justDown && this.side !== 'B') {
+      const o = this.side === 'L' ? 'R' : 'L', P = HighFive.PAW[o];
+      if (Math.hypot(input.x - P.x, input.y - P.y) < 34) { Sfx.fail(); FX.hit(P.x, P.y, PAL.bad); this.lose(); return; }
+    }
     const L = this.hitIn('L', input), R = this.hitIn('R', input), thr = Input.camReady ? this.thr : 0.5;
     // swaying your whole body moves the middle as much as the sides: that's no high five
     const C = Input.camReady ? Input.motionPeak(0.42, 0, 0.58, 1) * 1.15 : 0;
@@ -5689,7 +5701,7 @@ class HighFive extends Microgame {
 // ── REGISTRY ─────────────────────────────────────────────────────────────────
 // 47. DIG — swipe to dig a hole in the sand until the bone turns up
 class BeachDig extends Microgame {
-  static meta = { id: 'dig', env: 'beach@118', prompt: 'DIG!', hint: 'swipe', duration: 4.2,
+  static meta = { id: 'dig', env: 'beach@118', prompt: 'DIG!', hint: 'swipe', duration: 4.2, minDuration: 3.2,
     how: 'SWIPE AGAIN AND AGAIN\nTO DIG UP THE BONE' };
   init() {
     this.need = this.byD(4, 5, 7); this.dug = 0;
@@ -5704,7 +5716,7 @@ class BeachDig extends Microgame {
       this.dug++; this.pop = 0.18;
       Sfx.noise(0.07, 0.06, 900); buzz(12);
       for (let i = 0; i < 9; i++) this.sand.push({ x: this.hx + (Math.random() - 0.5) * 20, y: this.hy + 4, vx: (Math.random() - 0.5) * 120, vy: 40 + Math.random() * 90, t: 0 });
-      if (this.dug >= this.need) { this.found = 0.001; Sfx.win(); FX.burst(this.hx, this.hy, PAL.accent, 12, 60); }
+      if (this.dug >= this.need) { this.found = 0.001; this.playingOut = true; Sfx.win(); FX.burst(this.hx, this.hy, PAL.accent, 12, 60); }   // found: the clock can't take it back
     }
     for (const p of this.sand) { p.t += dt; p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 160 * dt; }
     this.sand = this.sand.filter(p => p.t < 0.6);
@@ -5735,7 +5747,7 @@ class BeachDig extends Microgame {
 
 // 48. BOSS — a giant shiba asleep in its bed: shout it awake before time's up
 class WakeUp extends Microgame {
-  static meta = { id: 'wake', env: 'bedroom@232', prompt: 'WAKE UP!', hint: 'shout', duration: 4.6, photo: true, photoCap: 'RISE AND SHINE!',
+  static meta = { id: 'wake', env: 'bedroom@232', prompt: 'WAKE UP!', hint: 'shout', duration: 4.6, minDuration: 4.0, photo: true, photoCap: 'RISE AND SHINE!',
     how: { mic: 'SHOUT INTO THE MIC\nWAKE THE BIG SHIBA!', touch: 'TAP AS FAST AS YOU CAN\nTO WAKE IT UP' } };
   init() {
     Input.enableMic(); Input.enableCam();
@@ -5756,7 +5768,7 @@ class WakeUp extends Microgame {
     const stage = Math.floor(Math.min(0.99, this.fill / this.need) * 3);
     if (stage > this.peak) { this.peak = stage; Sfx.squeak(); buzz(20); FX.shake(2); }
     if (this.fill < this.need * 0.2) { this.snoreT -= dt; if (this.snoreT <= 0) { Sfx.snore(); this.snoreT = 1.2; } }
-    if (this.fill >= this.need) { this.woke = 0.001; Sfx.bark(); FX.shake(6); buzz(60); }
+    if (this.fill >= this.need) { this.woke = 0.001; this.playingOut = true; Sfx.bark(); FX.shake(6); buzz(60); }   // woken: the clock can't take it back
   }
   draw(g) {
     g.clear();
@@ -5796,10 +5808,11 @@ class WakeUp extends Microgame {
 
 // 49. BOSS — bath time: shake the phone to fling the suds off a soapy shiba
 class BathTime extends Microgame {
-  static meta = { id: 'bath', env: 'bath', prompt: 'BATH TIME!', hint: 'shake', duration: 4.4,
+  static meta = { id: 'bath', env: 'bath', prompt: 'BATH TIME!', hint: 'shake', duration: 4.4, minDuration: 4.0,
     how: { motion: 'SHAKE YOUR PHONE\nSHAKE OFF ALL THE SUDS', touch: 'RUB THE SCREEN FAST\nSHAKE OFF ALL THE SUDS' } };
   init() {
-    this.n = this.byD(12, 16, 20);
+    // as many suds as the round has time for: about 4.5 a second can be rubbed off
+    this.n = Math.min(this.byD(12, 16, 20), Math.max(8, Math.round(((this.timeLimit || 7) - 0.6) * 4.5)));
     this.suds = []; for (let i = 0; i < this.n; i++) this.suds.push(this.newSud());
     this.flying = []; this.fling = 0; this.grow = 0; this.every = this.byD(1.0, 0.8, 0.6); this.done = 0;
   }
@@ -5821,7 +5834,7 @@ class BathTime extends Microgame {
     }
     if (input.shake < 0.12) { this.grow += dt; if (this.grow >= this.every && this.suds.length < this.n) { this.grow = 0; this.suds.push(this.newSud()); } }
     else this.grow = 0;
-    if (!this.suds.length) { this.done = 0.001; Sfx.splash(); FX.burst(CX, 150, PAL.ink, 14, 70); }
+    if (!this.suds.length) { this.done = 0.001; this.playingOut = true; Sfx.splash(); FX.burst(CX, 150, PAL.ink, 14, 70); }   // clean: the clock can't take it back
     for (const f of this.flying) { f.t += dt; f.x += f.vx * dt; f.y += f.vy * dt; f.vy += 260 * dt; }
     this.flying = this.flying.filter(f => f.t < 0.8);
   }
