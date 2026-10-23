@@ -180,14 +180,16 @@ export default async function ({ url, launch }) {
   // at top speed, the bosses and DIG can still be won, and a win isn't lost on the clock while it plays out
   Engine.speed = 2.6;
   out.wins.wakeFast = play(WakeUp, 3, (gm, i) => { if (i % 5 === 0) tapAt(90, 150); });
-  // BATH TIME, all four goes on touch: pour on the shiba, rub each splat, rub fast to dry, tap the hearts
+  // BATH TIME, all four goes on touch: fill the bath to the line, rub each splat, rub fast to dry, tap the hearts
   const bath = (gm, i) => {
-    if (gm.step === 0) hold(gm.sx, 100);
+    if (gm.intro > 0 || gm.banner > 0) { release(); return; }   // reading the cards
+    if (gm.step === 0) { if (gm.fill < (BathTime.LO + BathTime.HI) / 2) hold(90, 150); else release(); }
     else if (gm.step === 1) { const m = gm.mud.find(m => m.dirt > 0); if (m) hold(m.x + Math.sin(i) * 6, m.y + Math.cos(i * 1.3) * 6); }
     else if (gm.step === 2) hold(90 + Math.cos(i * 0.7) * 45, 180);
     else { release(); if (i % 4 === 0) { const h = gm.hearts.find(h => !h.sent); if (h) tapAt(h.x, h.y); } }
   };
   out.wins.bath = play(BathTime, 3, bath);
+  out.bathOverflow = play(BathTime, 3, (gm) => { if (gm.intro > 0 || gm.banner > 0) release(); else hold(90, 150); });   // pours and never stops
   out.wins.bathFast = play(BathTime, 3, bath);
   out.wins.digFast = play(BeachDig, 3, (gm, i) => { if (i % 6 === 0) swipe(gm.hx, gm.hy - 10, gm.hx, gm.hy + 40); });
   Engine.speed = 1;
@@ -220,6 +222,7 @@ export default async function ({ url, launch }) {
   assert(out.pullRed === '0/20', 'PULL DOWN: pulling the red one should lose: ' + out.pullRed);
   assert(out.feedShoved === 20, 'FEED: a bone into a shut mouth should lose, lost ' + out.feedShoved + '/20');
   assert(out.digMiss === '0/20' && out.digIdle === '0/20', 'DIG: digging off the X, or not at all, should lose: ' + out.digMiss + ', ' + out.digIdle);
+  assert(out.bathOverflow === '0/20', 'BATH TIME: overfilling the bath should lose: ' + out.bathOverflow);
   assert(out.dryIdle === 0, 'DRY OFF: leaving the shiba wet should lose, won ' + out.dryIdle + '/5');
   assert(out.highfiveWrong >= 5, 'HIGH FIVE: tapping the wrong paw should lose, lost ' + out.highfiveWrong + '/10');
   await done();

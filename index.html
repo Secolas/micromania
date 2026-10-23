@@ -6021,29 +6021,42 @@ class WakeUp extends Microgame {
   }
 }
 
-// 49. BOSS — BATH TIME, start to finish, in four goes: SHOWER it (tilt the
-// phone, or drag, to keep the jug's water on it as it wriggles), SCRUB the mud
-// off, SHAKE it dry (the phone, or rubbing), then blow it a KISS (the mic, or
-// tap the hearts floating up) until it's happy.
+// 49. BOSS — BATH TIME, start to finish, in four goes, each explained before
+// it starts (the clock waits while you read): POUR the bath, tilting the phone
+// (or holding) to fill it to the line, as in POUR!; RUB the mud off; SHAKE it
+// dry, wet to fluffy; then blow it a KISS (or tap the hearts) until it's happy.
 class BathTime extends Microgame {
   static meta = { id: 'bath', env: 'bath', group: 'SHAKE', prompt: 'BATH TIME!', hint: 'shake', duration: 6.5, minDuration: 8.5,
-    how: 'SHOWER IT, SCRUB IT,\nDRY IT, THEN A KISS!' };
-  static STEPS = ['SHOWER!', 'SCRUB!', 'SHAKE!', 'KISS!'];
+    how: 'POUR, RUB, SHAKE DRY,\nTHEN BLOW A KISS!' };
+  static STEPS = ['POUR!', 'RUB!', 'SHAKE!', 'KISS!'];
+  static LO = 0.6; static HI = 0.85;   // the water line: fill the bath to between these, then stop
   init() {
     Input.enableTilt(); Input.zeroTilt(); Input.enableMic();
-    this.step = 0; this.k = 0; this.banner = 0.6; this.done = 0;
-    this.jx = CX + 30; this.sx = CX;                    // the jug, and the shiba wriggling in the tub
-    this.mud = []; this.drops = []; this.hearts = []; this.heartT = 0; this.scrubT = -1;
-    // it gets in the bath muddy: splats over it, apart from one another, to scrub off after the shower
+    this.step = 0; this.k = 0; this.done = 0;
+    this.intro = 2.4;      // the four goes, listed, before the first (the clock waits)
+    this.banner = 0;       // each go's name and what to do, before it starts (the clock waits)
+    this.fill = 0; this.pouring = false; this.hold = 0;
+    this.sx = CX; this.mud = []; this.drops = []; this.hearts = []; this.heartT = 0; this.scrubT = -1;
+    // it gets in the bath muddy: splats over it, apart from one another
     for (let i = 0; i < 4; i++) {
       let x, y, n = 0;
       do { x = CX - 26 + Math.random() * 52; y = 120 + Math.random() * 38; } while (n++ < 60 && this.mud.some(m => Math.hypot(m.x - x, m.y - y) < 18));
-      this.mud.push({ x, y, r: 8, dirt: 1, dx: x - CX });
+      this.mud.push({ x, y, r: 8, dirt: 1 });
     }
+    this.paused = true;
+  }
+  // what each go asks of you, for the phone you're on
+  how(st) {
+    const motion = Engine.howKey({ how: { motion: 1, touch: 1 } }) === 'motion';
+    return [Input.tiltReady ? ['TILT THE PHONE TO POUR WATER', 'STOP AT THE LINE'] : ['HOLD TO POUR WATER', 'LET GO AT THE LINE'],
+            ['DRAG TO RUB OFF THE MUD', ''],
+            [motion ? 'SHAKE THE PHONE TO DRY IT' : 'RUB FAST TO DRY IT', ''],
+            [Input.micReady ? 'BLOW TO SEND A KISS' : 'TAP THE HEARTS', Input.micReady ? '' : 'TO SEND A KISS']][st];
   }
   next() {
-    this.step++; this.k = 0; this.banner = 0.5; Sfx.clear(); FX.flash(PAL.accent, 0.25); buzz(30);
-    if (this.step === 4) { this.done = 0.001; this.playingOut = true; Sfx.win(); Juice.confetti(40); }   // happy: the clock can't take it back
+    this.step++; this.k = 0; Sfx.clear(); FX.flash(PAL.accent, 0.25); buzz(30);
+    if (this.step === 4) { this.done = 0.001; this.playingOut = true; this.paused = false; Sfx.win(); Juice.confetti(40); return; }   // happy: the clock can't take it back
+    this.banner = 1.1; this.paused = true;
   }
   update(dt, input) {
     for (const d of this.drops) { d.t += dt; d.x += d.vx * dt; d.y += d.vy * dt; d.vy += 300 * dt; }
@@ -6051,25 +6064,29 @@ class BathTime extends Microgame {
     for (const h of this.hearts) { h.t += dt; if (h.sent) { h.x += (CX - h.x) * Math.min(1, dt * 6); h.y += (128 - h.y) * Math.min(1, dt * 6); } else h.y -= 34 * dt; }
     this.hearts = this.hearts.filter(h => h.t < 3 && !(h.sent && Math.hypot(h.x - CX, h.y - 128) < 6) && h.y > TOP);
     if (this.done) { this.done += dt; if (this.done > 0.7 && !this.finished) this.succeed(); return; }
-    if (this.banner > 0) { this.banner -= dt; return; }
-    if (this.step === 0) {   // SHOWER: keep the stream on the wriggling shiba
-      this.sx = CX + Math.sin(this.t * 1.7) * 26;
-      for (const m of this.mud) m.x = this.sx + m.dx;   // the mud wriggles with it
-      const want = Input.tiltReady ? CX + input.tiltX * 80 : input.down ? input.x + 10 : this.jx;
-      this.jx += (Math.max(30, Math.min(W - 20, want)) - this.jx) * Math.min(1, dt * 8);
-      if (Math.abs(this.jx - 10 - this.sx) < 20) {
-        this.k += dt / 1.2;
-        if (Math.random() < 0.5) this.drops.push({ x: this.sx + (Math.random() - 0.5) * 24, y: 128, vx: (Math.random() - 0.5) * 120, vy: -60, t: 0 });
-      }
-    } else if (this.step === 1) {   // SCRUB: rub right on each splat
-      this.sx += (CX - this.sx) * Math.min(1, dt * 6);
-      for (const m of this.mud) m.x = this.sx + m.dx;
+    // the list of goes, then each go's own card: the clock waits; a tap moves on
+    if (this.intro > 0) { this.intro -= dt; if (input.taps.length && this.intro < 2.0) this.intro = 0; if (this.intro <= 0) { this.banner = 1.1; Sfx.prompt && Sfx.prompt(false); } return; }
+    if (this.banner > 0) { this.banner -= dt; if (input.taps.length && this.banner < 0.8) this.banner = 0; if (this.banner <= 0) { this.paused = false; Input.flush(); } return; }
+    if (this.step === 0) {   // POUR: tilt to pour, level off to stop (as POUR!), hold a touch with no gyro
+      const t = Input.tiltReady ? Math.abs(input.tiltX) : (input.down ? 0.7 : 0);
+      if (t > 0.5) this.pouring = true; else if (t < 0.3) this.pouring = false;
+      if (this.pouring) { this.fill += Math.min(1, t) * dt * 0.42; if (Math.random() < 0.4) this.drops.push({ x: CX + (Math.random() - 0.5) * 20, y: 132, vx: (Math.random() - 0.5) * 90, vy: -50, t: 0 }); }
+      if (this.fill > 1) { buzz(100); FX.shake(3); Sfx.splash(); this.lose(); return; }   // it overflows
+      const ok = this.fill >= BathTime.LO && this.fill <= BathTime.HI;
+      if (!this.pouring && ok) { this.hold += dt; if (this.hold >= 0.4) { Sfx.chomp(); this.k = 1; } } else this.hold = 0;
+      if (this.k < 1) this.k = Math.min(0.99, this.fill / BathTime.LO);
+    } else if (this.step === 1) {   // RUB: drag right over each splat
       if (input.down && input.moveDist > 0)
         for (const m of this.mud) if (m.dirt > 0 && Math.hypot(input.x - m.x, input.y - m.y) < m.r + 4) { m.dirt -= input.moveDist * 0.03; this.scrubT = this.t; if (Math.random() < 0.2) Sfx.squeak(); }
       this.k = 1 - this.mud.reduce((a, m) => a + Math.max(0, m.dirt), 0) / this.mud.length;
     } else if (this.step === 2) {   // SHAKE: the phone, or rubbing fast, shakes it dry
       const m = input.shake;
-      if (m > 0.12) { this.k += m * dt * 2.2 / 1.8; if (Math.random() < m) this.drops.push({ x: CX + (Math.random() - 0.5) * 50, y: 130 + Math.random() * 30, vx: (Math.random() - 0.5) * 220, vy: -80 - Math.random() * 60, t: 0 }); }
+      if (m > 0.12) {
+        const was = this.k; this.k += m * dt * 2.2 / 1.8;
+        if (Math.random() < m * (1 - this.k)) this.drops.push({ x: CX + (Math.random() - 0.5) * 50, y: 130 + Math.random() * 30, vx: (Math.random() - 0.5) * 220, vy: -80 - Math.random() * 60, t: 0 });
+        // halfway: the last of the water flies off in a puff, and it's fluffy
+        if (was < 0.6 && this.k >= 0.6) { for (let n = 0; n < 24; n++) { const a = n / 24 * 6.28; this.drops.push({ x: CX + Math.cos(a) * 30, y: 150 + Math.sin(a) * 34, vx: Math.cos(a) * 180, vy: Math.sin(a) * 140 - 40, t: 0 }); } Sfx.poof(); FX.burst(CX, 150, PAL.ink, 16, 80); }
+      }
     } else if (this.step === 3) {   // KISS: blow hearts at it, or tap the hearts floating up
       if (Input.micReady) {
         if (input.blow > 0.3) { this.k += input.blow * dt * 1.1; if ((this.heartT -= dt) <= 0) { this.heartT = 0.15; this.hearts.push({ x: CX + (Math.random() - 0.5) * 40, y: BOT - 20, t: 0, sent: true }); } }
@@ -6109,41 +6126,63 @@ class BathTime extends Microgame {
   }
   draw(g) {
     g.clear();
-    const st = this.step, sx = Math.round(this.sx), wig = Math.floor(this.t * 10) % RubClean.WIGGLE;
+    const st = this.step, sx = Math.round(this.sx), wig = Math.floor(this.t * 10) % RubClean.WIGGLE, f4 = Math.floor(this.t * 5) % 4;
     BathTime.tubBack(178);
-    // the shiba in the tub: squirming under the shower and the mud, soaked for
-    // the shake, then dry again and happier the more love it gets
-    if (st === 0 || st === 1) {
-      if (Assets.get('rubdog')) g.sprite('rubdog', sx + 1, 144, { w: 96, h: 88, frame: st === 1 && this.t - this.scrubT >= 0.2 ? 0 : wig });
+    // the shiba in the tub: muddy while the bath fills and while you rub,
+    // wet then drying to fluffy as it shakes (happy, never sad), then waiting
+    // for its kiss and cheering once it has had it
+    if (st <= 1) {
+      if (Assets.get('rubdog')) g.sprite('rubdog', sx + 1, 144, { w: 96, h: 88, frame: st === 1 && this.t - this.scrubT < 0.2 ? wig : 0 });
       else g.sprite('shiba', sx, 151, { w: 70, h: 74, frame: 0 });
     } else if (st === 2) {
-      const wob = Input.shake > 0.12 ? Math.sin(this.t * 40) * Input.shake * 0.1 : 0, wa = Assets.get('wetidle');
+      const sh = this.banner > 0 ? 0 : Input.shake, wob = sh > 0.12 ? Math.sin(this.t * 40) * sh * 0.1 : 0;
       ctx.save(); ctx.translate(CX, 210); ctx.rotate(wob); ctx.translate(-CX, -210);
-      if (wa) g.sprite('wetidle', CX, 210 - 64, { w: 128, h: 128, frame: (this.k < 1 - DryShiba.DAMP ? 4 : 0) + Math.floor(this.t * 5) % 4 });
-      else g.fullIdle(CX, 210, 'sad', this.t);
+      // wet (art/wetidle.png's happy frames) until the last of the water flies off, then fluffy
+      if (this.k < 0.6 && Assets.get('wetidle')) g.sprite('wetidle', CX, 210 - 64, { w: 128, h: 128, frame: f4 });
+      else g.fullIdle(CX, 210, 'happy', this.t);
       ctx.restore();
-    } else g.fullIdle(CX, 210, st >= 4 ? 'happy' : this.k < 0.35 ? 'sad' : this.k < 0.7 ? 'sad2' : 'happy', this.t);
+    } else g.fullIdle(CX, 210, 'happy', this.t);
     for (const m of this.mud) if (st <= 1 && m.dirt > 0) { ctx.globalAlpha = Math.min(1, m.dirt + 0.15); g.sprite('mud', m.x, m.y); ctx.globalAlpha = 1; }
     BathTime.tubFront(178);
     g.sprite('duck', 123 + Math.sin(this.t * 2) * 6, 172);   // a rubber duck riding the bath (art/duck.png)
-    // the shower: the jug tipped over the tub, pouring
+    // POUR: the jug tipped over the tub as in POUR!, its stream, and the water gauge with its line
     if (st === 0) {
-      const jx = Math.round(this.jx), jy = TOP + 40;
-      ctx.save(); ctx.translate(jx, jy); ctx.rotate(-0.9); g.sprite('jug', 1, -4); ctx.restore();
-      ctx.globalAlpha = 0.8; g.rect(jx - 13, jy + 8, 5, 132 - jy, SCENE.sea1); g.rect(jx - 12, jy + 8, 2, 132 - jy, SCENE.tileHi); ctx.globalAlpha = 1;
+      const t = Input.tiltReady ? Input.tiltX : (Input.down && this.banner <= 0 && this.intro <= 0 ? 0.6 : 0), tip = Math.max(-1, Math.min(1, t)) * 0.7;
+      ctx.save(); ctx.translate(CX - 4, TOP + 46); ctx.rotate(tip); g.sprite('jug', 1, -4); ctx.restore();
+      if (this.pouring) { ctx.globalAlpha = 0.8; g.rect(CX - 2, TOP + 56, 3, 132 - TOP - 56, SCENE.sea1); ctx.globalAlpha = 1; }
+      const gx = W - 15, gy0 = 100, gh = 130, ok = this.fill >= BathTime.LO && this.fill <= BathTime.HI;
+      g.rect(gx - 1, gy0 - 1, 10, gh + 2, PAL.bg); g.rect(gx, gy0, 8, gh, SCENE.grout);
+      g.rect(gx, gy0 + gh - Math.min(1, this.fill) * gh, 8, Math.min(1, this.fill) * gh, ok ? PAL.accent : SCENE.sea1);
+      for (const v of [BathTime.LO, BathTime.HI]) g.rect(gx - 4, gy0 + gh - v * gh, 16, 1, PAL.accent);
+      g.text('WATER', gx + 4, gy0 - 5, 8, PAL.ink);
     }
     for (const d of this.drops) { ctx.globalAlpha = 1 - d.t / 0.6; g.rect(d.x - 1, d.y - 1, 2, 3, SCENE.sea0); ctx.globalAlpha = 1; }
     for (const h of this.hearts) BathTime.heart(Math.round(h.x), Math.round(h.y), h.sent ? PAL.bad : '#ff6f9e', h.sent ? 1 : 2);
-    // which go it is, how far along, and what to do
-    const S = BathTime.STEPS, i = Math.min(3, st);
-    if (st < 4) {
-      const how = st === 0 ? (Input.tiltReady ? 'TILT TO POUR ON IT' : 'DRAG TO POUR ON IT') : st === 1 ? 'RUB OFF THE MUD'
-                : st === 2 ? (Engine.howKey({ how: { motion: 1, touch: 1 } }) === 'motion' ? 'SHAKE THE PHONE' : 'RUB FAST') : Input.micReady ? 'BLOW IT A KISS' : 'TAP THE HEARTS';
-      g.outline(S[i], CX, TOP + 26, this.banner > 0 ? 18 : 12, PAL.accent);
-      if (this.banner <= 0) g.text(how, CX, TOP + 40, 8, PAL.ink);
-      g.bar(30, BOT - 14, W - 60, 6, this.k, PAL.accent, PAL.mid);
-    } else g.outline('SQUEAKY CLEAN!', CX, TOP + 26, 14, PAL.accent);
     for (let n = 0; n < 4; n++) g.rect(CX - 20 + n * 10, BOT - 26, 7, 7, n < st ? PAL.accent : n === st ? PAL.ink : PAL.mid);
+    if (st >= 4) { g.outline('SQUEAKY CLEAN!', CX, TOP + 26, 14, PAL.accent); return; }
+    const S = BathTime.STEPS, i = Math.min(3, st), [l1, l2] = this.how(i);
+    // the four goes, before the first: a card with each one and what to do
+    if (this.intro > 0) {
+      ctx.globalAlpha = 0.85; g.rect(0, TOP, W, BOT - TOP, PAL.bg); ctx.globalAlpha = 1;
+      g.outline('BATH TIME!', CX, TOP + 30, 16, PAL.accent);
+      for (let n = 0; n < 4; n++) {
+        const y = TOP + 62 + n * 46, [a1, a2] = this.how(n);
+        g.button({ x: 12, y: y - 14, w: W - 24, h: 38 }, n === 0);
+        g.text((n + 1) + '  ' + S[n], CX, y + 2, 11, n === 0 ? PAL.bg : PAL.accent);
+        g.text(a1, CX, y + 16, 8, n === 0 ? PAL.bg : PAL.ink);
+      }
+      return;
+    }
+    // each go: its name big and what to do, then the name small with its bar
+    if (this.banner > 0) {
+      ctx.globalAlpha = 0.6; g.rect(0, TOP + 30, W, 74, PAL.bg); ctx.globalAlpha = 1;
+      g.outline((i + 1) + ' / 4  ' + S[i], CX, TOP + 56, 18, PAL.accent);
+      g.text(l1, CX, TOP + 78, 9, PAL.ink); if (l2) g.text(l2, CX, TOP + 92, 9, PAL.ink);
+    } else {
+      g.outline(S[i], CX, TOP + 22, 12, PAL.accent);
+      g.text(l1, CX, TOP + 36, 8, PAL.ink);
+      g.bar(30, BOT - 14, W - 60, 6, this.k, PAL.accent, PAL.mid);
+    }
   }
 }
 

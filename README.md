@@ -434,10 +434,14 @@ instant it turns red or you're caught, and sit through the reds), and SQUID
 turned, freeze the instant it faces you), WAKE UP! (a giant shiba asleep in its
 bed — shout into the mic to wake it before time's up; quiet lets it drift back
 off; with no mic, tap as fast as you can) and BATH TIME! (the whole bath in
-four goes: SHOWER it, tilting the phone or dragging to keep the jug's water on
-it as it wriggles in the tub; SCRUB the mud off; SHAKE it dry, with the phone
-or by rubbing fast; then blow it a KISS into the mic, or tap the hearts
-floating up, until it's happy).
+four goes, listed on a card first, each with its own card saying what to do;
+the clock waits while you read):
+1. POUR the bath: tilt the phone, or hold, to fill it to the line, as in POUR!
+   Overfill it and you lose.
+2. RUB the mud off.
+3. SHAKE it dry with the phone, or by rubbing fast. It goes wet, then
+   fluffy, with a puff of spray.
+4. Blow it a KISS into the mic, or tap the hearts floating up.
 
 BEACH DIG is a regular game on the beach: swipe on the X, again and again,
 until the bone turns up. On 2 and 3 there are two bones, the second X
