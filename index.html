@@ -6034,15 +6034,15 @@ class BathTime extends Microgame {
     this.step = 0; this.k = 0; this.banner = 0.6; this.done = 0;
     this.jx = CX + 30; this.sx = CX;                    // the jug, and the shiba wriggling in the tub
     this.mud = []; this.drops = []; this.hearts = []; this.heartT = 0; this.scrubT = -1;
+    // it gets in the bath muddy: splats over it, apart from one another, to scrub off after the shower
+    for (let i = 0; i < 4; i++) {
+      let x, y, n = 0;
+      do { x = CX - 26 + Math.random() * 52; y = 120 + Math.random() * 38; } while (n++ < 60 && this.mud.some(m => Math.hypot(m.x - x, m.y - y) < 18));
+      this.mud.push({ x, y, r: 8, dirt: 1, dx: x - CX });
+    }
   }
   next() {
     this.step++; this.k = 0; this.banner = 0.5; Sfx.clear(); FX.flash(PAL.accent, 0.25); buzz(30);
-    if (this.step === 1)   // SCRUB: mud splats over the shiba, apart from one another
-      for (let i = 0; i < 4; i++) {
-        let x, y, n = 0;
-        do { x = CX - 26 + Math.random() * 52; y = 120 + Math.random() * 38; } while (n++ < 60 && this.mud.some(m => Math.hypot(m.x - x, m.y - y) < 18));
-        this.mud.push({ x, y, r: 8, dirt: 1 });
-      }
     if (this.step === 4) { this.done = 0.001; this.playingOut = true; Sfx.win(); Juice.confetti(40); }   // happy: the clock can't take it back
   }
   update(dt, input) {
@@ -6054,6 +6054,7 @@ class BathTime extends Microgame {
     if (this.banner > 0) { this.banner -= dt; return; }
     if (this.step === 0) {   // SHOWER: keep the stream on the wriggling shiba
       this.sx = CX + Math.sin(this.t * 1.7) * 26;
+      for (const m of this.mud) m.x = this.sx + m.dx;   // the mud wriggles with it
       const want = Input.tiltReady ? CX + input.tiltX * 80 : input.down ? input.x + 10 : this.jx;
       this.jx += (Math.max(30, Math.min(W - 20, want)) - this.jx) * Math.min(1, dt * 8);
       if (Math.abs(this.jx - 10 - this.sx) < 20) {
@@ -6062,6 +6063,7 @@ class BathTime extends Microgame {
       }
     } else if (this.step === 1) {   // SCRUB: rub right on each splat
       this.sx += (CX - this.sx) * Math.min(1, dt * 6);
+      for (const m of this.mud) m.x = this.sx + m.dx;
       if (input.down && input.moveDist > 0)
         for (const m of this.mud) if (m.dirt > 0 && Math.hypot(input.x - m.x, input.y - m.y) < m.r + 4) { m.dirt -= input.moveDist * 0.03; this.scrubT = this.t; if (Math.random() < 0.2) Sfx.squeak(); }
       this.k = 1 - this.mud.reduce((a, m) => a + Math.max(0, m.dirt), 0) / this.mud.length;
@@ -6072,9 +6074,9 @@ class BathTime extends Microgame {
       if (Input.micReady) {
         if (input.blow > 0.3) { this.k += input.blow * dt * 1.1; if ((this.heartT -= dt) <= 0) { this.heartT = 0.15; this.hearts.push({ x: CX + (Math.random() - 0.5) * 40, y: BOT - 20, t: 0, sent: true }); } }
       } else {
-        if ((this.heartT -= dt) <= 0) { this.heartT = 0.32; this.hearts.push({ x: 30 + Math.random() * (W - 60), y: BOT - 10, t: 0, sent: false }); }
+        if ((this.heartT -= dt) <= 0) { this.heartT = 0.32; this.hearts.push({ x: 30 + Math.random() * (W - 60), y: BOT - 40, t: 0, sent: false }); }   // floating up from above the bar
         for (const tp of input.taps) {
-          const h = this.hearts.find(h => !h.sent && Math.hypot(tp.x - h.x, tp.y - h.y) < 16);
+          const h = this.hearts.find(h => !h.sent && Math.hypot(tp.x - h.x, tp.y - h.y) < 18);
           if (h) { h.sent = true; this.k += 0.34; Sfx.heart(); buzz(15); }   // 3 hearts
         }
       }
@@ -6095,10 +6097,15 @@ class BathTime extends Microgame {
     ctx.globalAlpha = 0.65; ctx.drawImage(a.img, 4, 4, a.fw - 8, r - 4, CX - a.fw / 2 + 4, y, a.fw - 8, r - 4); ctx.globalAlpha = 1;
     ctx.drawImage(a.img, 0, r, a.fw, a.fh - r, CX - a.fw / 2, y - 4 + r, a.fw, a.fh - r);
   }
-  // a little pixel heart, as PAT draws them
-  static heart(x, y, c) {
-    g.rect(x - 4, y - 3, 3, 2, c); g.rect(x + 1, y - 3, 3, 2, c);
-    g.rect(x - 5, y - 1, 10, 2, c); g.rect(x - 4, y + 1, 8, 2, c); g.rect(x - 2, y + 3, 4, 2, c);
+  // a pixel heart, as PAT draws them, at k times the size, with a dark rim so it reads on the tiles
+  static heart(x, y, c, k = 1) {
+    const H = (dx, dy, w, h, col) => g.rect(x + dx * k, y + dy * k, w * k, h * k, col);
+    for (const [ox, oy] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+      const R = (dx, dy, w, h) => g.rect(x + dx * k + ox, y + dy * k + oy, w * k, h * k, PAL.bg);
+      R(-4, -3, 3, 2); R(1, -3, 3, 2); R(-5, -1, 10, 2); R(-4, 1, 8, 2); R(-2, 3, 4, 2);
+    }
+    H(-4, -3, 3, 2, c); H(1, -3, 3, 2, c); H(-5, -1, 10, 2, c); H(-4, 1, 8, 2, c); H(-2, 3, 4, 2, c);
+    H(-3, -2, 1, 1, PAL.ink);   // a shine
   }
   draw(g) {
     g.clear();
@@ -6116,7 +6123,7 @@ class BathTime extends Microgame {
       else g.fullIdle(CX, 210, 'sad', this.t);
       ctx.restore();
     } else g.fullIdle(CX, 210, st >= 4 ? 'happy' : this.k < 0.35 ? 'sad' : this.k < 0.7 ? 'sad2' : 'happy', this.t);
-    for (const m of this.mud) if (st === 1 && m.dirt > 0) { ctx.globalAlpha = Math.min(1, m.dirt + 0.15); g.sprite('mud', m.x, m.y); ctx.globalAlpha = 1; }
+    for (const m of this.mud) if (st <= 1 && m.dirt > 0) { ctx.globalAlpha = Math.min(1, m.dirt + 0.15); g.sprite('mud', m.x, m.y); ctx.globalAlpha = 1; }
     BathTime.tubFront(178);
     g.sprite('duck', 123 + Math.sin(this.t * 2) * 6, 172);   // a rubber duck riding the bath (art/duck.png)
     // the shower: the jug tipped over the tub, pouring
@@ -6126,7 +6133,7 @@ class BathTime extends Microgame {
       ctx.globalAlpha = 0.8; g.rect(jx - 13, jy + 8, 5, 132 - jy, SCENE.sea1); g.rect(jx - 12, jy + 8, 2, 132 - jy, SCENE.tileHi); ctx.globalAlpha = 1;
     }
     for (const d of this.drops) { ctx.globalAlpha = 1 - d.t / 0.6; g.rect(d.x - 1, d.y - 1, 2, 3, SCENE.sea0); ctx.globalAlpha = 1; }
-    for (const h of this.hearts) BathTime.heart(Math.round(h.x), Math.round(h.y), h.sent ? PAL.bad : '#ff8fb1');
+    for (const h of this.hearts) BathTime.heart(Math.round(h.x), Math.round(h.y), h.sent ? PAL.bad : '#ff6f9e', h.sent ? 1 : 2);
     // which go it is, how far along, and what to do
     const S = BathTime.STEPS, i = Math.min(3, st);
     if (st < 4) {
