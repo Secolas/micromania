@@ -4500,17 +4500,17 @@ class MoveCam extends Microgame {
 
 // 31. DRY OFF — a soaked shiba on the bath mat, dripping: shake it dry before
 // the clock runs out. Shake your body at the camera, shake the phone, or rub
-// the screen fast. It goes soaked and sad, then damp, then fluffy, with a
-// burst of spray at each; on 2 and 3 it soaks back up if you stop.
+// the screen fast. It's wet (and happy about it) until the last of the water
+// flies off in a puff and it's fluffy; on 2 and 3 it soaks back up if you stop.
 class DryShiba extends Microgame {
   static meta = { id: 'dry', env: 'bath', group: 'CAMERA', prompt: 'DRY OFF!', hint: 'move', duration: 5.0, minDuration: 4.0, photo: true, photoCap: 'ALL FLUFFY!',
     how: { cam: 'SHAKE YOUR BODY\nTO SHAKE IT DRY', motion: 'SHAKE YOUR PHONE\nTO SHAKE IT DRY', touch: 'RUB THE SCREEN FAST\nTO SHAKE IT DRY' } };
-  static DAMP = 0.55;   // wetter than this it is soaked (art/wetidle.png 4-7); then damp (0-3); then dry
+  static FLUFFY = 0.4;  // wetter than this it looks wet (art/wetidle.png's happy frames, 0-3); drier, fluffy
   init() {
     this.wet = 1;
     this.need = this.byD(2.0, 2.6, 3.2);          // how much shaking dries it: about 1 / 1.2 / 1.5 s of the hardest shaking
     this.soak = this.byD(0, 0.07, 0.13);          // what it soaks back up each second you stop
-    this.drops = []; this.drip = 0; this.done = 0; this.wob = 0; this.stage = 2;
+    this.drops = []; this.drip = 0; this.done = 0; this.wob = 0; this.fluffy = false;
     Input.enableCam();
     this.paused = Input.camPending; this.wait = 0;
   }
@@ -4532,8 +4532,10 @@ class DryShiba extends Microgame {
     } else this.wet = Math.min(1, this.wet + this.soak * dt);
     // still wet: it drips onto the mat
     if ((this.drip -= dt) <= 0 && this.wet > 0.05) { this.drip = 0.5 - this.wet * 0.3; this.drops.push({ x: CX + (Math.random() - 0.5) * 30, y: 206, vx: 0, vy: 10, t: 0 }); }
-    const stage = this.wet > DryShiba.DAMP ? 2 : this.wet > 0 ? 1 : 0;
-    if (stage < this.stage) { this.stage = stage; this.spray(16, 170); Sfx.splash(); FX.shake(2); }
+    // dry enough: the last of the water flies off in a puff, and it's fluffy (wet again if it soaks back up)
+    const fluffy = this.wet <= DryShiba.FLUFFY;
+    if (fluffy && !this.fluffy) { this.spray(24, 190); Sfx.poof(); FX.burst(CX, 190, PAL.ink, 16, 80); FX.shake(2); }
+    this.fluffy = fluffy;
     if (this.wet <= 0) { this.done = 0.001; this.playingOut = true; Sfx.win(); Juice.confetti && Juice.confetti(18); }   // dry: the clock can't take it back
   }
   draw(g) {
@@ -4547,12 +4549,12 @@ class DryShiba extends Microgame {
     if (Assets.get('bathmat')) g.sprite('bathmat', CX, fy - 2); else g.rect(CX - 50, fy - 8, 100, 12, SCENE.tile);
     // the puddle: what's been shaken off
     ctx.globalAlpha = 0.6; g.rect(CX - 14 - (1 - this.wet) * 30, fy - 2, 28 + (1 - this.wet) * 60, 4, SCENE.sea1); ctx.globalAlpha = 1;
-    // the shiba, wobbling as it's shaken: soaked and sad, damp and happy, then fluffy
+    // the shiba, wobbling as it's shaken: wet, then fluffy
     const t = this.t, wob = this.wob > 0.12 ? Math.sin(t * 40) * this.wob * 0.12 : 0;
     const wa = Assets.get('wetidle'), f = Math.floor(t * 5) % 4;
     ctx.save(); ctx.translate(CX, fy); ctx.rotate(wob); ctx.translate(-CX, -fy);
-    if (this.stage === 0 || !wa) g.fullIdle(CX, fy, this.stage === 0 ? 'happy' : 'sad', t);
-    else g.sprite('wetidle', CX, fy - 64, { w: 128, h: 128, frame: (this.stage === 2 ? 4 : 0) + f });
+    if (this.fluffy || !wa) g.fullIdle(CX, fy, 'happy', t);
+    else g.sprite('wetidle', CX, fy - 64, { w: 128, h: 128, frame: f });
     ctx.restore();
     for (const d of this.drops) { ctx.globalAlpha = 1 - d.t / 0.7; g.rect(d.x - 1, d.y - 1, 2, 3, SCENE.sea0); g.rect(d.x - 1, d.y - 1, 1, 1, PAL.ink); ctx.globalAlpha = 1; }
     // how wet: a bar of water draining

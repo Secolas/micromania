@@ -163,5 +163,6 @@ strength 300), and that is `art/bush.png` (26×16).
 `wet1_<n>.png`: PixelLab's soaking-wet shiba (`edit_image` on `fullidle` frames
 0–7: happy 0–3, sad 4–7), as it came back. In `art/wetidle.png` each frame
 is moved so its paws are on the bottom row like the dry frames (frames 1–3
-came back 7px high). DRY OFF! uses the sad ones soaked, the happy ones damp,
-then the dry `fullidle`.
+came back 7px high). DRY OFF! and BATH TIME!'s shake use the happy ones (0–3)
+wet, then the dry `fullidle`. The user found the sad wet frames (4–7) too
+sad, so those are unused.
