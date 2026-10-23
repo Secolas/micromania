@@ -180,7 +180,15 @@ export default async function ({ url, launch }) {
   // at top speed, the bosses and DIG can still be won, and a win isn't lost on the clock while it plays out
   Engine.speed = 2.6;
   out.wins.wakeFast = play(WakeUp, 3, (gm, i) => { if (i % 5 === 0) tapAt(90, 150); });
-  out.wins.bathFast = play(BathTime, 3, (gm, i) => hold(90 + Math.cos(i * 0.5) * 40, 150 + Math.sin(i * 0.5) * 40));
+  // BATH TIME, all four goes on touch: pour on the shiba, rub each splat, rub fast to dry, tap the hearts
+  const bath = (gm, i) => {
+    if (gm.step === 0) hold(gm.sx, 100);
+    else if (gm.step === 1) { const m = gm.mud.find(m => m.dirt > 0); if (m) hold(m.x + Math.sin(i) * 6, m.y + Math.cos(i * 1.3) * 6); }
+    else if (gm.step === 2) hold(90 + Math.cos(i * 0.7) * 45, 180);
+    else { release(); if (i % 4 === 0) { const h = gm.hearts.find(h => !h.sent); if (h) tapAt(h.x, h.y); } }
+  };
+  out.wins.bath = play(BathTime, 3, bath);
+  out.wins.bathFast = play(BathTime, 3, bath);
   out.wins.digFast = play(BeachDig, 3, (gm, i) => { if (i % 6 === 0) swipe(gm.hx, gm.hy - 10, gm.hx, gm.hy + 40); });
   Engine.speed = 1;
   // HIGH FIVE on touch: tapping the paw that isn't up loses (it used to jam the round)
