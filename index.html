@@ -2691,43 +2691,63 @@ class RubClean extends Microgame {
   }
 }
 
-// 4. SWIPE UP — pull the tissues out
+// 4. PULL DOWN — pull the tissues out of a box that slides about: the swipe
+// has to start on the sheet. On 2 and 3 a red LAST ONE hangs out now and then:
+// pull that and the box is empty (it goes back in by itself; wait for a white one).
 class PullTissue extends Microgame {
-  static meta = { id: 'pull', env: 'room@250', prompt: 'PULL DOWN!', hint: 'swipe', duration: 4.0,
-    how: 'SWIPE DOWN TO\nPULL A TISSUE' };
+  static meta = { id: 'pull', env: 'room@250', prompt: 'PULL DOWN!', hint: 'swipe', duration: 4.6, minDuration: 4.0,
+    how: 'SWIPE DOWN ON THE TISSUE\nNEVER THE RED ONE' };
   init() {
     this.pulled = 0; this.need = this.byD(2, 3, 4);
     this.sheetY = 0;        // animates the sheet sliding out on each pull
     this.cue = 0;           // pulsing arrow
+    this.x = CX; this.vx = (Math.random() < 0.5 ? -1 : 1) * this.byD(22, 40, 56);
+    this.red = 0; this.redT = 0; this.missT = 0;
   }
+  // the hanging sheet's box, for where a pull has to start
+  sheet() { const top = TOP + 14 + 34 - 2, hang = 26 + this.sheetY * 34; return { x: this.x - 16, y: top - 6, w: 32, h: hang + 16 }; }
   update(dt, input) {
     this.cue += dt * 4;
+    this.x += this.vx * dt;
+    if (this.x < 40 || this.x > W - 40) { this.vx *= -1; this.x = Math.max(40, Math.min(W - 40, this.x)); }
     if (this.sheetY > 0) this.sheetY = Math.max(0, this.sheetY - dt * 4);   // retract between pulls
-    // a downward swipe yanks one sheet out
+    if (this.missT > 0) this.missT -= dt;
+    // the red one hangs out a moment, then goes back in
+    if (this.red) { if ((this.redT -= dt) <= 0) this.red = 0; }
     if (input.swipe && input.swipe.dir === 'down') {
+      const sw = input.swipe, S = this.sheet();
+      const on = sw.x0 == null || (sw.x0 >= S.x - 6 && sw.x0 <= S.x + S.w + 6 && sw.y0 >= S.y - 10 && sw.y0 <= S.y + S.h + 14);
+      if (!on) { this.missT = 0.25; Sfx.fail(); return; }   // grabbed at thin air
+      if (this.red) { Sfx.thud(); buzz(70); FX.shake(3); this.lose(); return; }   // the last one: the box is empty
       this.pulled++; Sfx.tissue(); buzz(10);
       this.sheetY = 1;
-      FX.hit(CX, CY + 20, PAL.ink);
-      if (this.pulled >= this.need) this.succeed();
+      FX.hit(this.x, CY + 20, PAL.ink);
+      if (this.pulled >= this.need) { this.succeed(); return; }
+      // on 2 and 3, the next one out is sometimes the red last one
+      if (this.d >= 2 && Math.random() < 0.35) { this.red = 1; this.redT = 0.8; }
     }
   }
   draw(g) {
     g.clear();
-    // dispenser box mounted at the top
-    const boxY = TOP + 14, boxH = 34;
-    // the sheet hanging out of the slot — visibly slides down when pulled
-    // (art/tissue.png, its plain middle stretched to the length)
-    const hang = 26 + this.sheetY * 34;
-    const sheetTop = boxY + boxH - 2;
-    if (!g.stretchV('tissue', CX - 12, sheetTop, hang, 6, 20, 40)) {
-      g.rect(CX - 16, sheetTop, 32, hang, PAL.ink); g.box(CX - 16, sheetTop, 32, hang, PAL.mid);
+    // dispenser box sliding along the wall
+    const boxY = TOP + 14, boxH = 34, X = Math.round(this.x);
+    const hang = 26 + this.sheetY * 34, sheetTop = boxY + boxH - 2;
+    if (!g.stretchV('tissue', X - 12, sheetTop, hang, 6, 20, 40)) {
+      g.rect(X - 16, sheetTop, 32, hang, PAL.ink); g.box(X - 16, sheetTop, 32, hang, PAL.mid);
     }
-    g.sprite('tissuebox', CX, boxY + boxH / 2);   // art/tissuebox.png, over the sheet's top
-    // your grab point + a pulsing DOWN arrow so the gesture is obvious
-    const ay = sheetTop + hang + 8 + Math.sin(this.cue) * 3;
-    g.line(CX, sheetTop + hang, CX, ay, PAL.accent, 2);
-    g.line(CX, ay, CX - 5, ay - 5, PAL.accent, 2);
-    g.line(CX, ay, CX + 5, ay - 5, PAL.accent, 2);
+    if (this.red) {   // the red last one: the same sheet, dyed, with a stripe
+      ctx.globalAlpha = 0.6; g.rect(X - 11, sheetTop, 22, hang, PAL.bad); ctx.globalAlpha = 1;
+      g.text('LAST', X, sheetTop + hang - 6, 8, PAL.ink);
+    }
+    g.sprite('tissuebox', X, boxY + boxH / 2);   // art/tissuebox.png, over the sheet's top
+    // a pulsing DOWN arrow so the gesture is obvious (none on the red one)
+    if (!this.red) {
+      const ay = sheetTop + hang + 8 + Math.sin(this.cue) * 3;
+      g.line(X, sheetTop + hang, X, ay, PAL.accent, 2);
+      g.line(X, ay, X - 5, ay - 5, PAL.accent, 2);
+      g.line(X, ay, X + 5, ay - 5, PAL.accent, 2);
+    }
+    if (this.missT > 0) g.text('MISSED IT', CX, CY + 40, 8, PAL.bad);
     // progress pips
     for (let i = 0; i < this.need; i++) g.rect(CX - this.need * 5 + i * 10, BOT - 10, 7, 7, i < this.pulled ? PAL.accent : PAL.mid);
   }

@@ -151,6 +151,11 @@ export default async function ({ url, launch }) {
   { let idle = 0; for (let k = 0; k < 6; k++) { Engine.startRound(BalanceBall, 1); Engine.state = 'PLAYING'; Engine.timer = Engine.duration; const d = Engine.game; release();
       for (let i = 0; i < 900 && !d.finished && Engine.state === 'PLAYING'; i++) { Input.beginStep(); Engine.update(STEP); } if (d.won) idle++; }
     out.balanceIdle = idle; }
+  // PULL DOWN: swipe down from the sheet as the box slides, never on a red one
+  const pull = (gm) => { const S = gm.sheet(); swipe(S.x + S.w / 2, S.y + S.h / 2, S.x + S.w / 2, S.y + S.h / 2 + 60); };
+  out.wins.pull = play(PullTissue, 3, (gm, i) => { if (i % 10 === 5 && !gm.red) pull(gm); });
+  out.pullIdle = play(PullTissue, 1, () => {});
+  out.pullRed = play(PullTissue, 3, (gm, i) => { if (i % 10 === 5) { if (gm.pulled && !gm.red) { gm.red = 1; gm.redT = 1; } pull(gm); } });
   // DRY OFF with no sensors: rubbing fast dries the shiba; leaving it wet loses
   out.wins.dry = play(DryShiba, 3, (gm, i) => hold(90 + Math.cos(i * 0.7) * 45, 180));
   { let idleWins = 0; for (let k = 0; k < 5; k++) { Engine.startRound(DryShiba, 1); Engine.state = 'PLAYING'; Engine.timer = Engine.duration; const d = Engine.game;
@@ -189,6 +194,8 @@ export default async function ({ url, launch }) {
   assert(out.balanceIdle === 0, 'BALANCE: doing nothing should lose, won ' + out.balanceIdle + '/6');
   assert(out.shhIdle === '0/20', 'SHH: doing nothing should let a fly wake it: ' + out.shhIdle);
   assert(out.shhPoke === '0/20', 'SHH: poking the dog should wake it: ' + out.shhPoke);
+  assert(out.pullIdle === '0/20', 'PULL DOWN: doing nothing should lose: ' + out.pullIdle);
+  assert(out.pullRed === '0/20', 'PULL DOWN: pulling the red one should lose: ' + out.pullRed);
   assert(out.dryIdle === 0, 'DRY OFF: leaving the shiba wet should lose, won ' + out.dryIdle + '/5');
   assert(out.highfiveWrong >= 5, 'HIGH FIVE: tapping the wrong paw should lose, lost ' + out.highfiveWrong + '/10');
   await done();
