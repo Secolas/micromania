@@ -45,19 +45,22 @@ picture, never cropped or stretched: the TV takes its shape, tall for a phone
 held upright and wide for a laptop, drawn smooth like a photo. They stay in memory on the
 phone only, and the next run starts with none.
 
-**RUN's world map**: each RUN stage opens on a map of the worlds, one band of
-scenery per world (the PARK, the BEACH, the SNOW), with a path through its
-stops. The shiba hops from its doghouse, or the stop it just cleared, to the
-next one, and the target and your treats show below. Cleared stops turn gold
-and the bosses wear a crown.
-The worlds come from one list, `Run.WORLDS` in `index.html`. Each world has a
-name, its scenery (`ground`, one of `Run.GROUNDS`) and its stages, and it can
-also have `games` and `bosses`: the game ids it picks from (all games if left
-out). A stage can be a `boss`, set its own `target`, `games` or place on the
-map (`x`, 0 to 1). Add a world or a stage there and the map, the stage labels
-(2-3), the targets and the end of the run follow. With more worlds than fit,
-the map scrolls to follow the shiba. A new kind of scenery is a new function
-in `Run.GROUNDS`.
+**RUN's world map**: each RUN stage opens on a map of one countryside that
+fits every kind of game: a band of meadow per world, a dirt path winding through
+its stops, and a stream with a wooden bridge and a signpost (WORLD 2) where the
+path climbs into the next world. The trees, pines, hedges and benches are
+scattered from a seed per world, so each one looks a little different. The
+shiba (`art/maprun.png`) runs along the path from its doghouse, or the stop it
+just cleared, to the next one: sideways, up the map or towards you. The target
+and your treats show below. Cleared stops turn gold, and a boss's crown sits on
+the shiba's head when it gets there.
+The worlds come from one list, `Run.WORLDS` in `index.html`. Each world has its
+stages, and it can also have a `name` for its signpost, `games` and `bosses`
+(the game ids it picks from; all games if left out) and a `ground` (one of
+`Run.GROUNDS`; the meadow if left out). A stage can be a `boss`, set its own
+`target`, `games` or place on the map (`x`, 0 to 1). Add a world or a stage
+there and the map, the stage labels (2-3), the targets and the end of the run
+follow. With more worlds than fit, the map scrolls to follow the shiba.
 
 **Surprises**: once things get going, a prompt can start out normal and then
 have a stamp slam down on the game's title:

@@ -234,7 +234,7 @@ const Coat = {
   ],
   SHEETS: ['shiba', 'fullshiba', 'fullidle', 'breakjump', 'catcher', 'hero', 'face', 'pump', 'dryshake', 'hopdog', 'ordersign',
     'flydog', 'swipeup', 'swipedown', 'runjump', 'swiperight', 'swipeleft', 'hidedog', 'facedir', 'rubdog', 'sleepdog', 'rocker',
-    'yesno', 'wag', 'feed', 'lean', 'leanmove', 'sledmove', 'sledder', 'digmove', 'highfive', 'demo', 'runcowboy', 'jumpcowboy', 'chefmove', 'worn', 'neckwear'],
+    'yesno', 'wag', 'feed', 'lean', 'leanmove', 'sledmove', 'sledder', 'digmove', 'highfive', 'demo', 'runcowboy', 'jumpcowboy', 'chefmove', 'worn', 'neckwear', 'maprun'],
   // art/worn.png: the hats PixelLab drew on the shiba have its ears in them. Only
   // what's near a colour of the shiba's own fur (art/fullshiba.png) is fur; the
   // cowboy hat's browns, the crown's and halo's golds are further off.
@@ -302,6 +302,7 @@ const Assets = {
     dryshake:{ src: ART.dryshake,      fw: 38, fh: 31, frames: 9,  fps: 10 },
     pumpdog:{ src: ART.pumpdog,         fw: 70, fh: 70, frames: 9,  fps: 12 },
     hopdog: { src: ART.hopdog,         fw: 28, fh: 28, frames: 9,  fps: 12 },
+    maprun:   { src: 'art/maprun.png',   fw: 58,  fh: 54,  frames: 24, fps: 1  },
     ordersign:{ src: ART.ordersign,    fw: 34, fh: 65, frames: 3,  fps: 1  },
     whack:  { src: ART.whack,          fw: 48, fh: 48, frames: 9,  fps: 12 },
     shaketable:{ src: ART.shaketable,   fw: 78, fh: 78, frames: 9,  fps: 12 },
@@ -6879,12 +6880,12 @@ const Run = {
   SLOTS: 5,          // treat slots — CHONK takes one
   // ── THE WORLDS ───────────────────────────────────────────────────────────
   // A run goes through these in order, and the world map is drawn from them,
-  // one band per world, the first at the bottom. Add a world or a stage, or
+  // one band of the countryside per world, the first at the bottom. Add a world or a stage, or
   // change which games a world plays, here: the map, the stage labels (2-3),
   // the targets and the end of the run all follow. Beating the last stage of
   // the last world wins the run; ENDLESS then goes round them again, faster.
-  //   name     on the map
-  //   ground   the band's scenery, one of Run.GROUNDS (park, beach, snow)
+  //   name     on the world's signpost (default: WORLD 2 and so on)
+  //   ground   its scenery, one of Run.GROUNDS (default: the meadow every world shares)
   //   games    ids of the games its stages pick from (default: all of POOL)
   //   bosses   ids of the bosses a boss stage opens on (default: all of BOSSES)
   //   stages   one per stop on the map, in play order. Each may set
@@ -6895,9 +6896,9 @@ const Run = {
   //                          by default the stops spread out, left to right on
   //                          the 1st, 3rd ... world and right to left on the others
   WORLDS: [
-    { name: 'PARK',  ground: 'park',  stages: [{}, {}, { boss: true }] },
-    { name: 'BEACH', ground: 'beach', stages: [{}, {}, { boss: true }] },
-    { name: 'SNOW',  ground: 'snow',  stages: [{}, {}, { boss: true }] },
+    { stages: [{}, {}, { boss: true }] },
+    { stages: [{}, {}, { boss: true }] },
+    { stages: [{}, {}, { boss: true }] },
   ],
   // world w's entry (ENDLESS goes round the list again) and the stage on now
   worldDef(w = this.world) { return this.WORLDS[(w - 1) % this.WORLDS.length]; },
@@ -7226,35 +7227,30 @@ const Run = {
   },
 
   // ── THE WORLD MAP: the stage card ────────────────────────────────────────
-  // One band of scenery per world in WORLDS, the first at the bottom, with a
-  // path through its stops. The shiba hops from the stop it last cleared (or
-  // its doghouse) to the next while the target is read out below. More worlds
-  // than fit and the map scrolls to follow the shiba.
+  // One countryside for every world, whatever its games: a band of meadow per
+  // world in WORLDS, the first at the bottom, a dirt path winding through its
+  // stops, and a stream with a bridge where the path climbs into the next world,
+  // with that world's signpost. The trees and hedges are scattered from a seed
+  // per band, so every world looks a little different and any number of them
+  // fits. The shiba runs from the stop it last cleared (or its doghouse) to the
+  // next while the target is read out below; the map scrolls to follow it.
   MAP: { x: 14, y: TOP + 12, w: 152, h: 162 },
-  BAND: 54,          // each world's band, tall
-  PATH_Y: 40,        // where the path runs, down from a band's top
+  BAND: 84,          // each world's band, tall
+  PATH_Y: 60,        // where the path runs, down from a band's top; the stops wind WIND either side
+  WIND: 5,
+  STREAM: 9,         // the stream along the top of every band below the last
   WALK: 0.8,         // seconds from stop to stop
-  // the scenery under each kind of world. d.tiles fills the band with a
-  // scenetiles frame per tile; d.prop draws a sprite 1:1 with its feet at x, y
-  // (band coordinates), and skips it where the path climbs through.
+  // the scenery under a world. d.tiles fills the band with scenetiles frames;
+  // d.prop offers a sprite (feet at x, y in band coordinates) and leaves it out
+  // if it would sit on the path, a signpost or another prop.
   GROUNDS: {
-    park(d) {
+    meadow(d) {
       d.tiles(() => d.rnd() < 0.18 ? 11 + Math.floor(d.rnd() * 3) : 8 + Math.floor(d.rnd() * 2), SCENE.meadow);
-      for (const x of [10, 52, 98, 140]) d.prop('parktree', x, 30);
-      d.prop('bench', 76, 26); d.prop('hedge', 26, 54); d.prop('hedge', 128, 54);
-    },
-    beach(d) {
-      d.tiles(() => 0, SCENE.sand);
-      d.R(0, 0, d.w, 12, SCENE.sea0); d.R(0, 12, d.w, 2, SCENE.sea1); d.R(0, 14, d.w, 2, SCENE.wetSand);
-      for (let x = 0; x < d.w; x += 6) d.R(x + (x / 6 % 2) * 2, 11, 3, 1, SCENE.cloud);   // the surf
-      d.prop('umbrella', 98, 32); d.prop('towel', 12, 32);
-      d.prop('sandpile', 92, 54, 0); d.prop('sandpile', 14, 54, 1);
-    },
-    snow(d) {
-      d.tiles(() => 1 + Math.floor(d.rnd() * 4), SCENE.snow);
-      d.prop('mountains', d.w / 2, 20);
-      for (const [x, f] of [[8, 0], [30, 1], [64, 0], [100, 1], [132, 0], [148, 1]]) d.prop('pine', x, 32, f);
-      d.prop('pine', 52, 54, 1); d.prop('pine', 116, 54, 0);
+      const kinds = [['parktree', 0], ['parktree', 0], ['parktree', 0], ['pine', 0], ['pine', 1], ['pine', 0], ['pine', 1], ['hedge', 0], ['hedge', 0], ['bench', 0]];
+      for (let i = 0; i < 120; i++) {
+        const [name, f] = kinds[Math.floor(d.rnd() * kinds.length)];
+        d.prop(name, 6 + d.rnd() * (d.w - 12), 14 + d.rnd() * (d.h - 12), f);
+      }
     },
   },
   bandTop(b) { return (this.WORLDS.length - 1 - b) * this.BAND; },   // map coordinates, 0 at the top
@@ -7262,58 +7258,105 @@ const Run = {
   stopAt(b, j) {
     const st = this.WORLDS[b].stages, n = st.length, M = this.MAP, pad = 34;
     const y = this.bandTop(b) + this.PATH_Y;
-    if (j < 0) return { x: 12, y };
+    if (j < 0) return { x: 14, y };
     let k = st[j].x != null ? st[j].x : n > 1 ? j / (n - 1) : 0.5;
     if (st[j].x == null && b % 2) k = 1 - k;
-    return { x: Math.round(pad + k * (M.w - 2 * pad)), y };
+    return { x: Math.round(pad + k * (M.w - 2 * pad)), y: y + (j % 2 ? -this.WIND : this.WIND) };
   },
-  // the path walked to stop j of band b: from the stop before it, round the
-  // corner when it climbs to the next band
+  // the path run to stop j of band b: from the stop before it, round the
+  // corner when it climbs into the next band
   leg(b, j) {
     const to = this.stopAt(b, j), from = j > 0 ? this.stopAt(b, j - 1) : b > 0 ? this.stopAt(b - 1, this.WORLDS[b - 1].stages.length - 1) : this.stopAt(0, -1);
-    return from.y === to.y ? [from, to] : [from, { x: from.x, y: to.y }, to];
+    return from.y === to.y || j > 0 ? [from, to] : [from, { x: from.x, y: to.y }, to];
   },
-  // the map's scenery, painted once
+  // every world's signpost: above the path, halfway to its second stop
+  sign(b) {
+    const p = this.stopAt(b, 0), q = this.WORLDS[b].stages.length > 1 ? this.stopAt(b, 1) : { x: p.x + 30, y: p.y };
+    return { x: Math.round((p.x + q.x) / 2), y: Math.min(p.y, q.y) - 13 };
+  },
+  // the map's scenery and path, painted once
   mapArt: null, mapFor: null,
   buildMap() {
-    const need = ['scenetiles', 'parktree', 'pine', 'umbrella', 'mountains', 'doghouse'];
+    const need = ['scenetiles', 'parktree', 'pine', 'hedge', 'doghouse'];
     const M = this.MAP, BH = this.BAND, n = this.WORLDS.length;
     const c = document.createElement('canvas'); c.width = M.w; c.height = n * BH;
     const x = c.getContext('2d');
-    let seed = 4321;
-    const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-    for (let b = n - 1; b >= 0; b--) {   // top band first, so a tree's crown can reach up over the band above
-      const top = this.bandTop(b), stops = this.WORLDS[b].stages.map((s, j) => this.stopAt(b, j));
-      const up = b < n - 1 ? stops[stops.length - 1].x : null, from = b > 0 ? this.leg(b, 0)[0].x : null;   // where the path climbs out and in
-      const R = (a, y, w, h, col) => { x.fillStyle = col; x.fillRect(Math.round(a), Math.round(top + y), Math.round(w), Math.round(h)); };
+    const R = (a, y, w, h, col) => { x.fillStyle = col; x.fillRect(Math.round(a), Math.round(y), Math.round(w), Math.round(h)); };
+    const legs = [];
+    for (let b = 0; b < n; b++) this.WORLDS[b].stages.forEach((s, j) => legs.push(this.leg(b, j)));
+    // how far a box is from the path, for keeping props off it
+    const near = (x0, y0, x1, y1) => {
+      let best = 1e9;
+      for (const pts of legs) for (let i = 1; i < pts.length; i++) {
+        const p = pts[i - 1], q = pts[i], L = Math.max(1, Math.hypot(q.x - p.x, q.y - p.y));
+        for (let s = 0; s <= L; s += 2) {
+          const px = p.x + (q.x - p.x) * s / L, py = p.y + (q.y - p.y) * s / L;
+          const dx = Math.max(x0 - px, 0, px - x1), dy = Math.max(y0 - py, 0, py - y1);
+          best = Math.min(best, Math.hypot(dx, dy));
+        }
+      }
+      return best;
+    };
+    const props = [], taken = [];
+    const home = this.stopAt(0, -1);
+    taken.push([home.x - 13, home.y - 24, home.x + 13, home.y + 2]);
+    for (let b = 0; b < n; b++) { const s = this.sign(b); taken.push([s.x - 26, s.y - 8, s.x + 26, s.y + 14]); }
+    // the meadow, band by band, from a seed of its own
+    for (let b = 0; b < n; b++) {
+      const top = this.bandTop(b);
+      let seed = 4321 + b * 7919;
+      const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
       const d = {
-        w: M.w, h: BH, rnd, R,
+        w: M.w, h: BH, b, rnd,
+        R: (a, y, w, h, col) => R(a, top + y, w, h, col),
         tiles(pick, flat) {
           const a = Assets.get('scenetiles');
-          if (!a) { R(0, 0, M.w, BH, flat); return; }
+          if (!a) { R(0, top, M.w, BH, flat); return; }
           x.save(); x.beginPath(); x.rect(0, top, M.w, BH); x.clip();
           for (let ty = 0; ty < BH; ty += a.fh) for (let tx = 0; tx < M.w; tx += a.fw) x.drawImage(a.img, pick() * a.fw, 0, a.fw, a.fh, tx, top + ty, a.fw, a.fh);
           x.restore();
         },
         prop(name, px, py, f = 0) {
-          const a = Assets.get(name); if (!a) return;
-          const above = py <= Run.PATH_Y, gap = a.fw / 2 + 4;
-          if (above && up != null && Math.abs(px - up) < gap) return;
-          if (!above && from != null && Math.abs(px - from) < gap) return;
-          x.drawImage(a.img, f * a.fw, 0, a.fw, a.fh, Math.round(px - a.fw / 2), Math.round(top + py - a.fh), a.fw, a.fh);
+          const a = Assets.get(name); if (!a) return false;
+          const box = [Math.round(px - a.fw / 2), Math.round(top + py - a.fh), Math.round(px + a.fw / 2), Math.round(top + py)];
+          const ceil = top + (b < n - 1 ? Run.STREAM + 1 : 0);   // clear of the band's stream (the top band has none)
+          if (box[0] < -4 || box[2] > M.w + 4 || box[1] < ceil || box[3] > top + BH) return false;
+          if (near(...box) < 5) return false;
+          if (taken.some(t => box[0] < t[2] && box[2] > t[0] && box[1] + a.fh / 2 < t[3] && box[3] > t[1])) return false;
+          taken.push(box); props.push([a, f, box]); return true;
         },
       };
-      (this.GROUNDS[this.WORLDS[b].ground] || this.GROUNDS.park)(d);
+      (this.GROUNDS[this.WORLDS[b].ground] || this.GROUNDS.meadow)(d);
     }
+    // a stream along the top of each band but the last, its ripples moving with the seed
+    for (let b = 0; b < n - 1; b++) {
+      const top = this.bandTop(b);
+      R(0, top, M.w, this.STREAM, SCENE.sea1); R(0, top + this.STREAM - 2, M.w, 2, SCENE.sea0);
+      R(0, top + this.STREAM, M.w, 1, SCENE.grassLo);
+      for (let i = 0; i < M.w; i += 7) R(i + (b * 3 + i) % 5, top + 2 + (i % 3), 3, 1, SCENE.cloud);
+    }
+    // the dirt path
+    const dot = (px, py, r, col) => R(px - r, py - r, 2 * r + 1, 2 * r + 1, col);
+    for (const pass of [[3, SCENE.floorLo], [2, SCENE.floor]]) for (const pts of legs) for (let i = 1; i < pts.length; i++) {
+      const p = pts[i - 1], q = pts[i], L = Math.max(1, Math.hypot(q.x - p.x, q.y - p.y));
+      for (let s = 0; s <= L; s++) dot(Math.round(p.x + (q.x - p.x) * s / L), Math.round(p.y + (q.y - p.y) * s / L), pass[0], pass[1]);
+    }
+    // wooden bridges where the path crosses a stream
+    for (let b = 1; b < n; b++) {
+      const bx = this.leg(b, 0)[0].x, top = this.bandTop(b - 1);
+      R(bx - 5, top - 2, 11, this.STREAM + 4, SCENE.woodLo);
+      for (let y = top - 1; y < top + this.STREAM + 2; y += 2) R(bx - 4, y, 9, 1, SCENE.wood);
+      R(bx - 6, top - 2, 1, this.STREAM + 4, SCENE.band); R(bx + 6, top - 2, 1, this.STREAM + 4, SCENE.band);
+    }
+    // the props, back to front
+    props.sort((p, q) => p[2][3] - q[2][3]);
+    for (const [a, f, box] of props) x.drawImage(a.img, f * a.fw, 0, a.fw, a.fh, box[0], box[1], a.fw, a.fh);
     if (need.every(k => Assets.get(k))) { this.mapArt = c; this.mapFor = this.WORLDS; }   // keep it once the art is in (for this list of worlds)
     return c;
   },
-  // world band and stop now, and the one walked from
-  here() {
-    const b = (this.world - 1) % this.WORLDS.length;
-    return { b, j: this.stage, lap: this.world > this.WORLDS.length };
-  },
-  // the shiba's place on the walk: k is 0..1 along the leg
+  // the world band and stop on now
+  here() { return { b: (this.world - 1) % this.WORLDS.length, j: this.stage }; },
+  // the shiba's place on its run: k is 0..1 along the leg, dir the way it faces
   walker(b, j, k) {
     const pts = this.leg(b, j);
     if (b === 0 && j === 0 && this.world > 1) pts.splice(0, pts.length - 1);   // a new ENDLESS lap starts at the first stop
@@ -7321,52 +7364,60 @@ const Run = {
     let s = k * total, i = 0;
     while (i < lens.length - 1 && s > lens[i]) s -= lens[i++];
     const a = pts[i], z = pts[i + 1] || a, t = lens[i] ? s / lens[i] : 1;
-    const hops = Math.max(1, Math.round(total / 18)), hk = (k * hops) % 1;
-    return { x: a.x + (z.x - a.x) * t, y: a.y + (z.y - a.y) * t, lift: k < 1 ? Math.sin(hk * Math.PI) * 5 : 0, hk, moving: k < 1 && total > 0 };
+    const dx = z.x - a.x, dy = z.y - a.y;
+    const dir = Math.abs(dx) >= Math.abs(dy) ? (dx < 0 ? 'left' : 'right') : (dy < 0 ? 'up' : 'down');
+    return { x: Math.round(a.x + dx * t), y: Math.round(a.y + dy * t), dir, moving: k < 1 && total > 0, dist: s + lens.slice(0, i).reduce((q, l) => q + l, 0) };
+  },
+  // art/maprun.png: the map's shiba (PixelLab, turned from the game's own
+  // front-on shiba), RUN_FRAMES frames running each way in RUN_DIRS order, all
+  // cut to one box with the paws on its bottom row; standing still, it faces you
+  RUN_DIRS: ['down', 'right', 'up', 'left'], RUN_FRAMES: 6, RUN_STAND: 0, RUN_TALL: 40,
+  drawRunner(dog) {
+    const a = Assets.get('maprun');
+    if (!a) {   // the hopping shiba until the runner is in
+      g.sprite('hopdog', dog.x, dog.y - 12, { frame: Math.floor(Engine.time * 3) % 2 }); return;
+    }
+    const d = this.RUN_DIRS.indexOf(dog.moving ? dog.dir : 'down');
+    const f = dog.moving ? Math.floor(dog.dist / 4) % this.RUN_FRAMES : this.RUN_STAND;
+    g.sprite('maprun', dog.x, dog.y + 2 - a.fh / 2, { frame: d * this.RUN_FRAMES + f });
   },
   drawMap() {
     const M = this.MAP, BH = this.BAND, n = this.WORLDS.length, art = this.mapArt && this.mapFor === this.WORLDS ? this.mapArt : this.buildMap();
-    const { b, j } = this.here();
+    const { b, j } = this.here(), lap = Math.floor((this.world - 1) / n) * n;
     const k = Math.max(0, Math.min(1, (1.8 - Engine.timer - 0.15) / this.WALK));
     const dog = this.walker(b, j, k);
     // scroll to keep the shiba in view
-    const oy = Math.round(Math.max(0, Math.min(n * BH - M.h, dog.y - M.h / 2)));
+    const oy = Math.round(Math.max(0, Math.min(n * BH - M.h, dog.y - M.h / 2 - 8)));
     ctx.save(); ctx.beginPath(); ctx.rect(M.x, M.y, M.w, M.h); ctx.clip();
     ctx.translate(M.x, M.y - oy);
     ctx.drawImage(art, 0, 0);
-    // the path: dots, bright up to the shiba, dim beyond
-    const passed = (bb, jj) => bb < b || bb === b && jj < j;
-    for (let bb = 0; bb < n; bb++) for (let jj = 0; jj < this.WORLDS[bb].stages.length; jj++) {
-      const pts = this.leg(bb, jj), lit = passed(bb, jj) || bb === b && jj === j;
-      for (let i = 1; i < pts.length; i++) {
-        const p = pts[i - 1], q = pts[i], L = Math.hypot(q.x - p.x, q.y - p.y);
-        for (let s = 4; s < L; s += 5) {
-          const px = Math.round(p.x + (q.x - p.x) * s / L), py = Math.round(p.y + (q.y - p.y) * s / L);
-          g.rect(px - 1, py, 3, 2, SCENE.woodLo); g.rect(px - 1, py - 1, 3, 2, lit ? '#fff3c4' : SCENE.wood);
-        }
-      }
+    // each world's signpost: WORLD 2, or the world's own name
+    for (let bb = 0; bb < n; bb++) {
+      const s = this.sign(bb), label = this.WORLDS[bb].name || 'WORLD ' + (lap + bb + 1);
+      ctx.font = 'bold 8px ui-monospace, monospace';
+      const w = Math.ceil(ctx.measureText(label).width) + 10;
+      g.rect(s.x - 1, s.y + 4, 3, 9, SCENE.woodLo);
+      if (!g.nine('buttons', bb === b ? 1 : 0, s.x - w / 2, s.y - 6, w, 12, 5)) g.rect(s.x - w / 2, s.y - 6, w, 12, SCENE.wood);
+      g.text(label, s.x, s.y + 3, 8, bb === b ? PAL.bg : PAL.ink);
     }
     // home, and every stop: gold when cleared, a crown on the bosses
     const home = this.stopAt(0, -1);
-    g.sprite('doghouse', home.x, home.y - 9);
+    g.sprite('doghouse', home.x, home.y - 11);
+    const passed = (bb, jj) => bb < b || bb === b && jj < j;
     for (let bb = 0; bb < n; bb++) this.WORLDS[bb].stages.forEach((st, jj) => {
       const p = this.stopAt(bb, jj), done = passed(bb, jj);
-      if (!g.nine('buttons', done ? 1 : 0, p.x - 8, p.y - 7, 16, 14, 6)) g.rect(p.x - 8, p.y - 7, 16, 14, done ? PAL.accent : SCENE.woodLo);
-      if (st.boss) { if (bb !== b || jj !== j) g.sprite('crown', p.x, p.y - 16); }
+      if (!g.nine('buttons', done ? 1 : 0, p.x - 8, p.y - 6, 16, 13, 6)) g.rect(p.x - 8, p.y - 6, 16, 13, done ? PAL.accent : SCENE.woodLo);
+      if (st.boss) { if (bb !== b || jj !== j) g.sprite('crown', p.x, p.y - 15); }
       else if (!done) g.text(String(jj + 1), p.x, p.y + 4, 8, PAL.ink);
     });
-    // the world names, in the corner the path leaves free
-    for (let bb = 0; bb < n; bb++) {
-      const right = bb % 2 === 0;
-      g.text(this.WORLDS[bb].name, right ? M.w - 3 : 3, this.bandTop(bb) + BH - 4, 8, bb === b ? PAL.accent : PAL.ink, right ? 'right' : 'left');
-    }
-    // the shiba, hopping along (art hopdog: 0-2 crouch, 3-5 spring, 6-8 up)
-    const fr = dog.moving ? (dog.hk < 0.15 || dog.hk > 0.85 ? 1 : dog.hk < 0.3 || dog.hk > 0.7 ? 4 : 7) : Math.floor(Engine.time * 3) % 2;
-    g.sprite('hopdog', dog.x, dog.y - 12 - dog.lift, { frame: fr });
+    this.drawRunner(dog);
     ctx.restore();
     g.nine('titlesign', 0, 4, TOP + 2, W - 8, H - TOP - 6, 22);   // the frame again, over the map's corners
     // the boss stop's crown floats over the shiba's head, out over the frame if it must
-    if (this.bossStage()) { const p = this.stopAt(b, j); g.sprite('crown', M.x + p.x, M.y - oy + p.y - 33 + Math.round(Math.sin(Engine.time * 4) * 1.5)); }
+    if (this.bossStage()) {
+      const p = this.stopAt(b, j), head = Assets.get('maprun') ? this.RUN_TALL : 24;
+      g.sprite('crown', M.x + p.x, M.y - oy + p.y - head - 6 + Math.round(Math.sin(Engine.time * 4) * 1.5));
+    }
   },
 
   drawStage() {
