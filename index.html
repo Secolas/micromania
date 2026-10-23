@@ -3951,35 +3951,58 @@ class Crossy extends Microgame {
   }
 }
 
-// 26. DOODLE — auto-bounce; steer to land on each rising platform
+// 26. DOODLE — auto-bounce; steer up the rising platforms to the top. The
+// one you start on crumbles after a bounce, so you have to move; on 2 they
+// slide; on 3 there's a cracked step too, which breaks if you land on it.
 class Doodle extends Microgame {
-  static meta = { id: 'doodle', env: 'sky', prompt: 'HOP!', hint: 'drag', duration: 5.0, winOnTimeout: true,
-    how: 'DRAG LEFT AND RIGHT\nTO LAND ON THE STEPS' };
+  static meta = { id: 'doodle', env: 'sky', prompt: 'HOP!', hint: 'drag', duration: 5.0, minDuration: 4.6,
+    how: 'DRAG LEFT AND RIGHT\nTO HOP UP THE STEPS' };
   init() {
     this.x = CX; this.vy = 0;
-    this.grav = 240; this.bounce = -210;
-    this.pw = this.byD(58, 50, 44);            // wide platforms
+    this.grav = 480; this.bounce = -300;       // a snappier bounce than before, so the climb fits the round
+    this.pw = this.byD(56, 50, 46);
     this.need = this.byD(2, 2, 3); this.landed = 0;
     const maxRise = (this.bounce * this.bounce) / (2 * this.grav);
-    const step = Math.min((BOT - TOP - 30) / (this.need + 1), maxRise * 0.5);  // easy reach
+    const step = Math.min((BOT - TOP - 40) / (this.need + 1), maxRise * 0.62);
+    const slide = this.byD(0, 28, 36);
     this.plats = [];
     let py = BOT - 20;
-    for (let i = 0; i <= this.need; i++) { this.plats.push({ x: 20 + Math.random() * (W - 40), y: py, used: false }); py -= step; }
-    this.plats[0].x = this.x = CX; this.y = this.plats[0].y - 6;
-    this.cur = 0;
+    for (let i = 0; i <= this.need; i++) {
+      // each step within reach of the last, but never straight above it
+      const last = this.plats[i - 1], x = i ? Math.max(28, Math.min(W - 28, last.x + (Math.random() < 0.5 ? -1 : 1) * (30 + Math.random() * 40))) : CX;
+      this.plats.push({ x, y: py, used: false, vx: i ? (Math.random() < 0.5 ? -1 : 1) * slide : 0 }); py -= step;
+    }
+    this.y = this.plats[0].y - 6;
+    // on 3: a cracked step at the height of one of the real ones, on the other side
+    if (this.d >= 3) {   // it mirrors that step across the middle: each keeps to its own half
+      const k = 1 + Math.floor(Math.random() * (this.need - 1)), p = this.plats[k];
+      p.half = p.x < CX ? -1 : 1; p.x = p.half < 0 ? Math.min(p.x, CX - this.pw / 2 - 6) : Math.max(p.x, CX + this.pw / 2 + 6);
+      this.twin = p; this.cloud = { x: W - p.x, y: p.y, gone: 0 };
+    }
+    this.bounced = 0;
   }
   update(dt, input) {
     if (input.down) this.x += (input.x - this.x) * Math.min(1, dt * 20);   // snappy steering
     this.x = Math.max(8, Math.min(W - 8, this.x));
+    for (const p of this.plats) {
+      p.x += p.vx * dt;
+      const lo = p.half > 0 ? CX + this.pw / 2 + 6 : this.pw / 2 + 2, hi = p.half < 0 ? CX - this.pw / 2 - 6 : W - this.pw / 2 - 2;
+      if (p.x < lo) { p.x = lo; p.vx = Math.abs(p.vx); } if (p.x > hi) { p.x = hi; p.vx = -Math.abs(p.vx); }
+    }
+    if (this.cloud && !this.cloud.gone) this.cloud.x = W - this.twin.x;
     this.vy += this.grav * dt; this.y += this.vy * dt;
-    // bounce when falling onto the next platform within its width
     if (this.vy > 0) {
       for (const p of this.plats) {
-        if (!p.used && Math.abs(this.y - p.y) < 9 && Math.abs(this.x - p.x) < this.pw / 2 + 3) {
-          this.vy = this.bounce; if (p !== this.plats[0]) { p.used = true; this.landed++; Sfx.boing(); FX.hit(p.x, p.y, PAL.accent); }
-        }
+        if (p.used || p.gone || Math.abs(this.y - p.y) >= 9 || Math.abs(this.x - p.x) >= this.pw / 2 + 3) continue;
+        this.vy = this.bounce;
+        if (p === this.plats[0]) { if (++this.bounced >= 1) { p.gone = 0.001; Sfx.crunch && Sfx.crunch(); } }   // the start crumbles under you
+        else { p.used = true; this.landed++; Sfx.boing(); FX.hit(p.x, p.y, PAL.accent); }
       }
+      const c = this.cloud;
+      if (c && !c.gone && Math.abs(this.y - c.y) < 9 && Math.abs(this.x - c.x) < this.pw / 2 + 3) { c.gone = 0.001; Sfx.crunch(); FX.burst(c.x, c.y, SCENE.woodLo, 12, 60); }   // the cracked one breaks: straight through
     }
+    if (this.plats[0].gone) this.plats[0].gone += dt;
+    if (this.cloud && this.cloud.gone) this.cloud.gone += dt;
     if (this.y > BOT + 10) { buzz(70); this.lose(); return; }
     if (this.landed >= this.need) this.succeed();
   }
@@ -3987,14 +4010,31 @@ class Doodle extends Microgame {
     g.clear();
     const pa = Assets.get('platform'), hl = Math.ceil(this.pw / 2), hr = this.pw - hl;
     for (const p of this.plats) {
-      if (!pa) { g.rect(p.x - this.pw / 2, p.y, this.pw, 4, p.used ? PAL.mid : PAL.accent); continue; }
-      const f = p.used ? pa.fw : 0, x0 = Math.round(p.x - this.pw / 2), y0 = Math.round(p.y) - 1;
-      ctx.drawImage(pa.img, f, 0, hl, pa.fh, x0, y0, hl, pa.fh);
-      ctx.drawImage(pa.img, f + pa.fw - hr, 0, hr, pa.fh, x0 + hl, y0, hr, pa.fh);
+      const fall = p.gone ? p.gone * 120 : 0; if (fall > 80) continue;
+      ctx.globalAlpha = p.gone ? Math.max(0, 1 - p.gone * 2.5) : 1;
+      if (!pa) g.rect(p.x - this.pw / 2, p.y + fall, this.pw, 4, p.used ? PAL.mid : PAL.accent);
+      else {
+        const f = p.used ? pa.fw : 0, x0 = Math.round(p.x - this.pw / 2), y0 = Math.round(p.y + fall) - 1;
+        ctx.drawImage(pa.img, f, 0, hl, pa.fh, x0, y0, hl, pa.fh);
+        ctx.drawImage(pa.img, f + pa.fw - hr, 0, hr, pa.fh, x0 + hl, y0, hr, pa.fh);
+      }
+      ctx.globalAlpha = 1;
+    }
+    const c = this.cloud;
+    if (c && (!c.gone || c.gone < 0.4)) {   // the cracked step: the same plank, split, trembling; it falls in two halves when broken
+      const j = c.gone ? 0 : Math.round(Math.sin(this.t * 30) * 0.6), x0 = Math.round(c.x - this.pw / 2) + j, y0 = Math.round(c.y) - 1, fall = c.gone * 160;
+      ctx.globalAlpha = c.gone ? 1 - c.gone / 0.4 : 1;
+      // the two halves, split with a gap down the middle, darker, with cracks running out from it
+      const gap = 3, lx = x0 - 1 - fall * 0.2, rx = x0 + hl + gap - 1 + fall * 0.2;
+      if (pa) { ctx.drawImage(pa.img, 0, 0, hl, pa.fh, lx, y0 + fall, hl, pa.fh); ctx.drawImage(pa.img, pa.fw - hr, 0, hr, pa.fh, rx, y0 + fall * 1.2, hr, pa.fh); }
+      else { g.rect(lx, y0 + fall, hl, 4, SCENE.wood); g.rect(rx, y0 + fall * 1.2, hr, 4, SCENE.wood); }
+      ctx.globalAlpha *= 0.35; g.rect(lx, y0 + fall, hl, pa ? pa.fh : 4, PAL.bg); g.rect(rx, y0 + fall * 1.2, hr, pa ? pa.fh : 4, PAL.bg); ctx.globalAlpha = c.gone ? 1 - c.gone / 0.4 : 1;
+      if (!c.gone) for (const [cx, cy, w] of [[lx + hl - 9, y0 + 2, 8], [lx + hl - 15, y0 + 4, 6], [rx + 1, y0 + 3, 9], [rx + 9, y0 + 5, 5]]) g.rect(cx, cy, w, 1, PAL.bg);
+      ctx.globalAlpha = 1;
     }
     // jump sprite keyed to velocity: stretched tall (8) rising, crouched (0)
     // landing, mid frames in between for the transition
-    const fr = Math.max(0, Math.min(8, Math.round(4 - this.vy / 55)));
+    const fr = Math.max(0, Math.min(8, Math.round(4 - this.vy / 75)));
     g.sprite('hopdog', this.x, this.y - 6, { w: 22, h: 22, frame: fr });
     for (let i = 0; i < this.need; i++) g.rect(4 + i * 8, TOP + 4, 5, 5, i < this.landed ? PAL.accent : PAL.mid);
   }

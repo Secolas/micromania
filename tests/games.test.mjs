@@ -136,6 +136,12 @@ export default async function ({ url, launch }) {
     }
     out.tapWrong = wrong; out.tapIdle = idle; }
   Engine.seen.add('tap');
+  // HOP: steer under the next step (the lowest one not yet landed on); doing nothing loses as the start crumbles
+  out.wins.hop = play(Doodle, 3, (gm) => { const p = gm.plats.find((p, k) => k && !p.used); if (p) hold(p.x, 150); });
+  out.wins.hop1 = play(Doodle, 1, (gm) => { const p = gm.plats.find((p, k) => k && !p.used); if (p) hold(p.x, 150); });
+  { let idle = 0; for (let k = 0; k < 6; k++) { Engine.startRound(Doodle, 1); Engine.state = 'PLAYING'; Engine.timer = Engine.duration; const d = Engine.game; release();
+      for (let i = 0; i < 900 && !d.finished && Engine.state === 'PLAYING'; i++) { Input.beginStep(); Engine.update(STEP); } if (d.won) idle++; }
+    out.hopIdle = idle; }
   // DRY OFF with no sensors: rubbing fast dries the shiba; leaving it wet loses
   out.wins.dry = play(DryShiba, 3, (gm, i) => hold(90 + Math.cos(i * 0.7) * 45, 180));
   { let idleWins = 0; for (let k = 0; k < 5; k++) { Engine.startRound(DryShiba, 1); Engine.state = 'PLAYING'; Engine.timer = Engine.duration; const d = Engine.game;
@@ -170,6 +176,7 @@ export default async function ({ url, launch }) {
   assert(out.fakeTouchLoses, 'fake-out: touching it should lose');
   assert(out.tapWrong === 10, 'TAP: tapping a face that is not laughing should lose, lost ' + out.tapWrong + '/10');
   assert(out.tapIdle === 0, 'TAP: doing nothing should lose, won ' + out.tapIdle + '/10');
+  assert(out.hopIdle === 0, 'HOP: doing nothing should lose, won ' + out.hopIdle + '/6');
   assert(out.dryIdle === 0, 'DRY OFF: leaving the shiba wet should lose, won ' + out.dryIdle + '/5');
   assert(out.highfiveWrong >= 5, 'HIGH FIVE: tapping the wrong paw should lose, lost ' + out.highfiveWrong + '/10');
   await done();
