@@ -360,6 +360,7 @@ const Assets = {
     custfull: { src: 'art/custfull.png', fw: 48,  fh: 64,  frames: 11, fps: 1  },
     runcowboy:{ src: 'art/runcowboy.png', fw: 120, fh: 120, frames: 9, fps: 1  },
     jumpcowboy:{ src: 'art/jumpcowboy.png', fw: 120, fh: 120, frames: 5, fps: 1 },
+    bush:     { src: 'art/bush.png',     fw: 39,  fh: 24,  frames: 1,  fps: 1  },
     walkstone:{ src: 'art/walkstone.png', fw: 36, fh: 36,  frames: 1,  fps: 1  },
     fullidle: { src: 'art/fullidle.png', fw: 64,  fh: 64,  frames: 22, fps: 1  },
     leanmove: { src: 'art/leanmove.png', fw: 64,  fh: 64,  frames: 7,  fps: 1  },
@@ -2125,14 +2126,14 @@ const SCENE = {
 };
 const Env = {
   cache: {},
-  paint(spec) {
+  paint(spec, sun = true) {   // sun: false leaves the sun out (the title draws its own)
     let c = this.cache[spec];
     if (!c) c = this.cache[spec] = this.build(spec);
     ctx.fillStyle = PAL.bg; ctx.fillRect(0, 0, W, H);
     ctx.drawImage(c, 0, 0, W, H);
     if (spec === 'sky') this.clouds();
     if (spec.startsWith('sunny') || spec.startsWith('park') || spec.startsWith('nature')) {
-      if (Assets.get('sun')) g.sprite('sun', W - 30, TOP + 28);   // art/sun.png, rays twinkling
+      if (sun && Assets.get('sun')) g.sprite('sun', W - 30, TOP + 28);   // art/sun.png, rays twinkling
       this.dayClouds();
     }
     if (spec.startsWith('beach')) this.surf(+spec.split('@')[1]);
@@ -6656,15 +6657,15 @@ const Closet = {
     for (const it of this.ITEMS) {
       if (s.owned.includes(it.id) || !it.got(v)) continue;
       s.owned.push(it.id);
-      if (it.id !== 'party') Toast.show('NEW! ' + it.name, it);   // the free one is just there
+      if (it.id !== 'party') Prize.show(it);   // the free one is just there
     }
     for (const it of this.NECK) {
       if (s.necks.includes(it.id) || !it.got(v)) continue;
-      s.necks.push(it.id); Toast.show('NEW! ' + it.name, it);
+      s.necks.push(it.id); Prize.show(it);
     }
     for (const c of Coat.LIST) {
       if (s.coats.includes(c.id) || !c.got(v)) continue;
-      s.coats.push(c.id); Toast.show('NEW! ' + c.name, { coat: c.id });   // with the shiba's face in it
+      s.coats.push(c.id); Prize.show({ coat: c.id, name: c.name });
     }
     this.save();
   },
@@ -6817,22 +6818,63 @@ const Closet = {
   },
 };
 
-// A short wooden note sliding down from the top: NEW! COWBOY HAT, with the hat.
-const Toast = {
+// Winning something to wear: the game holds a moment for it. A card comes up
+// with YOU GOT and the thing's name, the shiba big in the middle wearing it (or
+// in the new coat) and cheering, light turning behind it, confetti. It waits
+// for the round to end (never mid-game), and a tap or a few seconds goes on.
+const Prize = {
   q: [], t: 0,
-  show(text, item) { this.q.push({ text, item }); if (this.q.length === 1) { this.t = 0; Sfx.unlockItem && Sfx.unlockItem(); } },
+  HOLD: ['PLAYING', 'PROMPT', 'READY', 'PERMS', 'CAMCHECK', 'REPLAY'],   // screens it waits out
+  MIN: 0.6, MAX: 3,
+  // it: a hat or neck thing from Closet, or { coat: id, name }
+  show(it) { this.q.push(it); },
+  on() { return this.q.length > 0 && !this.HOLD.includes(Engine.state); },
+  // true while it's up, so the screen under it holds still
   update(dt) {
-    if (!this.q.length) return;
+    if (!this.on()) return false;
+    if (this.t === 0) { Sfx.unlockItem && Sfx.unlockItem(); Juice.confetti(50); buzz(40); }
     this.t += dt;
-    if (this.t > 2.6) { this.q.shift(); this.t = 0; if (this.q.length && Sfx.unlockItem) Sfx.unlockItem(); }
+    if (this.t > this.MAX || (this.t > this.MIN && Input.taps.length)) this.next();
+    return true;
   },
+  next() { this.q.shift(); this.t = 0; Input.flush && Input.flush(); },
+  // a tap while it's up is only for it
+  tap() { if (!this.on()) return false; if (this.t > this.MIN) this.next(); return true; },
   draw() {
-    if (!this.q.length) return;
-    const n = this.q[0], t = this.t, k = t < 0.25 ? t / 0.25 : t > 2.3 ? 1 - (t - 2.3) / 0.3 : 1;
-    const y = Math.round(-40 + k * (TOP + 46));
-    g.nine('buttons', 1, 10, y, W - 20, 38, 6) || g.rect(10, y, W - 20, 38, PAL.accent);
-    if (n.item) Closet.drawItem(n.item, 34, y + 34, 1);
-    g.text(n.text, CX + 14, y + 23, 9, PAL.bg);
+    if (!this.on()) return;
+    const it = this.q[0], t = this.t, pop = Math.min(1, t / 0.25), k = pop < 1 ? 1 - Math.pow(1 - pop, 3) * 1.1 + 0.1 * Math.sin(pop * 9) : 1;
+    ctx.globalAlpha = 0.8 * pop; g.rect(0, 0, W, H, PAL.bg); ctx.globalAlpha = 1;
+    ctx.save(); ctx.translate(CX, CY); ctx.scale(k, k); ctx.translate(-CX, -CY);
+    const P = { x: 14, y: CY - 106, w: W - 28, h: 214 };
+    g.rect(P.x, P.y, P.w, P.h, MENU_PANEL);
+    g.nine('titlesign', 0, P.x - 4, P.y - 4, P.w + 8, P.h + 8, 22);
+    const sy = CY + 50;   // the shiba's paws
+    // light turning behind it
+    ctx.save(); ctx.beginPath(); ctx.rect(P.x + 8, P.y + 8, P.w - 16, P.h - 16); ctx.clip();
+    ctx.globalAlpha = 0.22; ctx.fillStyle = PAL.accent;
+    for (let i = 0; i < 12; i++) {
+      const a0 = t * 0.8 + i * Math.PI / 6;
+      ctx.beginPath(); ctx.moveTo(CX, sy - 64); ctx.lineTo(CX + Math.cos(a0) * 160, sy - 64 + Math.sin(a0) * 160); ctx.lineTo(CX + Math.cos(a0 + 0.26) * 160, sy - 64 + Math.sin(a0 + 0.26) * 160); ctx.fill();
+    }
+    ctx.globalAlpha = 1; ctx.restore();
+    g.text('YOU GOT', CX, P.y + 24, 10, PAL.ink);
+    const name = it.coat ? it.name + ' COAT' : it.name;
+    g.wrap(name, P.w - 24, 14).forEach((l, i, L) => g.outline(l, CX, P.y + 44 + i * 16 - (L.length - 1) * 4, 14, PAL.accent));
+    // the shiba, twice size, cheering, in it
+    const f = Math.floor(t * 6) % 2 ? g.FULL.cheer : g.FULL.cheer2;
+    const raw = Assets.raw('fullshiba'), sh = it.coat && raw ? Coat.sheet('fullshiba', raw, it.coat) : Assets.get('fullshiba');
+    if (sh) ctx.drawImage(sh.img, f * sh.fw, 0, sh.fw, sh.fh, CX - sh.fw, sy - sh.fh * 2, sh.fw * 2, sh.fh * 2);
+    if (it.coat) Closet.dress('fullshiba', f, CX, sy - 64, 96, 128);
+    else if (it.neck) Closet.dress('fullshiba', f, CX, sy - 64, 96, 128, Closet.hat, it);
+    else Closet.dress('fullshiba', f, CX, sy - 64, 96, 128, it, Closet.neck);
+    // twinkles round it
+    for (let i = 0; i < 5; i++) if ((Math.floor(t * 5) + i) % 3 === 0) {
+      const sx = CX + Math.cos(i * 1.3) * 52, sy2 = sy - 70 + Math.sin(i * 2.1) * 44;
+      g.rect(sx - 2, sy2, 5, 1, PAL.ink); g.rect(sx, sy2 - 2, 1, 5, PAL.ink);
+    }
+    g.text("IT'S IN YOUR DOGHOUSE", CX, P.y + P.h - 26, 8, PAL.ink);
+    if (t > this.MIN && Math.floor(t * 2) % 2) g.text('TAP TO GO ON', CX, P.y + P.h - 13, 8, PAL.ink);
+    ctx.restore();
   }
 };
 
@@ -7751,7 +7793,7 @@ const Engine = {
 
   update(dt) {
     this.time += dt;
-    Toast.update(dt);
+    if (Prize.update(dt)) { Juice.update(dt); Mascot.update(dt); return; }   // a prize is up: everything under it holds
     if (!this.closetReady && this.state === 'TITLE') { this.closetReady = true; Closet.check(); }   // progress from before the closet existed counts too
     Input.rev = this.reverse && this.state === 'PLAYING';
     // a PLAYING game may request a pause (e.g. blow waiting on mic permission);
@@ -8057,6 +8099,7 @@ const Engine = {
   hit(b, p) { return p.x >= b.x && p.x < b.x + b.w && p.y >= b.y && p.y < b.y + b.h; },
 
   press(p) {
+    if (Prize.on()) return true;                                               // the prize card takes the tap
     if (this.paused) return true;                                              // the pause screen's own buttons
     if (this.canPause() && this.hit(this.PAUSE_BTN, p)) { this.pause(); Sfx.tap(); return true; }
     if (this.tut && this.state !== 'TUTDONE' && this.hit(this.tutSkip(), p)) return true;   // SKIP, never a tap in the game
@@ -8064,6 +8107,7 @@ const Engine = {
   },
 
   release(p) {
+    if (Prize.tap()) return;
     const s = this.state;
     if (s === 'PROMPT' && this.waitReady) {   // READY: a short beat, then GO
       this.waitReady = false; Prefs.set('learned.' + this.game.meta.id, true);
@@ -8143,7 +8187,7 @@ const Engine = {
       if (k < 1 / d) return n * k * k; if (k < 2 / d) return n * (k -= 1.5 / d) * k + 0.75;
       if (k < 2.5 / d) return n * (k -= 2.25 / d) * k + 0.9375; return n * (k -= 2.625 / d) * k + 0.984375; };
     const back = (k) => { k = Math.max(0, Math.min(1, k)); const c = 1.7; return 1 + (c + 1) * Math.pow(k - 1, 3) + c * Math.pow(k - 1, 2); };
-    Env.paint('sunny@180');
+    Env.paint('sunny@180', false);
     g.rect(0, 0, W, TOP, SCENE.day0);   // the title is full-bleed: sky to the top edge, meadow to the bottom
     const Rn = this.runner || { scroll: 0, y: 0, legT: t, pops: [] }, sc = Rn.scroll, gy = this.RUN_GROUND;
     // the far hills drift by at half speed, the meadow at full speed
@@ -8159,10 +8203,14 @@ const Engine = {
     // bushes to hop, each with a bone floating over it until the shiba grabs it
     for (let i = this.runBushAfter(sc - 20); ; i++) {
       const bx = this.runBush(i).x - sc; if (bx > W + 12) break;
-      for (const [col, d] of [[SCENE.grassLo, 1], [SCENE.leafHi, 0]]) {   // dark rim, then the leaves
-        ctx.fillStyle = col; for (const [ox, r] of [[-7, 6], [0, 9], [7, 6]]) { ctx.beginPath(); ctx.arc(bx + ox, gy + 1, r + d, Math.PI, 0); ctx.fill(); }
+      const bu = Assets.get('bush');
+      if (bu) g.sprite('bush', Math.round(bx), gy + 3 - bu.fh / 2);   // art/bush.png, its shadow on the grass
+      else {
+        for (const [col, d] of [[SCENE.grassLo, 1], [SCENE.leafHi, 0]]) {   // dark rim, then the leaves
+          ctx.fillStyle = col; for (const [ox, r] of [[-7, 6], [0, 9], [7, 6]]) { ctx.beginPath(); ctx.arc(bx + ox, gy + 1, r + d, Math.PI, 0); ctx.fill(); }
+        }
+        g.rect(bx - 4, gy - 6, 3, 2, SCENE.meadowHi); g.rect(bx + 5, gy - 3, 2, 2, SCENE.meadowHi);
       }
-      g.rect(bx - 4, gy - 6, 3, 2, SCENE.meadowHi); g.rect(bx + 5, gy - 3, 2, 2, SCENE.meadowHi);
       if (i > (this.runner ? this.runner.got : -1)) g.bone(bx, gy - 42 + Math.sin(this.time * 4 + i) * 1.5, 14);
     }
     for (const p of Rn.pops) {   // a grabbed bone pops up and fades, with a sparkle
@@ -8183,6 +8231,8 @@ const Engine = {
     word('SHIBA', 70, PAL.ink, 0.0);
     word('MANIA', 98, PAL.accent, 0.35);
     if (t > 1.0) { ctx.globalAlpha = Math.min(1, (t - 1.0) * 3); g.outline(POOL.length + BOSSES.length + ' MICROGAMES', CX, 118, 8, PAL.ink); ctx.globalAlpha = 1; }
+    // the sun in the top-right corner, bright, its rays just over the sign's corner
+    if (Assets.get('sun')) { ctx.globalAlpha = Math.min(1, t * 3); g.sprite('sun', W - 24, 26); ctx.globalAlpha = 1; }
     // the shiba runs in from the left, then keeps running: hop, grab, land
     const rx = t < 1.2 ? -30 + (this.RUN_X + 30) * (1 - Math.pow(1 - Math.max(0, (t - 0.3) / 0.9), 3)) : this.RUN_X;
     const ry = gy - 14 - (Rn.y || 0);
@@ -8825,8 +8875,8 @@ const Engine = {
     FX.pre();
     this.drawScene();
     if (this.hasShelf() && this.state !== 'BREAK') Mascot.draw(g);   // the title has its own shiba; menu screens have none
+    Prize.draw();
     Juice.drawConfetti();
-    Toast.draw();
     if (this.state === 'PLAYING') {
       this.drawFuse(Math.max(0, this.timer / this.duration));
       // DEBUG: what the camera is actually reading, for tuning thresholds on a
@@ -9094,8 +9144,8 @@ const Engine = {
       // is labelled by what you'll actually do
       const gr = Run.group(m), backup = m.how && typeof m.how === 'object' && !['TAP', 'DRAG'].includes(gr) && this.howTo(m) === m.how.touch;
       const prize = !this.tut && !this.testClass && Closet.prize(m.id);
-      if (prize) {   // WIN: BEANIE (or, below HARD, ON HARD: BEANIE), with a small one of the thing, above the kind of game
-        const pre = this.game && this.game.d >= 3 ? 'WIN: ' : 'ON HARD: ';
+      if (prize && this.game && this.game.d >= 3) {   // on HARD, WIN: BEANIE, with a small one of the thing, above the kind of game
+        const pre = 'WIN: ';
         g.outline(pre + prize.name, CX + 8, ty - 16, 8, PAL.accent);
         Closet.drawItem(prize.icon != null ? { f: prize.icon } : prize, CX - 6 - (prize.name.length + pre.length) * 3, ty - 13, 1);
       }

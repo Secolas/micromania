@@ -64,6 +64,12 @@ stages, and it can also have a `name` for its signpost, `games` and `bosses`
 there and the map, the stage labels (2-3), the targets and the end of the run
 follow. With more worlds than fit, the map scrolls to follow the shiba.
 
+**Things to wear**: the DOGHOUSE keeps the hats, neck things and coats you
+win. A game with a prize names it on its prompt only on HARD (WIN: COWBOY HAT).
+Winning one, or reaching a milestone, brings up a YOU GOT card once the round
+is over: the thing's name, and the shiba big in the middle wearing it,
+cheering. The game holds still under it until a tap, or 3 seconds.
+
 **Surprises**: once things get going, a prompt can start out normal and then
 have a stamp slam down on the game's title:
 - **REVERSE!** (drag and tilt games only): your touch lands where you press, but

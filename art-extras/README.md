@@ -148,3 +148,10 @@ try asked for a 36px dog. `turn_<dir>.png` are that one's four turns, and
 right, up, left, 6 frames each). It ran the map for one preview. It was still too
 big, so the map now uses the game's own small runners (STACK's and SQUEEZE's)
 instead.
+
+### title/ (2026-10-23)
+
+`bush-spiky.png`: PixelLab's first try at the title's bush to hop
+(`create_image_pixflux`, the hedge's colours as the palette), a spiky plant
+rather than a bush. The second try, a low round shrub on a 48×32 canvas, is
+`art/bush.png`.

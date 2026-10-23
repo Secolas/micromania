@@ -44,7 +44,7 @@ export default async function ({ url, launch }) {
     for (const C of BOSSES) { Engine.startRound(C, 3, true); Engine.state = 'PLAYING'; Engine.game.succeed(); Input.beginStep(); Engine.update(STEP); }
     out.crownInGame = Closet.owns('crown');
     Closet.unlockAll(); out.dev = Closet.stats.owned.length === Closet.ITEMS.length;
-    out.toasts = Toast.q.length;
+    out.toasts = Prize.q.length; Prize.q.length = 0;   // counted; put them away so the rest isn't held
     // wearing: only what you own; drawn on the mascot without trouble
     Closet.wear('cowboy'); out.wearing = Closet.hat && Closet.hat.id;
     Closet.stats.hat = 'nope'; out.notOwned = Closet.hat; Closet.wear('cowboy');
@@ -88,7 +88,7 @@ export default async function ({ url, launch }) {
   eq(r.bossesOverTime, false, 'every boss over different games is not the crown');
   eq(r.crownInGame, true, 'every boss in one Classic game earns the crown');
   eq(r.dev, true, 'the dev menu can unlock everything');
-  assert(r.toasts >= 8, 'a NEW! note for each: ' + r.toasts);
+  assert(r.toasts >= 8, 'a YOU GOT card for each: ' + r.toasts);
   eq([r.wearing, r.notOwned, r.head], ['cowboy', null, true], 'wear what you own, and it finds the head');
   eq(r.playing, ['PROMPT', 'tap', true], 'a toy-room card starts that game');
   eq(r.afterLoss, ['TOYROOM', 4, 10, 0], 'a toy-room loss: back to the toy room, no life lost, best untouched');
